@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Testing Page for Onsite Validations</title>
+    <title>Enterprise Testing Page for Onsite Validations</title>
     <style>
         :root {
             --bg-color: #0b0f19;
@@ -14,6 +14,10 @@
             --reload-gradient: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
             --success-glow: rgba(16, 185, 129, 0.2);
             --code-bg: #090d16;
+            --accent-green: #10b981;
+            --panel-border: #1e293b;
+            --danger-red: #ef4444;
+            --hot-blue: #0284c7;
         }
 
         body {
@@ -26,13 +30,12 @@
             line-height: 1.6;
         }
 
-        /* Navigation Layout */
         nav {
             position: sticky;
             top: 0;
             background: rgba(21, 31, 50, 0.85);
             backdrop-filter: blur(12px);
-            border-bottom: 1px solid #1e293b;
+            border-bottom: 1px solid var(--panel-border);
             padding: 15px 30px;
             display: flex;
             align-items: center;
@@ -70,141 +73,223 @@
             padding: 0 20px;
         }
 
-        /* Page Layout Panels */
         .page {
             display: none;
             background-color: var(--card-bg);
             padding: 40px;
             border-radius: 16px;
-            border: 1px solid #1e293b;
+            border: 1px solid var(--panel-border);
             box-shadow: 0 10px 30px rgba(0,0,0,0.4);
             animation: fadeIn 0.3s ease-out;
         }
 
-        .page.active {
-            display: block;
-        }
+        .page.active { display: block; }
 
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(5px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
-        .page-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 20px;
-            border-bottom: 1px solid #1e293b;
-            padding-bottom: 25px;
+        /* QA Suite Grid Framework */
+        .qa-suite-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+            gap: 25px;
             margin-bottom: 25px;
         }
 
-        .header-text h2 { margin: 0 0 10px 0; font-size: 1.8rem; }
-        .header-text p { margin: 0; color: var(--text-muted); }
-        .page-image { width: 130px; height: 85px; border-radius: 8px; border: 1px solid #334155; }
-
-        .info-panel {
-            background: rgba(14, 165, 233, 0.08);
-            border-left: 4px solid #0ea5e9;
-            padding: 20px;
-            border-radius: 0 12px 12px 0;
-            margin-bottom: 25px;
-        }
-        .info-panel h4 { margin: 0 0 10px 0; color: #38bdf8; }
-
-        pre {
-            background: var(--code-bg);
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #1e293b;
-            color: #34d399;
-            font-family: monospace;
-            overflow-x: auto;
-            margin: 5px 0;
-        }
-
-        /* Injector Components */
-        .injector-panel {
-            background: #090d16;
+        .suite-panel {
+            background: #0d1527;
+            border: 1px solid var(--panel-border);
             border-radius: 12px;
-            padding: 25px;
-            border: 1px solid #1e293b;
-            margin-bottom: 30px;
+            padding: 24px;
         }
 
-        textarea {
-            width: 100%;
-            height: 110px;
-            background-color: #111827;
-            color: #38bdf8;
-            border: 1px solid #334155;
-            border-radius: 8px;
-            padding: 14px;
-            font-family: monospace;
-            resize: vertical;
-            box-sizing: border-box;
+        .suite-panel h4 { margin: 0 0 12px 0; color: #38bdf8; font-size: 1.1rem; }
+        .suite-description { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 18px; line-height: 1.4; }
+
+        .factory-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1.2fr 1.2fr;
+            gap: 10px;
+            align-items: end;
+            margin-bottom: 15px;
         }
+
+        @media (max-width: 768px) {
+            .factory-row { grid-template-columns: 1fr; gap: 12px; }
+        }
+
+        .input-block label {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 5px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .suite-input, select {
+            width: 100%;
+            background: #111827;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            padding: 9px 12px;
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+            height: 38px;
+        }
+
+        .suite-input:focus, select:focus { outline: none; border-color: #0ea5e9; }
+
+        /* Variable Conditions Dashboard Panel */
+        .registered-dashboard {
+            background: #070a12;
+            border: 1px solid #1e293b;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .dashboard-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .dashboard-title { font-size: 0.8rem; font-weight: bold; color: var(--text-muted); text-transform: uppercase; }
+        .purge-all-params-btn { background: transparent; border: 1px solid #3b4f7c; color: #ff6b6b; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+        .purge-all-params-btn:hover { background: rgba(239, 68, 68, 0.15); border-color: var(--danger-red); }
+
+        .dashboard-list { font-family: monospace; font-size: 0.85rem; max-height: 140px; overflow-y: auto; padding: 0; margin: 0; list-style: none; }
+        .dashboard-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; border-bottom: 1px solid #111827; }
+        .dashboard-item-left { display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .delete-single-param-btn { background: transparent; border: none; color: #64748b; cursor: pointer; font-size: 0.85rem; line-height: 1; }
+        .delete-single-param-btn:hover { color: var(--danger-red); }
+
+        .badge { font-size: 0.7rem; font-weight: bold; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+        .badge-url { background: rgba(14, 165, 233, 0.2); color: #38bdf8; }
+        .badge-var { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
+        .badge-cookie { background: rgba(236, 72, 153, 0.2); color: #f472b6; }
+
+        /* Twin Diagnostics Layout (Inspector & Network Errors) */
+        .twin-diagnostics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 25px;
+        }
+
+        @media (max-width: 768px) {
+            .twin-diagnostics-grid { grid-template-columns: 1fr; }
+        }
+
+        .diag-panel {
+            background: #080d1a;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            padding: 15px;
+        }
+        .diag-panel h4 { margin: 0 0 10px 0; font-size: 0.9rem; text-transform: uppercase; color: #cbd5e1; border-bottom: 1px solid #1e293b; padding-bottom: 8px;}
+
+        .audit-row { display: flex; justify-content: space-between; padding: 6px 4px; border-bottom: 1px solid #111827; font-family: monospace; font-size: 0.85rem; }
+        .status-pill { font-size: 0.75rem; font-weight: bold; padding: 1px 6px; border-radius: 4px; }
+        .pill-success { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+        .pill-warn { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+        .pill-danger { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+
+        .network-err-stream { max-height: 120px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; color: #ff6b6b; padding: 5px; }
+        .network-err-entry { border-bottom: 1px solid #111827; padding: 4px 0; word-break: break-all; }
+
+        /* Injector Base Elements */
+        .injector-panel { background: #090d16; border-radius: 12px; padding: 25px; border: 1px solid var(--panel-border); margin-bottom: 30px; }
+        textarea { width: 100%; height: 110px; background-color: #111827; color: #38bdf8; border: 1px solid #334155; border-radius: 8px; padding: 14px; font-family: monospace; resize: vertical; box-sizing: border-box; margin-top: 10px; }
         textarea:disabled { opacity: 0.7; cursor: not-allowed; }
 
         .action-bar { margin-top: 15px; display: flex; flex-direction: column; gap: 15px; }
+        .refresh-button-group-row { display: flex; flex-wrap: wrap; gap: 12px; width: 100%; margin-top: 5px; }
+        
+        .injector-panel button, .factory-row button, .profile-row button {
+            background: var(--primary-gradient); color: white; border: none; padding: 10px 20px; font-size: 0.9rem; font-weight: bold; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3); transition: transform 0.2s; height: 38px; display: flex; align-items: center; justify-content: center;
+        }
+        .injector-panel button:hover, .factory-row button:hover, .profile-row button:hover { transform: translateY(-1px); }
+        .injector-panel button.hot-reload-state { background: var(--hot-blue); box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3); }
+        .injector-panel button.reload-state { background: var(--reload-gradient); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); height: auto; padding: 12px 24px;}
 
-        /* Scoped Button Rules to prevent Cascade Conflicts */
-        .injector-panel button {
-            background: var(--primary-gradient);
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            font-size: 0.95rem;
-            font-weight: bold;
-            border-radius: 8px;
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
-            transition: transform 0.2s;
-        }
+        .profile-row { display: flex; gap: 10px; align-items: center; }
+
+        .log-panel { background: #070a12; border: 1px solid var(--panel-border); border-radius: 12px; padding: 20px; margin-top: 25px; }
+        .log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .log-header h3 { margin: 0; font-size: 1.1rem; color: #cbd5e1; }
+        .clear-log-btn { background: transparent; border: 1px solid #334155; color: var(--text-muted); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+        .clear-log-btn:hover { border-color: #64748b; color: white; }
         
-        .injector-panel button:hover { 
-            transform: translateY(-2px); 
-        }
-        
-        .injector-panel button.reload-state { 
-            background: var(--reload-gradient); 
-            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); 
-        }
+        .log-stream { max-height: 180px; overflow-y: auto; font-family: monospace; font-size: 0.85rem; padding: 10px; background: #04060b; border-radius: 6px; border: 1px solid #111827; }
+        .log-entry { margin-bottom: 6px; border-bottom: 1px solid #0d1527; padding-bottom: 4px; }
+        .log-time { color: #64748b; margin-right: 8px; }
+        .log-info { color: #38bdf8; }
+        .log-success { color: var(--accent-green); }
+        .log-warn { color: #fbbf24; }
 
         .message { padding: 15px; border-radius: 8px; display: none; width: 100%; box-sizing: border-box; }
-        .success { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.25); display: block; }
+        .success { background: rgba(16, 185, 129, 0.1); color: var(--accent-green); border: 1px solid rgba(16, 185, 129, 0.25); display: block; }
         .error { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); display: inline-block; width: auto; }
-
-        .live-alert-banner {
-            background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4);
-            padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; display: none;
-        }
+        .live-alert-banner { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; display: none; }
 
         .main-page-list { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 15px; }
-        .main-page-list a { display: block; background: #0f172a; padding: 15px; border-radius: 8px; color: #38bdf8; text-decoration: none; border: 1px solid #1e293b; cursor: pointer;}
+        .main-page-list a { display: block; background: #0f172a; padding: 15px; border-radius: 8px; color: #38bdf8; text-decoration: none; border: 1px solid var(--panel-border); cursor: pointer;}
         .main-page-list a:hover { background: #1e293b; }
-
         .back-link { display: inline-block; margin-bottom: 20px; color: var(--text-muted); text-decoration: none; font-weight: 500; cursor: pointer; }
         .back-link:hover { color: white; }
 
-        /* Flexible Dropzones Layout */
         .qa-dropzones-wrapper { margin-top: 30px; border: 2px dashed #334155; border-radius: 12px; padding: 20px; background: rgba(15, 23, 42, 0.6); }
-        .form-target-div {
-            background: #090d16; margin: 15px 0; border-radius: 8px; border: 1px solid #1e293b;
-            color: #64748b; font-family: monospace; min-height: 35px; box-sizing: border-box; overflow: visible;
-        }
-        .form-target-div:not(:empty) {
-            border: 2px solid #10b981; box-shadow: 0 0 25px var(--success-glow);
-            padding: 20px; height: auto !important; min-height: 550px; background: #0d1527;
-        }
+        .form-target-div { background: #090d16; margin: 15px 0; border-radius: 8px; border: 1px solid var(--panel-border); color: #64748b; font-family: monospace; min-height: 35px; box-sizing: border-box; overflow: visible; }
+        .form-target-div:not(:empty) { border: 2px solid var(--accent-green); box-shadow: 0 0 25px var(--success-glow); padding: 20px; height: auto !important; min-height: 550px; background: #0d1527; }
         .form-target-div iframe { width: 100% !important; min-height: 500px !important; border: none !important; }
-        .embedded-code-display { background: #090d16; padding: 10px; border-radius: 6px; margin-top: 8px; color: #34d399; font-family: monospace; font-size: 0.85rem; word-break: break-all; max-height: 75px; overflow-y: auto; border: 1px solid #1e293b; }
+        .embedded-code-display { background: #090d16; padding: 10px; border-radius: 6px; margin-top: 8px; color: #34d399; font-family: monospace; font-size: 0.85rem; word-break: break-all; max-height: 75px; overflow-y: auto; border: 1px solid var(--panel-border); }
     </style>
+    <script>
+        // =========================================================================
+        // 🛡️ CRITICAL MONKEY PATCH NETWORK INTERCEPTOR (FETCH & XHR)
+        // =========================================================================
+        // Intercepts background request channels. Automatically captures 4xx & 5xx statuses
+        // from asynchronous tag allocations, logging telemetry data into the tracker log console.
+
+        const originalFetch = window.fetch;
+        window.fetch = async function(...args) {
+            const requestUrl = args[0] instanceof Request ? args[0].url : args[0];
+            try {
+                const response = await originalFetch.apply(this, args);
+                if (!response.ok) {
+                    triggerNetworkErrorLog(response.status, 'FETCH', requestUrl);
+                }
+                return response;
+            } catch (err) {
+                triggerNetworkErrorLog('FAILED', 'FETCH', requestUrl);
+                throw err;
+            }
+        };
+
+        const originalXHR = window.XMLHttpRequest.prototype.open;
+        window.XMLHttpRequest.prototype.open = function(method, url, ...args) {
+            this.addEventListener('load', function() {
+                if (this.status >= 400) {
+                    triggerNetworkErrorLog(this.status, 'XHR', url);
+                }
+            });
+            this.addEventListener('error', function() {
+                triggerNetworkErrorLog('FAILED', 'XHR', url);
+            });
+            return originalXHR.apply(this, [method, url, ...args]);
+        };
+
+        function triggerNetworkErrorLog(status, type, url) {
+            window.dispatchEvent(new CustomEvent('qa_network_error', { 
+                detail: { status: status, type: type, url: url } 
+            }));
+        }
+    </script>
 </head>
 <body>
 
-    <!-- Navigation Bar Layout -->
     <nav>
         <strong>🔍 ONSITE VALIDATION HUB</strong> 
         <a id="nav-main-page" class="active-nav" onclick="navigateTo('main-page')">🏠 Main Dashboard</a>
@@ -218,18 +303,90 @@
     <div class="wrapper">
         <div id="dom-capture-alert" class="live-alert-banner"></div>
 
-        <!-- MAIN DASHBOARD -->
+        <div class="qa-suite-grid">
+            <div class="suite-panel">
+                <h4>🎯 Live Parameter Factory Builder</h4>
+                <div class="suite-description">Build targeting rules sequentially. Parameter value fields update validation layouts automatically on chosen type changes.</div>
+                
+                <div class="factory-row">
+                    <div class="input-block">
+                        <label for="param-target-type">Target</label>
+                        <select id="param-target-type">
+                            <option value="url">URL Query</option>
+                            <option value="var">Variable</option>
+                            <option value="cookie">Cookie</option>
+                        </select>
+                    </div>
+                    <div class="input-block">
+                        <label for="param-data-type">Data Type</label>
+                        <select id="param-data-type" onchange="adjustValueInputInterface()">
+                            <option value="Text">Text</option>
+                            <option value="Number">Number</option>
+                            <option value="Boolean">Boolean</option>
+                            <option value="Datetime">Datetime</option>
+                            <option value="Random">Random</option>
+                        </select>
+                    </div>
+                    <div class="input-block">
+                        <label for="param-key-name">Parameter Name</label>
+                        <input type="text" id="param-key-name" class="suite-input" placeholder="e.g. userType">
+                    </div>
+                    <div class="input-block" id="value-input-container">
+                        <label for="param-value-data">Value Entry</label>
+                        <input type="text" id="param-value-data" class="suite-input" placeholder="e.g. premium">
+                    </div>
+                </div>
+                
+                <div style="text-align: right; margin-top: 15px;">
+                    <button onclick="commitFactoryParameterElement()" style="width: 100%; display:block;">➕ Add Parameter Trigger</button>
+                </div>
+
+                <div class="registered-dashboard">
+                    <div class="dashboard-header-row">
+                        <div class="dashboard-title">Active Simulated Conditions Pipeline:</div>
+                        <button class="purge-all-params-btn" onclick="clearAllSimulatedParameters()">Purge All</button>
+                    </div>
+                    <ul id="active-parameter-dashboard-list" class="dashboard-list">
+                        <li style="color:#64748b; padding: 4px 8px;" id="empty-dashboard-notice">No simulated variables injected yet.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="suite-panel">
+                <h4>⚡ Configuration Controls & Network Telemetry</h4>
+                <div class="suite-description">Store code presets or simulate data throttling conditions to benchmark background script tracking loops under network lag conditions.</div>
+                
+                <div class="input-group">
+                    <label for="profile-selector">Preset Script Profiles (Local Cache Memory)</label>
+                    <div class="profile-row">
+                        <select id="profile-selector" onchange="loadSelectedProfile()">
+                            <option value="">-- No Profile Selected --</option>
+                            <option value="profile_1">Slot 1: Staging Framework Tag</option>
+                            <option value="profile_2">Slot 2: Production Target Tag</option>
+                            <option value="profile_3">Slot 3: Custom Intercept Bundle</option>
+                        </select>
+                        <button onclick="saveCurrentToProfile()" style="background:#1e293b; color:#38bdf8; border:1px solid #334155; padding:0 15px; border-radius:6px; cursor:pointer; font-size:0.8rem; font-weight:bold; height:38px;">Save Script</button>
+                    </div>
+                </div>
+
+                <div class="input-group" style="margin-top: 25px; background: #070a12; padding: 15px; border-radius: 8px; border: 1px solid #111827;">
+                    <label for="latency-slider" style="font-weight: bold; font-size: 0.85rem; display: block; margin-bottom: 5px;">
+                        Latency Delay Configuration: <span id="latency-val" style="color:#0ea5e9;">0ms</span>
+                    </label>
+                    <div id="telemetry-network-profile" style="font-size: 0.8rem; color: var(--accent-green); margin-bottom: 10px; font-weight: 600;">
+                        ⚡ [High-Speed Connection] Instant Asynchronous Asset Initialization
+                    </div>
+                    <input type="range" id="latency-slider" min="0" max="3000" step="250" value="0" style="width:100%;" oninput="processLatencyTelemetryChange()">
+                </div>
+            </div>
+        </div>
+
         <div id="main-page" class="page active">
             <div class="page-header">
                 <div class="header-text">
                     <h2>🎯 Onsite Validation Platform</h2>
                     <p>Creative QA testing workbench for live customer feedback integration.</p>
                 </div>
-                <img src="https://images.unsplash.com/photo-1600132806370-bf17e65e942f?auto=format&fit=crop&w=300&q=80" alt="QA Verification" class="page-image">
-            </div>
-
-            <div class="article-body">
-                <p><strong>The Crucial Importance of Creative QA:</strong> In web property optimization, client-side interventions must undergo comprehensive regression testing before public deployment. Creative QA ensures that modern digital interception tags, targeted modal architectures, and responsive survey components execute dynamically without altering layout elements, introducing structural performance loss, or clashing with asynchronous system scripts.</p>
             </div>
 
             <div class="injector-panel">
@@ -239,18 +396,6 @@
                     <button id="btn-main-page" onclick="injectProperty('main-page')">Inject Property</button>
                     <div id="msg-main-page" class="message"></div>
                 </div>
-            </div>
-
-            <div class="info-panel">
-                <h4>📥 Registered Onsite Embed Targets</h4>
-                <p>This sandbox features 3 isolated container hooks specifically reserved for embedded form payloads:</p>
-                <pre>• embedded_form  |  • embedded_form1  |  • embedded_form2</pre>
-            </div>
-
-            <div class="info-panel" style="background: rgba(52, 211, 153, 0.05); border-left-color: #34d399;">
-                <h4>💻 Manual SDK Simulation Commands</h4>
-                <p>Execute the following methods within the browser console environment to manually trigger forms:</p>
-                <pre>KAMPYLE_ONSITE_SDK.loadForm('&lt;formID&gt;')<br>KAMPYLE_ONSITE_SDK.showForm('&lt;formID&gt;')</pre>
             </div>
 
             <div class="directory-box">
@@ -265,228 +410,472 @@
             </div>
         </div>
 
-        <!-- PAGE 1 -->
         <div id="page1" class="page">
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
-            <div class="page-header">
-                <div class="header-text">
-                    <h2>📋 Page 1: UI Integrity Auditing</h2>
-                    <p>Validating target z-index distributions and visual layer regressions.</p>
-                </div>
-                <img src="https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?auto=format&fit=crop&w=300&q=80" alt="Design QA Check" class="page-image">
-            </div>
-            <div class="article-body">
-                <p>Visual presentation testing verifies that modal components do not conceal vital conversion vectors. Creative QA engineers audit frame collision layers, ensuring intercept containers float precisely above baseline assets while maintaining accessibility guidelines.</p>
-            </div>
-            <div class="injector-panel">
-                <h3>🛠️ Environment 1 Injector</h3>
-                <textarea id="input-page1" placeholder="Paste embed code or raw JS here..."></textarea>
-                <div class="action-bar">
-                    <button id="btn-page1" onclick="injectProperty('page1')">Inject Property</button>
-                    <div id="msg-page1" class="message"></div>
-                </div>
-            </div>
+            <h2>📋 Page 1: UI Integrity Auditing</h2>
+            <div class="injector-panel"><textarea id="input-page1" placeholder="Paste embed code or raw JS here..."></textarea><div class="action-bar"><button id="btn-page1" onclick="injectProperty('page1')">Inject Property</button><div id="msg-page1" class="message"></div></div></div>
         </div>
 
-        <!-- PAGE 2 -->
         <div id="page2" class="page">
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
-            <div class="page-header">
-                <div class="header-text">
-                    <h2>⚙️ Page 2: Asynchronous Interception Logic</h2>
-                    <p>Evaluating async tag delivery delays and event dispatchers.</p>
-                </div>
-                <img src="https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=300&q=80" alt="Code Validation" class="page-image">
-            </div>
-            <div class="injector-panel">
-                <h3>🛠️ Environment 2 Injector</h3>
-                <textarea id="input-page2" placeholder="Paste embed code or raw JS here..."></textarea>
-                <div class="action-bar">
-                    <button id="btn-page2" onclick="injectProperty('page2')">Inject Property</button>
-                    <div id="msg-page2" class="message"></div>
-                </div>
-            </div>
+            <h2>⚙️ Page 2: Asynchronous Interception Logic</h2>
+            <div class="injector-panel"><textarea id="input-page2" placeholder="Paste embed code or raw JS here..."></textarea><div class="action-bar"><button id="btn-page2" onclick="injectProperty('page2')">Inject Property</button><div id="msg-page2" class="message"></div></div></div>
         </div>
 
-        <!-- PAGE 3 -->
         <div id="page3" class="page">
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
-            <div class="page-header">
-                <div class="header-text">
-                    <h2>📱 Page 3: Adaptive Viewport Testing</h2>
-                    <p>Auditing fluid screen adjustments and gesture control tracking.</p>
-                </div>
-                <img src="https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?auto=format&fit=crop&w=300&q=80" alt="Mobile QA Interface" class="page-image">
-            </div>
-            <div class="injector-panel">
-                <h3>🛠️ Environment 3 Injector</h3>
-                <textarea id="input-page3" placeholder="Paste embed code or raw JS here..."></textarea>
-                <div class="action-bar">
-                    <button id="btn-page3" onclick="injectProperty('page3')">Inject Property</button>
-                    <div id="msg-page3" class="message"></div>
-                </div>
-            </div>
+            <h2>📱 Page 3: Adaptive Viewport Testing</h2>
+            <div class="injector-panel"><textarea id="input-page3" placeholder="Paste embed code or raw JS here..."></textarea><div class="action-bar"><button id="btn-page3" onclick="injectProperty('page3')">Inject Property</button><div id="msg-page3" class="message"></div></div></div>
         </div>
 
-        <!-- PAGE 4 -->
         <div id="page4" class="page">
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
-            <div class="page-header">
-                <div class="header-text">
-                    <h2>🌐 Page 4: Cross-Origin Pipeline Validation</h2>
-                    <p>Monitoring resource headers, CORS compliance, and framework security.</p>
-                </div>
-                <img src="https://images.unsplash.com/photo-1544383835-bda2bc66a55d?auto=format&fit=crop&w=300&q=80" alt="Global Network Infrastructure" class="page-image">
-            </div>
-            <div class="injector-panel">
-                <h3>🛠️ Environment 4 Injector</h3>
-                <textarea id="input-page4" placeholder="Paste embed code or raw JS here..."></textarea>
-                <div class="action-bar">
-                    <button id="btn-page4" onclick="injectProperty('page4')">Inject Property</button>
-                    <div id="msg-page4" class="message"></div>
-                </div>
-            </div>
+            <h2>🌐 Page 4: Cross-Origin Pipeline Validation</h2>
+            <div class="injector-panel"><textarea id="input-page4" placeholder="Paste embed code or raw JS here..."></textarea><div class="action-bar"><button id="btn-page4" onclick="injectProperty('page4')">Inject Property</button><div id="msg-page4" class="message"></div></div></div>
         </div>
 
-        <!-- PAGE 5 -->
         <div id="page5" class="page">
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
-            <div class="page-header">
-                <div class="header-text">
-                    <h2>🛡️ Page 5: Behavioral Rule Isolation</h2>
-                    <p>Testing algorithmic logic rules, entry criteria, and exit intent limits.</p>
-                </div>
-                <img src="https://images.unsplash.com/photo-1607799279861-4dd421887fb3?auto=format&fit=crop&w=300&q=80" alt="Console Diagnostics" class="page-image">
-            </div>
-            <div class="injector-panel">
-                <h3>🛠️ Environment 5 Injector</h3>
-                <textarea id="input-page5" placeholder="Paste embed code or raw JS here..."></textarea>
-                <div class="action-bar">
-                    <button id="btn-page5" onclick="injectProperty('page5')">Inject Property</button>
-                    <div id="msg-page5" class="message"></div>
-                </div>
-            </div>
+            <h2>🛡️ Page 5: Behavioral Rule Isolation</h2>
+            <div class="injector-panel"><textarea id="input-page5" placeholder="Paste embed code or raw JS here..."></textarea><div class="action-bar"><button id="btn-page5" onclick="injectProperty('page5')">Inject Property</button><div id="msg-page5" class="message"></div></div></div>
         </div>
 
-        <!-- TARGET DIVS -->
         <div class="qa-dropzones-wrapper">
             <h3>📥 Live Onsite Embed Dropzones (Monitored Container Targets)</h3>
             <div id="embedded_form" class="form-target-div"></div>
             <div id="embedded_form1" class="form-target-div"></div>
             <div id="embedded_form2" class="form-target-div"></div>
         </div>
+
+        <div class="twin-diagnostics-grid">
+            
+            <div class="diag-panel">
+                <h4>🔎 Container DOM Structure Inspector</h4>
+                <div id="dom-audit-hook-0" class="audit-row"><span>div#embedded_form</span><span class="status-pill pill-warn">Checking...</span></div>
+                <div id="dom-audit-hook-1" class="audit-row"><span>div#embedded_form1</span><span class="status-pill pill-warn">Checking...</span></div>
+                <div id="dom-audit-hook-2" class="audit-row"><span>div#embedded_form2</span><span class="status-pill pill-warn">Checking...</span></div>
+            </div>
+
+            <div class="diag-panel">
+                <h4>🛑 Background Server Network Error Console</h4>
+                <div id="network-error-stream-box" class="network-err-stream">
+                    <div style="color:#64748b; font-style:italic;" id="empty-network-notice">No failed server connections captured. Network pipeline stable.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="log-panel">
+            <div class="log-header">
+                <h3>💻 Real-Time QA Execution Timeline Log</h3>
+                <button class="clear-log-btn" onclick="clearExecutionLogs()">Clear Logs</button>
+            </div>
+            <div id="log-stream-box" class="log-stream"></div>
+        </div>
     </div>
 
     <script>
         const allPages = ['main-page', 'page1', 'page2', 'page3', 'page4', 'page5'];
+        
+        let virtualQueriesObject = {};
+        let virtualGlobalVariables = {};
+        let virtualSessionCookies = [];
 
-        // NATIVE SPA NAVIGATION STRATEGY (Fully optimized for Netlify/Vercel)
+        // --- 1. TIMELINE RUNTIME LOG ARCHITECTURE ---
+        function writeLog(message, type = 'info') {
+            const streamBox = document.getElementById('log-stream-box');
+            if (!streamBox) return;
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.createElement('div');
+            logElement.className = 'log-entry';
+            logElement.innerHTML = `<span class="log-time">[${timestamp}]</span><span class="log-${type}">${message}</span>`;
+            streamBox.appendChild(logElement);
+            streamBox.scrollTop = streamBox.scrollHeight;
+        }
+
+        function clearExecutionLogs() {
+            document.getElementById('log-stream-box').innerHTML = '';
+            writeLog("Execution stream trace cleared.", "info");
+        }
+
+        // --- 2. NETWORK ERROR INTERCEPTION ACTION PIPELINES ---
+        window.addEventListener('qa_network_error', (e) => {
+            const notice = document.getElementById('empty-network-notice');
+            if (notice) notice.remove();
+
+            const stream = document.getElementById('network-error-stream-box');
+            const entry = document.createElement('div');
+            entry.className = "network-err-entry";
+            entry.innerHTML = `⚠️ <strong>[HTTP ${e.detail.status}]</strong> ${e.detail.type} Failed ➔ <span style="color:#cbd5e1; font-size:0.75rem;">${e.detail.url}</span>`;
+            
+            stream.appendChild(entry);
+            stream.scrollTop = stream.scrollHeight;
+
+            writeLog(`Network Alert: Capture background HTTP Error [Status ${e.detail.status}] on request vector: ${e.detail.url}`, 'warn');
+        });
+
+        // --- 3. DYNAMIC DOM STRUCTURE STRUCTURAL AUDITOR TREE ---
+        function runLiveDOMStructureAudit() {
+            const targets = ['embedded_form', 'embedded_form1', 'embedded_form2'];
+            targets.forEach((id, index) => {
+                const node = document.getElementById(id);
+                const auditRow = document.getElementById(`dom-audit-hook-${index}`);
+                if (!node || !auditRow) return;
+
+                let pill = auditRow.querySelector('.status-pill');
+                
+                // Read active visual parameters properties from elements nodes
+                let computationStyles = window.getComputedStyle(node);
+                let isHidden = computationStyles.display === 'none' || computationStyles.visibility === 'hidden';
+
+                if (node.children.length > 0) {
+                    pill.className = "status-pill pill-success";
+                    pill.innerText = `Active [${node.children.length} Nested Nodes]`;
+                } else if (isHidden) {
+                    pill.className = "status-pill pill-danger";
+                    pill.innerText = "Hidden [CSS Block]";
+                } else {
+                    pill.className = "status-pill pill-warn";
+                    pill.innerText = "Empty Container";
+                }
+            });
+        }
+
+        // Run structural inspection logs periodically every 500ms
+        setInterval(runLiveDOMStructureAudit, 500);
+
+        // --- 4. DATA FACTORY ENGINE BUILDER LAYER ---
+        function processLatencyTelemetryChange() {
+            const val = parseInt(document.getElementById('latency-slider').value);
+            document.getElementById('latency-val').innerText = `${val}ms`;
+            const profileLabel = document.getElementById('telemetry-network-profile');
+            
+            if (val === 0) {
+                profileLabel.innerText = "⚡ [High-Speed Connection] Instant Asynchronous Asset Initialization";
+                profileLabel.style.color = "var(--accent-green)";
+            } else if (val <= 750) {
+                profileLabel.innerText = "📶 [5G Network Connection] Standard Client-Side Pipeline Latency Profile";
+                profileLabel.style.color = "#34d399";
+            } else if (val <= 1750) {
+                profileLabel.innerText = "🌐 [4G LTE Connection] Average Mobile Frame Delays. Simulating DOM assembly lag.";
+                profileLabel.style.color = "#fbbf24";
+            } else {
+                profileLabel.innerText = "⚠️ [3G Connection] Extreme Network Bottleneck. Auditing script race-conditions.";
+                profileLabel.style.color = "#ef4444";
+            }
+            writeLog(`Simulated network runtime latency modified to: ${val}ms`, 'info');
+        }
+
+        function adjustValueInputInterface() {
+            const dataType = document.getElementById('param-data-type').value;
+            const container = document.getElementById('value-input-container');
+            container.innerHTML = ''; 
+            
+            const label = document.createElement('label');
+            label.innerText = "Value Entry";
+            container.appendChild(label);
+
+            if (dataType === 'Boolean') {
+                const select = document.createElement('select');
+                select.id = "param-value-data";
+                select.innerHTML = `<option value="true">true</option><option value="false">false</option>`;
+                container.appendChild(select);
+            } else if (dataType === 'Datetime') {
+                const input = document.createElement('input');
+                input.type = "datetime-local";
+                input.id = "param-value-data";
+                input.className = "suite-input";
+                container.appendChild(input);
+            } else if (dataType === 'Random') {
+                const select = document.createElement('select');
+                select.id = "param-value-data";
+                select.innerHTML = `<option value="rand_str">String</option><option value="rand_num">Integer</option><option value="rand_bool">Boolean</option>`;
+                container.appendChild(select);
+            } else {
+                const input = document.createElement('input');
+                input.type = "text";
+                input.id = "param-value-data";
+                input.className = "suite-input";
+                input.placeholder = dataType === 'Number' ? "e.g. 1024" : "e.g. text_value";
+                container.appendChild(input);
+            }
+        }
+
+        function commitFactoryParameterElement() {
+            const target = document.getElementById('param-target-type').value;
+            const dataType = document.getElementById('param-data-type').value;
+            const nameKey = document.getElementById('param-key-name').value.trim();
+            let rawValue = document.getElementById('param-value-data').value;
+
+            if (!nameKey) { alert("Parameter Name field cannot be left blank."); return; }
+            let validatedFinalValue;
+
+            switch(dataType) {
+                case 'Number':
+                    validatedFinalValue = Number(rawValue);
+                    if (isNaN(validatedFinalValue)) { alert("Validation Error: Entry must conform to Numeric standards."); return; }
+                    break;
+                case 'Boolean':
+                    validatedFinalValue = (rawValue === 'true');
+                    break;
+                case 'Datetime':
+                    if (!rawValue) { alert("Please select a target Date-Time sequence metric."); return; }
+                    validatedFinalValue = new Date(rawValue).toISOString();
+                    break;
+                case 'Random':
+                    if (rawValue === 'rand_str') validatedFinalValue = Math.random().toString(36).substring(2, 7).toUpperCase();
+                    if (rawValue === 'rand_num') validatedFinalValue = Math.floor(Math.random() * 1000) + 1;
+                    if (rawValue === 'rand_bool') validatedFinalValue = Math.random() >= 0.5;
+                    break;
+                default:
+                    validatedFinalValue = String(rawValue);
+            }
+
+            if (target === 'url') {
+                virtualQueriesObject[nameKey] = { val: validatedFinalValue, type: dataType };
+            } else if (target === 'var') {
+                window[nameKey] = validatedFinalValue;
+                virtualGlobalVariables[nameKey] = { val: validatedFinalValue, type: dataType };
+            } else if (target === 'cookie') {
+                document.cookie = `${nameKey}=${encodeURIComponent(validatedFinalValue)}; path=/; max-age=3600;`;
+                if (!virtualSessionCookies.some(c => c.key === nameKey)) {
+                    virtualSessionCookies.push({ key: nameKey, type: dataType, val: validatedFinalValue });
+                }
+            }
+
+            writeLog(`Injected tracking parameter constraint target [${target.toUpperCase()}] ➔ ${nameKey} = ${validatedFinalValue}`, 'success');
+            renderActiveParametersDashboardList();
+            document.getElementById('param-key-name').value = '';
+        }
+
+        function renderActiveParametersDashboardList() {
+            const listContainer = document.getElementById('active-parameter-dashboard-list');
+            listContainer.innerHTML = ""; 
+
+            let totalLength = Object.keys(virtualQueriesObject).length + Object.keys(virtualGlobalVariables).length + virtualSessionCookies.length;
+            if (totalLength === 0) {
+                listContainer.innerHTML = `<li style="color:#64748b; padding: 4px 8px;" id="empty-dashboard-notice">No simulated variables injected yet.</li>`;
+                return;
+            }
+
+            Object.keys(virtualQueriesObject).forEach(key => {
+                createDashboardDOMRow(listContainer, 'url', key, virtualQueriesObject[key].val, virtualQueriesObject[key].type, () => {
+                    delete virtualQueriesObject[key];
+                });
+            });
+
+            Object.keys(virtualGlobalVariables).forEach(key => {
+                createDashboardDOMRow(listContainer, 'var', key, virtualGlobalVariables[key].val, virtualGlobalVariables[key].type, () => {
+                    delete window[key]; delete virtualGlobalVariables[key];
+                });
+            });
+
+            virtualSessionCookies.forEach(cookieObj => {
+                createDashboardDOMRow(listContainer, 'cookie', cookieObj.key, cookieObj.val, cookieObj.type, () => {
+                    document.cookie = `${cookieObj.key}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;`;
+                    virtualSessionCookies = virtualSessionCookies.filter(c => c.key !== cookieObj.key);
+                });
+            });
+
+            sessionStorage.setItem('qa_saved_url_obj', JSON.stringify(virtualQueriesObject));
+            sessionStorage.setItem('qa_saved_var_obj', JSON.stringify(virtualGlobalVariables));
+            sessionStorage.setItem('qa_saved_cookie_arr', JSON.stringify(virtualSessionCookies));
+        }
+
+        function createDashboardDOMRow(parent, target, key, val, typeStr, deleteCallback) {
+            const item = document.createElement('li');
+            item.className = "dashboard-item";
+            item.innerHTML = `
+                <div class="dashboard-item-left">
+                    <span class="badge badge-${target}">${target}</span>
+                    <strong style="color:#ffffff;">${key}</strong>: <span style="color:#34d399;" title="${val}">${val}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="color:#64748b; font-size:0.75rem;">[${typeStr}]</span>
+                    <button class="delete-single-param-btn" title="Delete Parameter">❌</button>
+                </div>
+            `;
+            item.querySelector('.delete-single-param-btn').onclick = function() {
+                deleteCallback();
+                writeLog(`Purged targeting parameter constraint configuration: ${key}`, 'info');
+                renderActiveParametersDashboardList();
+                updateActiveBrowserAddressBarQueryString(true);
+            };
+            parent.appendChild(item);
+        }
+
+        function clearAllSimulatedParameters() {
+            Object.keys(virtualGlobalVariables).forEach(key => delete window[key]);
+            virtualSessionCookies.forEach(c => { document.cookie = `${c.key}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;`; });
+            virtualQueriesObject = {}; virtualGlobalVariables = {}; virtualSessionCookies = [];
+            sessionStorage.removeItem('qa_saved_url_obj'); sessionStorage.removeItem('qa_saved_var_obj'); sessionStorage.removeItem('qa_saved_cookie_arr');
+            writeLog("Nuclear Parameter Purge: All parameters, window scopes, and validation cookies flushed completely.", "warn");
+            renderActiveParametersDashboardList();
+            updateActiveBrowserAddressBarQueryString(true);
+        }
+
+        function updateActiveBrowserAddressBarQueryString(forceEvaluateSDK = false) {
+            let activePage = allPages.find(p => document.getElementById(p).classList.contains('active')) || 'main-page';
+            let baseFileLink = activePage === 'main-page' ? '/' : '/' + activePage;
+            let queryBuild = "";
+            const keys = Object.keys(virtualQueriesObject);
+            if (keys.length > 0) {
+                queryBuild = "?" + keys.map(k => `${encodeURIComponent(k)}=${encodeURIComponent(virtualQueriesObject[k].val)}`).join('&');
+            }
+            history.replaceState({ page: activePage }, '', baseFileLink + queryBuild);
+            if (forceEvaluateSDK && window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
+                window.KAMPYLE_ONSITE_SDK.updatePageView();
+            }
+        }
+
+        // --- 5. CLOUD ROUTING SYSTEMS INTERFACES ---
         function navigateTo(pageId) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.getElementById(pageId).classList.add('active');
-
             document.querySelectorAll('nav a').forEach(a => a.classList.remove('active-nav'));
             let activeLink = document.getElementById(`nav-${pageId}`);
             if (activeLink) activeLink.classList.add('active-nav');
             window.scrollTo({top: 0, behavior: 'smooth'});
 
-            // Updates the URL pathname natively to matching standards (/page1, /page2)
-            let productionUrlPath = pageId === 'main-page' ? '/' : '/' + pageId;
-            history.pushState({ page: pageId }, '', productionUrlPath);
+            writeLog(`SPA Route Event: Switching active view container target: /${pageId}`, 'info');
+            updateActiveBrowserAddressBarQueryString(false);
 
-            // Directly invoke Medallia tracking updates
             setTimeout(() => {
                 if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
                     window.KAMPYLE_ONSITE_SDK.updatePageView();
-                    console.log("[QA Routing Pipeline] URL updated natively. Medallia tracked pathname:", window.location.pathname);
+                    writeLog(`Medallia updatePageView() initialized on clean server path: ${window.location.pathname}${window.location.search}`, 'success');
                 }
             }, 200);
         }
 
-        window.addEventListener('popstate', (e) => {
-            const pageId = e.state ? e.state.page : 'main-page';
-            navigateTo(pageId);
-        });
+        // --- 6. CORE CACHE SNAPSHOT MANAGERS ---
+        function saveCurrentToProfile() {
+            const activePage = allPages.find(p => document.getElementById(p).classList.contains('active')) || 'main-page';
+            const scriptCode = document.getElementById(`input-${activePage}`).value.trim();
+            const slotId = document.getElementById('profile-selector').value;
+            if (!slotId) { alert("Select a Profile Storage Slot first."); return; }
+            if (!scriptCode) { alert("The code deployment text workspace is empty."); return; }
+            localStorage.setItem(`qa_profile_slot_${slotId}`, scriptCode);
+            writeLog(`Script profile snapshot committed to local cache allocation slot [${slotId.toUpperCase()}]`, 'info');
+            alert(`Script saved to Profile ${slotId.slice(-1)}!`);
+        }
 
-        // GLOBAL UI SYNC
+        function loadSelectedProfile() {
+            const slotId = document.getElementById('profile-selector').value;
+            if (!slotId) return;
+            const savedCode = localStorage.getItem(`qa_profile_slot_${slotId}`);
+            if (!savedCode) { writeLog(`Target local profile slot mapping configuration token empty [${slotId.toUpperCase()}]`, 'warn'); return; }
+            allPages.forEach(pId => {
+                const textContainer = document.getElementById(`input-${pId}`);
+                if (textContainer && !textContainer.disabled) textContainer.value = savedCode;
+            });
+            writeLog(`Configuration layout restored from memory profile slot: Slot ${slotId.slice(-1)}`, 'success');
+        }
+
         function syncInjectionState(codeSnippet) {
             const escaped = codeSnippet.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
             allPages.forEach(id => {
                 const txt = document.getElementById(`input-${id}`);
                 const msg = document.getElementById(`msg-${id}`);
-                const btn = document.getElementById(`btn-${id}`);
+                const btnRow = document.getElementById(`msg-${id}`).parentElement.querySelector('.refresh-button-group-row');
 
                 if (txt) { txt.value = codeSnippet; txt.disabled = true; }
-                if (msg) { 
-                    msg.className = "message success"; 
-                    msg.innerHTML = `✓ Script is active. Click reload below to clear.<br><div class="embedded-code-display">${escaped}</div>`; 
-                }
-                if (btn) {
-                    btn.innerText = "🔄 Reload Page";
-                    btn.className = "reload-state";
+                if (msg) { msg.className = "message success"; msg.innerHTML = `✓ Script tracking configurations deployed successfully. Sandbox active. <div class="embedded-code-display">${escaped}</div>`; }
+                
+                if (!btnRow) {
+                    const groupRow = document.createElement('div');
+                    groupRow.className = "refresh-button-group-row";
                     
-                    // CLEAN CLOUD RE-ROUTING FLUSH
-                    btn.onclick = () => {
-                        sessionStorage.removeItem('saved_script');
+                    const softBtn = document.createElement('button');
+                    softBtn.innerText = "⚡ Hot Reload Form"; softBtn.className = "hot-reload-state";
+                    softBtn.onclick = function() {
+                        writeLog("Hot Reload Invoked: Re-triggering form evaluation loop...", "info");
+                        if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
+                            window.KAMPYLE_ONSITE_SDK.updatePageView();
+                            writeLog("✓ Medallia core engine evaluation state refreshed.", "success");
+                        }
+                    };
+
+                    const hardBtn = document.createElement('button');
+                    hardBtn.innerText = "🔄 Hard Purge & Reset"; hardBtn.className = "reload-state";
+                    hardBtn.onclick = function() {
+                        sessionStorage.clear(); clearAllSimulatedParameters();
+                        writeLog("Nuclear Reset Complete: Client cache cleared. Redirecting to app root file node...", "warn");
                         window.location.href = window.location.origin + '/';
                     };
+
+                    groupRow.appendChild(softBtn); groupRow.appendChild(hardBtn);
+                    msg.parentElement.appendChild(groupRow);
                 }
             });
         }
 
-        // SCRIPT EVALUATOR
         function injectProperty(pageId) {
             const txt = document.getElementById(`input-${pageId}`);
             const msg = document.getElementById(`msg-${pageId}`);
             const code = txt.value.trim();
 
-            msg.className = "message";
-            msg.innerText = "";
+            msg.className = "message"; msg.innerText = "";
+            if (!code) { msg.innerText = "⚠️ Paste sample payload code first."; msg.classList.add('error'); return; }
 
-            if (!code) {
-                msg.innerText = "⚠️ Paste code first.";
-                msg.classList.add('error');
-                return;
-            }
+            const simulationLatency = parseInt(document.getElementById('latency-slider').value);
+            writeLog(`Processing target property insertion tracking command delay parameter: ${simulationLatency}ms`, 'info');
 
-            try {
-                if (/<script/i.test(code)) {
-                    const doc = new DOMParser().parseFromString(code, 'text/html');
-                    const tag = doc.querySelector('script');
-                    if (tag) {
-                        const s = document.createElement('script');
-                        Array.from(tag.attributes).forEach(a => s.setAttribute(a.name, a.value));
-                        s.textContent = tag.textContent;
-                        document.body.appendChild(s);
+            setTimeout(() => {
+                try {
+                    if (/<script/i.test(code)) {
+                        const doc = new DOMParser().parseFromString(code, 'text/html');
+                        const tag = doc.querySelector('script');
+                        if (tag) {
+                            const s = document.createElement('script');
+                            Array.from(tag.attributes).forEach(a => s.setAttribute(a.name, a.value));
+                            s.textContent = tag.textContent;
+                            document.body.appendChild(s);
+                            sessionStorage.setItem('saved_script', code);
+                            syncInjectionState(code);
+                            writeLog("External structural bundle tag injected into DOM framework.", 'success');
+                        } else { throw new Error("Tag parse error."); }
+                    } else {
+                        new Function(code)();
                         sessionStorage.setItem('saved_script', code);
                         syncInjectionState(code);
-                    } else { throw new Error("Invalid structure."); }
-                } else {
-                    new Function(code)();
-                    sessionStorage.setItem('saved_script', code);
-                    syncInjectionState(code);
+                        writeLog("Immediate evaluation runtime JS statement triggered.", 'success');
+                    }
+                } catch (err) {
+                    msg.innerText = "❌ Invalid Embed Code Syntax Matrix Layout Configuration.";
+                    msg.classList.add('error');
+                    writeLog(`❌ Evaluation Exception: Parsing script failed. Check browser developer panel logs.`, 'warn');
                 }
-            } catch (err) {
-                msg.innerText = "❌ Invalid Embed Code";
-                msg.classList.add('error');
-            }
+            }, simulationLatency);
         }
 
-        // AUTOMATED DROPZONE MONITORING
+        // INITIALIZATION DECK
         window.addEventListener('DOMContentLoaded', () => {
+            writeLog("Sandbox execution hub online. Core proxy intercepts active.", 'info');
+            
+            if (sessionStorage.getItem('qa_saved_url_obj')) virtualQueriesObject = JSON.parse(sessionStorage.getItem('qa_saved_url_obj'));
+            if (sessionStorage.getItem('qa_saved_var_obj')) virtualGlobalVariables = JSON.parse(sessionStorage.getItem('qa_saved_var_obj'));
+            if (sessionStorage.getItem('qa_saved_cookie_arr')) virtualSessionCookies = JSON.parse(sessionStorage.getItem('qa_saved_cookie_arr'));
+            Object.keys(virtualGlobalVariables).forEach(k => { window[k] = virtualGlobalVariables[k].val; });
+            
+            renderActiveParametersDashboardList();
+
             const saved = sessionStorage.getItem('saved_script');
             if (saved) {
-                injectProperty('main-page');
+                const activePage = allPages.find(p => document.getElementById(p).classList.contains('active')) || 'main-page';
+                document.getElementById(`input-${activePage}`).value = saved;
+                injectProperty(activePage);
             }
 
             const banner = document.getElementById('dom-capture-alert');
-            ['embedded_form', 'embedded_form1', 'embedded_form2'].forEach(id => {
+            ['embedded_form', 'embedded_form1', 'embedded_form2'].forEach((id, idx) => {
                 const el = document.getElementById(id);
                 if (el) {
                     new MutationObserver(() => {
                         if (el.children.length > 0 || el.innerText.trim() !== "") {
-                            banner.innerHTML = `🔔 <strong>Form Detected:</strong> Container <code>${id}</code> is populated!`;
+                            banner.innerHTML = `🔔 <strong>Interception Successful:</strong> Dropzone Hook Target Container <code>${id}</code> has been dynamically populated with forms components!`;
                             banner.style.display = "block";
+                            banner.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            writeLog(`🔔 [SDK Interceptor Triggered] Dropzone container target ${idx + 1} (${id}) updated with form frames!`, 'success');
                         }
                     }).observe(el, { childList: true, subtree: true });
                 }
