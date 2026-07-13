@@ -103,7 +103,7 @@
         .header-text h2 { margin: 0 0 10px 0; font-size: 1.8rem; }
         .header-text p { margin: 0; color: var(--text-muted); }
 
-        /* QA Suite Configuration Framework Layouts */
+        /* QA Suite Grid Framework */
         .qa-suite-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
@@ -183,6 +183,26 @@
         .badge-var { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
         .badge-cookie { background: rgba(236, 72, 153, 0.2); color: #f472b6; }
 
+        /* Precision Injection Lifecycles Timer UI Styles */
+        .lifecycle-timer-container {
+            display: none;
+            background: rgba(14, 165, 233, 0.08);
+            border: 1px solid #0ea5e9;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 25px;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 15px;
+            animation: fadeIn 0.3s ease-out;
+        }
+        .timer-metrics-display { font-family: monospace; font-size: 1.3rem; font-weight: bold; color: #ffffff; display: flex; align-items: center; gap: 5px; }
+        .timer-metrics-display span { color: #38bdf8; }
+        .timer-controls-row { display: flex; gap: 8px; }
+        .timer-btn { background: #1e293b; border: 1px solid #334155; color: var(--text-main); font-size: 0.8rem; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+        .timer-btn:hover { border-color: #64748b; background: #24324d; }
+
         /* Twin Diagnostics Panels */
         .twin-diagnostics-grid {
             display: grid;
@@ -197,11 +217,12 @@
 
         .diag-panel { background: #080d1a; border: 1px solid #1e293b; border-radius: 10px; padding: 15px; }
         .diag-panel h4 { margin: 0 0 10px 0; font-size: 0.9rem; text-transform: uppercase; color: #cbd5e1; border-bottom: 1px solid #1e293b; padding-bottom: 8px;}
-        .audit-row { display: flex; justify-content: space-between; padding: 6px 4px; border-bottom: 1px solid #111827; font-family: monospace; font-size: 0.85rem; }
+        .audit-row { display: flex; justify-content: space-between; padding: 6px 4px; border-bottom: 1px solid #111827; font-family: monospace; font-size: 0.85rem; align-items: center; }
         .status-pill { font-size: 0.75rem; font-weight: bold; padding: 1px 6px; border-radius: 4px; }
         .pill-success { background: rgba(16, 185, 129, 0.15); color: #34d399; }
         .pill-warn { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
         .pill-danger { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+        .pill-sdk { background: rgba(139, 92, 246, 0.15); color: #a78bfa; }
 
         .network-err-stream { max-height: 120px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; color: #ff6b6b; padding: 5px; }
         .network-err-entry { border-bottom: 1px solid #111827; padding: 4px 0; word-break: break-all; }
@@ -300,6 +321,20 @@
 
     <div class="wrapper">
         <div id="dom-capture-alert" class="live-alert-banner"></div>
+
+        <div id="lifecycle-timer-panel" class="lifecycle-timer-container">
+            <div>
+                <strong style="color:#0ea5e9; font-size:0.85rem; display:block; text-transform:uppercase; margin-bottom:2px;">⏱️ Injection Lifecycle Timer</strong>
+                <span style="font-size:0.8rem; color:var(--text-muted);">Active session run-time duration tracking since injection callback frame completion.</span>
+            </div>
+            <div class="timer-metrics-display">
+                <span id="t-min">00</span>m : <span id="t-sec">00</span>s : <span id="t-ms" style="font-size:1rem; color:#94a3b8;">000</span>ms
+            </div>
+            <div class="timer-controls-row">
+                <button id="btn-timer-pause" class="timer-btn" onclick="toggleTimerPauseState()">Pause</button>
+                <button class="timer-btn" onclick="resetInjectionChronometer()">Reset</button>
+            </div>
+        </div>
 
         <div class="qa-suite-grid">
             <div class="suite-panel">
@@ -446,11 +481,17 @@
         </div>
 
         <div class="twin-diagnostics-grid">
+            
             <div class="diag-panel">
-                <h4>🔎 Container DOM Structure Inspector</h4>
+                <h4>🔎 Container DOM & Medallia SDK Storage Inspector</h4>
                 <div id="dom-audit-hook-0" class="audit-row"><span>div#embedded_form</span><span class="status-pill pill-warn">Checking...</span></div>
                 <div id="dom-audit-hook-1" class="audit-row"><span>div#embedded_form1</span><span class="status-pill pill-warn">Checking...</span></div>
                 <div id="dom-audit-hook-2" class="audit-row"><span>div#embedded_form2</span><span class="status-pill pill-warn">Checking...</span></div>
+                
+                <div style="margin-top:12px; border-top:1px solid #1e293b; padding-top:10px; font-weight:600; font-size:0.75rem; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px;">Reactive LocalStorage Pipeline:</div>
+                <div class="audit-row"><span>kampyleUserPercentile</span><span id="sdk-meta-percentile" class="status-pill pill-sdk">null</span></div>
+                <div class="audit-row"><span>kampyleSessionPageCounter</span><span id="sdk-meta-pagecounter" class="status-pill pill-sdk">null</span></div>
+                <div class="audit-row"><span>kampyleUserSessionsCount</span><span id="sdk-meta-sessioncount" class="status-pill pill-sdk">null</span></div>
             </div>
 
             <div class="diag-panel">
@@ -476,6 +517,11 @@
         let virtualQueriesObject = {};
         let virtualGlobalVariables = {};
         let virtualSessionCookies = [];
+
+        // Chronometer State Vectors
+        let chronometerIntervalToken = null;
+        let elapsedMillisecondsTime = 0;
+        let isChronometerRunningFlag = false;
 
         // --- 1. REAL-TIME LOG MATRIX ---
         function writeLog(message, type = 'info') {
@@ -509,8 +555,9 @@
             writeLog(`Network Interceptor: Captured Background HTTP Error [Status ${e.detail.status}] on endpoint: ${e.detail.url}`, 'warn');
         });
 
-        // --- 3. DYNAMIC DOM INTERCEPT MONITOR DECK ---
-        function runLiveDOMStructureAudit() {
+        // --- 3. DYNAMIC DOM INTERCEPT & SDK STORAGE OBSERVERS ---
+        function runLiveStorageAndDOMStructureAudit() {
+            // A. Audit DOM Target Containers Nodes
             const targets = ['embedded_form', 'embedded_form1', 'embedded_form2'];
             targets.forEach((id, index) => {
                 const node = document.getElementById(id);
@@ -532,10 +579,108 @@
                     pill.innerText = "Empty Container";
                 }
             });
-        }
-        setInterval(runLiveDOMStructureAudit, 500);
 
-        // --- 4. NETWORK LATENCY SLIDERS TRANSLATORS ---
+            // B. Reactive LocalStorage Pipeline Parsing Engine
+            const keysToMonitor = [
+                { id: 'sdk-meta-percentile', storageKey: 'kampyleUserPercentile' },
+                { id: 'sdk-meta-pagecounter', storageKey: 'kampyleSessionPageCounter' },
+                { id: 'sdk-meta-sessioncount', storageKey: 'kampyleUserSessionsCount' }
+            ];
+
+            keysToMonitor.forEach(item => {
+                const element = document.getElementById(item.id);
+                if (!element) return;
+                
+                const activeValue = localStorage.getItem(item.storageKey);
+                const previousValue = element.innerText;
+
+                if (activeValue !== null) {
+                    element.innerText = activeValue;
+                    if (previousValue !== activeValue && previousValue !== "null") {
+                        element.style.animation = "none";
+                        setTimeout(() => element.style.animation = "fadeIn 0.3s", 10);
+                        writeLog(`Reactive SDK Event: Key storage structure mutation [${item.storageKey}] changed to ➔ ${activeValue}`, 'success');
+                    }
+                } else {
+                    element.innerText = "null";
+                }
+            });
+        }
+        setInterval(runLiveStorageAndDOMStructureAudit, 400);
+
+        // --- 4. PRECISION INJECTION LIFECYCLE CHRONOMETER ---
+        function startInjectionChronometer() {
+            document.getElementById('lifecycle-timer-panel').style.display = 'flex';
+            
+            // Re-inflate previous clock states across hot refreshes if present
+            if (sessionStorage.getItem('qa_timer_elapsed')) {
+                elapsedMillisecondsTime = parseInt(sessionStorage.getItem('qa_timer_elapsed'));
+                const runs = sessionStorage.getItem('qa_timer_was_running') === 'true';
+                if (!runs) {
+                    updateChronometerUIMetrics();
+                    document.getElementById('btn-timer-pause').innerText = "Resume";
+                    return;
+                }
+            }
+
+            if (isChronometerRunningFlag) clearInterval(chronometerIntervalToken);
+            
+            isChronometerRunningFlag = true;
+            document.getElementById('btn-timer-pause').innerText = "Pause";
+            
+            const startAnchor = Date.now() - elapsedMillisecondsTime;
+            chronometerIntervalToken = setInterval(() => {
+                elapsedMillisecondsTime = Date.now() - startAnchor;
+                updateChronometerUIMetrics();
+                sessionStorage.setItem('qa_timer_elapsed', elapsedMillisecondsTime);
+            }, 43); // Synced refresh frame rates layout
+        }
+
+        function updateChronometerUIMetrics() {
+            let totalSeconds = Math.floor(elapsedMillisecondsTime / 1000);
+            let mins = Math.floor(totalSeconds / 60);
+            let secs = totalSeconds % 60;
+            let ms = elapsedMillisecondsTime % 1000;
+
+            document.getElementById('t-min').innerText = String(mins).padStart(2, '0');
+            document.getElementById('t-sec').innerText = String(secs).padStart(2, '0');
+            document.getElementById('t-ms').innerText = String(ms).padStart(3, '0');
+        }
+
+        function toggleTimerPauseState() {
+            const btn = document.getElementById('btn-timer-pause');
+            if (isChronometerRunningFlag) {
+                // Pause Action
+                clearInterval(chronometerIntervalToken);
+                isChronometerRunningFlag = false;
+                btn.innerText = "Resume";
+                sessionStorage.setItem('qa_timer_was_running', 'false');
+                writeLog("Injection chronological lifecycle timer paused by user.", "info");
+            } else {
+                // Resume Action
+                sessionStorage.setItem('qa_timer_was_running', 'true');
+                startInjectionChronometer();
+                writeLog("Injection chronological lifecycle timer resumed.", "info");
+            }
+        }
+
+        function resetInjectionChronometer() {
+            clearInterval(chronometerIntervalToken);
+            elapsedMillisecondsTime = 0;
+            isChronometerRunningFlag = false;
+            updateChronometerUIMetrics();
+            sessionStorage.removeItem('qa_timer_elapsed');
+            sessionStorage.removeItem('qa_timer_was_running');
+            document.getElementById('btn-timer-pause').innerText = "Start";
+            writeLog("Chronometer telemetry tracking variables reset to zero.", "info");
+            
+            const saved = sessionStorage.getItem('saved_script');
+            if (saved) {
+                startInjectionChronometer();
+            }
+        }
+
+        // --- 5. NETWORK LATENCY SLIDERS TRANSLATORS ---
         function processLatencyTelemetryChange() {
             const val = parseInt(document.getElementById('latency-slider').value);
             document.getElementById('latency-val').innerText = `${val}ms`;
@@ -592,7 +737,7 @@
             }
         }
 
-        // --- 5. PARAMETER EMISSION AND COMMIT HANDLERS ---
+        // --- 6. ADVANCED FACTORY GENERATOR PIPELINE ---
         function commitFactoryParameterElement() {
             const target = document.getElementById('param-target-type').value;
             const dataType = document.getElementById('param-data-type').value;
@@ -637,11 +782,7 @@
 
             writeLog(`Injected parameter target structure [${target.toUpperCase()}] ➔ ${nameKey} = ${validatedFinalValue}`, 'success');
             renderActiveParametersDashboardList();
-            
-            // --- CRITICAL RE-ROUTE FIX 1 ---
-            // Instantly sync address pipeline and fire evaluator matching loops right on your current view panel card!
             updateActiveBrowserAddressBarQueryString(true);
-            
             document.getElementById('param-key-name').value = '';
         }
 
@@ -706,7 +847,7 @@
             virtualSessionCookies.forEach(c => { document.cookie = `${c.key}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;`; });
             virtualQueriesObject = {}; virtualGlobalVariables = {}; virtualSessionCookies = [];
             sessionStorage.removeItem('qa_saved_url_obj'); sessionStorage.removeItem('qa_saved_var_obj'); sessionStorage.removeItem('qa_saved_cookie_arr');
-            writeLog("Nuclear Parameter Purge: All parameters, window scopes, and validation cookies flushed completely.", "warn");
+            writeLog("Nuclear Parameter Purge: All parameters, window scopes, and cookies flushed completely.", "warn");
             renderActiveParametersDashboardList();
             updateActiveBrowserAddressBarQueryString(true);
         }
@@ -725,7 +866,7 @@
             }
         }
 
-        // --- 6. PRODUCTION ROUTING GATEWAYS ---
+        // --- 7. PRODUCTION VERCEL NAVIGATION ROUTINGS ---
         function navigateTo(pageId) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.getElementById(pageId).classList.add('active');
@@ -750,7 +891,7 @@
             navigateTo(pageId);
         });
 
-        // --- 7. RECOVERY PRESETS AND PROFILE ALLOCATORS ---
+        // --- 8. CORE CACHE PRESETS LOGIC ---
         function saveCurrentToProfile() {
             const activePage = allPages.find(p => document.getElementById(p).classList.contains('active')) || 'main-page';
             const scriptCode = document.getElementById(`input-${activePage}`).value.trim();
@@ -788,14 +929,12 @@
                     const groupRow = document.createElement('div');
                     groupRow.className = "refresh-button-group-row";
                     
-                    // --- CRITICAL RE-ROUTE FIX 2: HOT RE-LOAD LIFE CYCLE ---
-                    // Triggers a literal physical document reload, completely clearing local engine state caches while keeping your scripts active in the cache framework.
                     const softBtn = document.createElement('button');
                     softBtn.innerText = "⚡ Hot Reload Form"; softBtn.className = "hot-reload-state";
                     softBtn.onclick = function() {
-                        writeLog("Hot Reload Triggered: Executing true browser engine environment flush to re-fetch target form asset bundles...", "info");
-                        // Temporarily preserve active location context parameters mapping during true reload lifecycle
+                        writeLog("Hot Reload Triggered: Executing true browser engine environment flush...", "info");
                         sessionStorage.setItem('qa_hot_reload_active_route', allPages.find(p => document.getElementById(p).classList.contains('active')) || 'main-page');
+                        sessionStorage.setItem('qa_timer_was_running', isChronometerRunningFlag ? 'true' : 'false');
                         window.location.reload();
                     };
 
@@ -803,7 +942,7 @@
                     hardBtn.innerText = "🔄 Hard Purge & Reset"; hardBtn.className = "reload-state";
                     hardBtn.onclick = function() {
                         sessionStorage.clear(); clearAllSimulatedParameters();
-                        writeLog("Nuclear Reset Complete: Client cache cleared. Redirecting to app root file node...", "warn");
+                        writeLog("Nuclear Reset Complete: Client cache cleared. Redirecting to app root...", "warn");
                         window.location.href = window.location.origin + '/';
                     };
 
@@ -811,6 +950,9 @@
                     msg.parentElement.appendChild(groupRow);
                 }
             });
+            
+            // Activate chronometer metric tracing logs instantly upon injection success validation completion
+            startInjectionChronometer();
         }
 
         function injectProperty(pageId) {
@@ -852,24 +994,20 @@
             }, simulationLatency);
         }
 
-        // --- 8. INITIALIZATION LIFECYCLE DECK ---
+        // INITIALIZATION LIFECYCLE DECK
         window.addEventListener('DOMContentLoaded', () => {
             writeLog("Sandbox execution hub online. Core proxy network intercepts active.", 'info');
             
             if (sessionStorage.getItem('qa_saved_url_obj')) virtualQueriesObject = JSON.parse(sessionStorage.getItem('qa_saved_url_obj'));
             if (sessionStorage.getItem('qa_saved_var_obj')) virtualGlobalVariables = JSON.parse(sessionStorage.getItem('qa_saved_var_obj'));
             if (sessionStorage.getItem('qa_saved_cookie_arr')) virtualSessionCookies = JSON.parse(sessionStorage.getItem('qa_saved_cookie_arr'));
-            
-            // Re-instantiate window variable context mapping objects references globally across true page refreshes
             Object.keys(virtualGlobalVariables).forEach(k => { window[k] = virtualGlobalVariables[k].val; });
             
             renderActiveParametersDashboardList();
 
-            // Intercept Hot-Reload structural path states if present
             const hotReloadActiveRoute = sessionStorage.getItem('qa_hot_reload_active_route');
             if (hotReloadActiveRoute) {
                 sessionStorage.removeItem('qa_hot_reload_active_route');
-                // Force workspace cards views to active coordinate states without flushing parameters
                 document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
                 document.getElementById(hotReloadActiveRoute).classList.add('active');
                 document.querySelectorAll('nav a').forEach(a => a.classList.remove('active-nav'));
@@ -882,10 +1020,23 @@
                 const activePage = allPages.find(p => document.getElementById(p).classList.contains('active')) || 'main-page';
                 document.getElementById(`input-${activePage}`).value = saved;
                 injectProperty(activePage);
-                
-                // Force sync URL path structures cleanly on boot parameters
                 updateActiveBrowserAddressBarQueryString(true);
             }
+
+            const banner = document.getElementById('dom-capture-alert');
+            ['embedded_form', 'embedded_form1', 'embedded_form2'].forEach((id, idx) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    new MutationObserver(() => {
+                        if (el.children.length > 0 || el.innerText.trim() !== "") {
+                            banner.innerHTML = `🔔 <strong>Interception Successful:</strong> Dropzone Hook Target Container <code>${id}</code> has been dynamically populated with forms components!`;
+                            banner.style.display = "block";
+                            banner.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            writeLog(`🔔 [SDK Interceptor Triggered] Dropzone container target ${idx + 1} (${id}) updated with form frames!`, 'success');
+                        }
+                    }).observe(el, { childList: true, subtree: true });
+                }
+            });
         });
     </script>
 </body>
