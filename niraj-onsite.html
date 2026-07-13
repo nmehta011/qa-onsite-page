@@ -149,19 +149,28 @@
 
         .action-bar { margin-top: 15px; display: flex; flex-direction: column; gap: 15px; }
 
-        button {
+        /* Scoped Button Rules to prevent Cascade Conflicts */
+        .injector-panel button {
             background: var(--primary-gradient);
             color: white;
             border: none;
             padding: 12px 24px;
+            font-size: 0.95rem;
             font-weight: bold;
             border-radius: 8px;
             cursor: pointer;
             box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
             transition: transform 0.2s;
         }
-        button:hover { transform: translateY(-2px); }
-        button.reload-state { background: var(--reload-gradient); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); }
+        
+        .injector-panel button:hover { 
+            transform: translateY(-2px); 
+        }
+        
+        .injector-panel button.reload-state { 
+            background: var(--reload-gradient); 
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); 
+        }
 
         .message { padding: 15px; border-radius: 8px; display: none; width: 100%; box-sizing: border-box; }
         .success { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.25); display: block; }
@@ -195,6 +204,7 @@
 </head>
 <body>
 
+    <!-- Navigation Bar Layout -->
     <nav>
         <strong>🔍 ONSITE VALIDATION HUB</strong> 
         <a id="nav-main-page" class="active-nav" onclick="navigateTo('main-page')">🏠 Main Dashboard</a>
@@ -208,6 +218,7 @@
     <div class="wrapper">
         <div id="dom-capture-alert" class="live-alert-banner"></div>
 
+        <!-- MAIN DASHBOARD -->
         <div id="main-page" class="page active">
             <div class="page-header">
                 <div class="header-text">
@@ -254,6 +265,7 @@
             </div>
         </div>
 
+        <!-- PAGE 1 -->
         <div id="page1" class="page">
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
             <div class="page-header">
@@ -262,6 +274,9 @@
                     <p>Validating target z-index distributions and visual layer regressions.</p>
                 </div>
                 <img src="https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?auto=format&fit=crop&w=300&q=80" alt="Design QA Check" class="page-image">
+            </div>
+            <div class="article-body">
+                <p>Visual presentation testing verifies that modal components do not conceal vital conversion vectors. Creative QA engineers audit frame collision layers, ensuring intercept containers float precisely above baseline assets while maintaining accessibility guidelines.</p>
             </div>
             <div class="injector-panel">
                 <h3>🛠️ Environment 1 Injector</h3>
@@ -273,6 +288,7 @@
             </div>
         </div>
 
+        <!-- PAGE 2 -->
         <div id="page2" class="page">
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
             <div class="page-header">
@@ -292,6 +308,7 @@
             </div>
         </div>
 
+        <!-- PAGE 3 -->
         <div id="page3" class="page">
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
             <div class="page-header">
@@ -311,6 +328,7 @@
             </div>
         </div>
 
+        <!-- PAGE 4 -->
         <div id="page4" class="page">
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
             <div class="page-header">
@@ -330,6 +348,7 @@
             </div>
         </div>
 
+        <!-- PAGE 5 -->
         <div id="page5" class="page">
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
             <div class="page-header">
@@ -349,6 +368,7 @@
             </div>
         </div>
 
+        <!-- TARGET DIVS -->
         <div class="qa-dropzones-wrapper">
             <h3>📥 Live Onsite Embed Dropzones (Monitored Container Targets)</h3>
             <div id="embedded_form" class="form-target-div"></div>
@@ -360,7 +380,7 @@
     <script>
         const allPages = ['main-page', 'page1', 'page2', 'page3', 'page4', 'page5'];
 
-        // NATIVE SPA NAVIGATION STRATEGY (Works perfectly out-of-the-box on Netlify/Vercel)
+        // NATIVE SPA NAVIGATION STRATEGY (Fully optimized for Netlify/Vercel)
         function navigateTo(pageId) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.getElementById(pageId).classList.add('active');
@@ -370,7 +390,7 @@
             if (activeLink) activeLink.classList.add('active-nav');
             window.scrollTo({top: 0, behavior: 'smooth'});
 
-            // This updates the URL pathname natively to matching production standards (/page1, /page2)
+            // Updates the URL pathname natively to matching standards (/page1, /page2)
             let productionUrlPath = pageId === 'main-page' ? '/' : '/' + pageId;
             history.pushState({ page: pageId }, '', productionUrlPath);
 
