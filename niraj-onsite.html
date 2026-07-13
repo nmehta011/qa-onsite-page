@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Testing Page for Onsite Validations</title>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: #151f32;
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+            --primary-gradient: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
+            --reload-gradient: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            --success-glow: rgba(16, 185, 129, 0.2);
+            --code-bg: #090d16;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        /* Navigation Layout */
+        nav {
+            position: sticky;
+            top: 0;
+            background: rgba(21, 31, 50, 0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid #1e293b;
+            padding: 15px 30px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        nav strong {
+            font-size: 1.1rem;
+            margin-right: 25px;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        nav a {
+            margin: 5px 15px;
+            text-decoration: none;
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        nav a:hover, nav a.active-nav {
+            color: #0ea5e9;
+            text-shadow: 0 0 10px rgba(14, 165, 233, 0.4);
+        }
+
+        .wrapper {
+            max-width: 1100px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        /* Page Layout Panels */
+        .page {
+            display: none;
+            background-color: var(--card-bg);
+            padding: 40px;
+            border-radius: 16px;
+            border: 1px solid #1e293b;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            border-bottom: 1px solid #1e293b;
+            padding-bottom: 25px;
+            margin-bottom: 25px;
+        }
+
+        .header-text h2 { margin: 0 0 10px 0; font-size: 1.8rem; }
+        .header-text p { margin: 0; color: var(--text-muted); }
+        .page-image { width: 130px; height: 85px; border-radius: 8px; border: 1px solid #334155; }
+
+        .info-panel {
+            background: rgba(14, 165, 233, 0.08);
+            border-left: 4px solid #0ea5e9;
+            padding: 20px;
+            border-radius: 0 12px 12px 0;
+            margin-bottom: 25px;
+        }
+        .info-panel h4 { margin: 0 0 10px 0; color: #38bdf8; }
+
+        pre {
+            background: var(--code-bg);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #1e293b;
+            color: #34d399;
+            font-family: monospace;
+            overflow-x: auto;
+            margin: 5px 0;
+        }
+
+        /* Injector Components */
+        .injector-panel {
+            background: #090d16;
+            border-radius: 12px;
+            padding: 25px;
+            border: 1px solid #1e293b;
+            margin-bottom: 30px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 110px;
+            background-color: #111827;
+            color: #38bdf8;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 14px;
+            font-family: monospace;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        textarea:disabled { opacity: 0.7; cursor: not-allowed; }
+
+        .action-bar { margin-top: 15px; display: flex; flex-direction: column; gap: 15px; }
+
+        button {
+            background: var(--primary-gradient);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+            transition: transform 0.2s;
+        }
+        button:hover { transform: translateY(-2px); }
+        button.reload-state { background: var(--reload-gradient); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); }
+
+        .message { padding: 15px; border-radius: 8px; display: none; width: 100%; box-sizing: border-box; }
+        .success { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.25); display: block; }
+        .error { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); display: inline-block; width: auto; }
+
+        .live-alert-banner {
+            background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4);
+            padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; display: none;
+        }
+
+        .main-page-list { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 15px; }
+        .main-page-list a { display: block; background: #0f172a; padding: 15px; border-radius: 8px; color: #38bdf8; text-decoration: none; border: 1px solid #1e293b; cursor: pointer;}
+        .main-page-list a:hover { background: #1e293b; }
+
+        .back-link { display: inline-block; margin-bottom: 20px; color: var(--text-muted); text-decoration: none; font-weight: 500; cursor: pointer; }
+        .back-link:hover { color: white; }
+
+        /* Flexible Dropzones Layout */
+        .qa-dropzones-wrapper { margin-top: 30px; border: 2px dashed #334155; border-radius: 12px; padding: 20px; background: rgba(15, 23, 42, 0.6); }
+        .form-target-div {
+            background: #090d16; margin: 15px 0; border-radius: 8px; border: 1px solid #1e293b;
+            color: #64748b; font-family: monospace; min-height: 35px; box-sizing: border-box; overflow: visible;
+        }
+        .form-target-div:not(:empty) {
+            border: 2px solid #10b981; box-shadow: 0 0 25px var(--success-glow);
+            padding: 20px; height: auto !important; min-height: 550px; background: #0d1527;
+        }
+        .form-target-div iframe { width: 100% !important; min-height: 500px !important; border: none !important; }
+        .embedded-code-display { background: #090d16; padding: 10px; border-radius: 6px; margin-top: 8px; color: #34d399; font-family: monospace; font-size: 0.85rem; word-break: break-all; max-height: 75px; overflow-y: auto; border: 1px solid #1e293b; }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <strong>🔍 ONSITE VALIDATION HUB</strong> 
+        <a id="nav-main-page" class="active-nav" onclick="navigateTo('main-page')">🏠 Main Dashboard</a>
+        <a id="nav-page1" onclick="navigateTo('page1')">📋 Page 1</a>
+        <a id="nav-page2" onclick="navigateTo('page2')">⚙️ Page 2</a>
+        <a id="nav-page3" onclick="navigateTo('page3')">📱 Page 3</a>
+        <a id="nav-page4" onclick="navigateTo('page4')">🌐 Page 4</a>
+        <a id="nav-page5" onclick="navigateTo('page5')">🛡️ Page 5</a>
+    </nav>
+
+    <div class="wrapper">
+        <div id="dom-capture-alert" class="live-alert-banner"></div>
+
+        <div id="main-page" class="page active">
+            <div class="page-header">
+                <div class="header-text">
+                    <h2>🎯 Onsite Validation Platform</h2>
+                    <p>Creative QA testing workbench for live customer feedback integration.</p>
+                </div>
+                <img src="https://images.unsplash.com/photo-1600132806370-bf17e65e942f?auto=format&fit=crop&w=300&q=80" alt="QA Verification" class="page-image">
+            </div>
+
+            <div class="article-body">
+                <p><strong>The Crucial Importance of Creative QA:</strong> In web property optimization, client-side interventions must undergo comprehensive regression testing before public deployment. Creative QA ensures that modern digital interception tags, targeted modal architectures, and responsive survey components execute dynamically without altering layout elements, introducing structural performance loss, or clashing with asynchronous system scripts.</p>
+            </div>
+
+            <div class="injector-panel">
+                <h3>🚀 Global Script Injection Engine</h3>
+                <textarea id="input-main-page" placeholder="Paste structural script tags (<script src='...'></script>) or immediate execution JavaScript here..."></textarea>
+                <div class="action-bar">
+                    <button id="btn-main-page" onclick="injectProperty('main-page')">Inject Property</button>
+                    <div id="msg-main-page" class="message"></div>
+                </div>
+            </div>
+
+            <div class="info-panel">
+                <h4>📥 Registered Onsite Embed Targets</h4>
+                <p>This sandbox features 3 isolated container hooks specifically reserved for embedded form payloads:</p>
+                <pre>• embedded_form  |  • embedded_form1  |  • embedded_form2</pre>
+            </div>
+
+            <div class="info-panel" style="background: rgba(52, 211, 153, 0.05); border-left-color: #34d399;">
+                <h4>💻 Manual SDK Simulation Commands</h4>
+                <p>Execute the following methods within the browser console environment to manually trigger forms:</p>
+                <pre>KAMPYLE_ONSITE_SDK.loadForm('&lt;formID&gt;')<br>KAMPYLE_ONSITE_SDK.showForm('&lt;formID&gt;')</pre>
+            </div>
+
+            <div class="directory-box">
+                <h3>📂 Validation Scenarios Registry</h3>
+                <ul class="main-page-list">
+                    <li><a onclick="navigateTo('page1')">📋 Page 1: UI Integrity Auditing</a></li>
+                    <li><a onclick="navigateTo('page2')">⚙️ Page 2: Asynchronous Interception</a></li>
+                    <li><a onclick="navigateTo('page3')">📱 Page 3: Adaptive Viewport Testing</a></li>
+                    <li><a onclick="navigateTo('page4')">🌐 Page 4: Cross-Origin Pipeline Validation</a></li>
+                    <li><a onclick="navigateTo('page5')">🛡️ Page 5: Behavioral Rule Isolation</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div id="page1" class="page">
+            <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
+            <div class="page-header">
+                <div class="header-text">
+                    <h2>📋 Page 1: UI Integrity Auditing</h2>
+                    <p>Validating target z-index distributions and visual layer regressions.</p>
+                </div>
+                <img src="https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?auto=format&fit=crop&w=300&q=80" alt="Design QA Check" class="page-image">
+            </div>
+            <div class="injector-panel">
+                <h3>🛠️ Environment 1 Injector</h3>
+                <textarea id="input-page1" placeholder="Paste embed code or raw JS here..."></textarea>
+                <div class="action-bar">
+                    <button id="btn-page1" onclick="injectProperty('page1')">Inject Property</button>
+                    <div id="msg-page1" class="message"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="page2" class="page">
+            <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
+            <div class="page-header">
+                <div class="header-text">
+                    <h2>⚙️ Page 2: Asynchronous Interception Logic</h2>
+                    <p>Evaluating async tag delivery delays and event dispatchers.</p>
+                </div>
+                <img src="https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=300&q=80" alt="Code Validation" class="page-image">
+            </div>
+            <div class="injector-panel">
+                <h3>🛠️ Environment 2 Injector</h3>
+                <textarea id="input-page2" placeholder="Paste embed code or raw JS here..."></textarea>
+                <div class="action-bar">
+                    <button id="btn-page2" onclick="injectProperty('page2')">Inject Property</button>
+                    <div id="msg-page2" class="message"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="page3" class="page">
+            <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
+            <div class="page-header">
+                <div class="header-text">
+                    <h2>📱 Page 3: Adaptive Viewport Testing</h2>
+                    <p>Auditing fluid screen adjustments and gesture control tracking.</p>
+                </div>
+                <img src="https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?auto=format&fit=crop&w=300&q=80" alt="Mobile QA Interface" class="page-image">
+            </div>
+            <div class="injector-panel">
+                <h3>🛠️ Environment 3 Injector</h3>
+                <textarea id="input-page3" placeholder="Paste embed code or raw JS here..."></textarea>
+                <div class="action-bar">
+                    <button id="btn-page3" onclick="injectProperty('page3')">Inject Property</button>
+                    <div id="msg-page3" class="message"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="page4" class="page">
+            <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
+            <div class="page-header">
+                <div class="header-text">
+                    <h2>🌐 Page 4: Cross-Origin Pipeline Validation</h2>
+                    <p>Monitoring resource headers, CORS compliance, and framework security.</p>
+                </div>
+                <img src="https://images.unsplash.com/photo-1544383835-bda2bc66a55d?auto=format&fit=crop&w=300&q=80" alt="Global Network Infrastructure" class="page-image">
+            </div>
+            <div class="injector-panel">
+                <h3>🛠️ Environment 4 Injector</h3>
+                <textarea id="input-page4" placeholder="Paste embed code or raw JS here..."></textarea>
+                <div class="action-bar">
+                    <button id="btn-page4" onclick="injectProperty('page4')">Inject Property</button>
+                    <div id="msg-page4" class="message"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="page5" class="page">
+            <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
+            <div class="page-header">
+                <div class="header-text">
+                    <h2>🛡️ Page 5: Behavioral Rule Isolation</h2>
+                    <p>Testing algorithmic logic rules, entry criteria, and exit intent limits.</p>
+                </div>
+                <img src="https://images.unsplash.com/photo-1607799279861-4dd421887fb3?auto=format&fit=crop&w=300&q=80" alt="Console Diagnostics" class="page-image">
+            </div>
+            <div class="injector-panel">
+                <h3>🛠️ Environment 5 Injector</h3>
+                <textarea id="input-page5" placeholder="Paste embed code or raw JS here..."></textarea>
+                <div class="action-bar">
+                    <button id="btn-page5" onclick="injectProperty('page5')">Inject Property</button>
+                    <div id="msg-page5" class="message"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="qa-dropzones-wrapper">
+            <h3>📥 Live Onsite Embed Dropzones (Monitored Container Targets)</h3>
+            <div id="embedded_form" class="form-target-div"></div>
+            <div id="embedded_form1" class="form-target-div"></div>
+            <div id="embedded_form2" class="form-target-div"></div>
+        </div>
+    </div>
+
+    <script>
+        const allPages = ['main-page', 'page1', 'page2', 'page3', 'page4', 'page5'];
+
+        // NATIVE SPA NAVIGATION STRATEGY (Works perfectly out-of-the-box on Netlify/Vercel)
+        function navigateTo(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+
+            document.querySelectorAll('nav a').forEach(a => a.classList.remove('active-nav'));
+            let activeLink = document.getElementById(`nav-${pageId}`);
+            if (activeLink) activeLink.classList.add('active-nav');
+            window.scrollTo({top: 0, behavior: 'smooth'});
+
+            // This updates the URL pathname natively to matching production standards (/page1, /page2)
+            let productionUrlPath = pageId === 'main-page' ? '/' : '/' + pageId;
+            history.pushState({ page: pageId }, '', productionUrlPath);
+
+            // Directly invoke Medallia tracking updates
+            setTimeout(() => {
+                if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
+                    window.KAMPYLE_ONSITE_SDK.updatePageView();
+                    console.log("[QA Routing Pipeline] URL updated natively. Medallia tracked pathname:", window.location.pathname);
+                }
+            }, 200);
+        }
+
+        window.addEventListener('popstate', (e) => {
+            const pageId = e.state ? e.state.page : 'main-page';
+            navigateTo(pageId);
+        });
+
+        // GLOBAL UI SYNC
+        function syncInjectionState(codeSnippet) {
+            const escaped = codeSnippet.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            allPages.forEach(id => {
+                const txt = document.getElementById(`input-${id}`);
+                const msg = document.getElementById(`msg-${id}`);
+                const btn = document.getElementById(`btn-${id}`);
+
+                if (txt) { txt.value = codeSnippet; txt.disabled = true; }
+                if (msg) { 
+                    msg.className = "message success"; 
+                    msg.innerHTML = `✓ Script is active. Click reload below to clear.<br><div class="embedded-code-display">${escaped}</div>`; 
+                }
+                if (btn) {
+                    btn.innerText = "🔄 Reload Page";
+                    btn.className = "reload-state";
+                    
+                    // CLEAN CLOUD RE-ROUTING FLUSH
+                    btn.onclick = () => {
+                        sessionStorage.removeItem('saved_script');
+                        window.location.href = window.location.origin + '/';
+                    };
+                }
+            });
+        }
+
+        // SCRIPT EVALUATOR
+        function injectProperty(pageId) {
+            const txt = document.getElementById(`input-${pageId}`);
+            const msg = document.getElementById(`msg-${pageId}`);
+            const code = txt.value.trim();
+
+            msg.className = "message";
+            msg.innerText = "";
+
+            if (!code) {
+                msg.innerText = "⚠️ Paste code first.";
+                msg.classList.add('error');
+                return;
+            }
+
+            try {
+                if (/<script/i.test(code)) {
+                    const doc = new DOMParser().parseFromString(code, 'text/html');
+                    const tag = doc.querySelector('script');
+                    if (tag) {
+                        const s = document.createElement('script');
+                        Array.from(tag.attributes).forEach(a => s.setAttribute(a.name, a.value));
+                        s.textContent = tag.textContent;
+                        document.body.appendChild(s);
+                        sessionStorage.setItem('saved_script', code);
+                        syncInjectionState(code);
+                    } else { throw new Error("Invalid structure."); }
+                } else {
+                    new Function(code)();
+                    sessionStorage.setItem('saved_script', code);
+                    syncInjectionState(code);
+                }
+            } catch (err) {
+                msg.innerText = "❌ Invalid Embed Code";
+                msg.classList.add('error');
+            }
+        }
+
+        // AUTOMATED DROPZONE MONITORING
+        window.addEventListener('DOMContentLoaded', () => {
+            const saved = sessionStorage.getItem('saved_script');
+            if (saved) {
+                injectProperty('main-page');
+            }
+
+            const banner = document.getElementById('dom-capture-alert');
+            ['embedded_form', 'embedded_form1', 'embedded_form2'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    new MutationObserver(() => {
+                        if (el.children.length > 0 || el.innerText.trim() !== "") {
+                            banner.innerHTML = `🔔 <strong>Form Detected:</strong> Container <code>${id}</code> is populated!`;
+                            banner.style.display = "block";
+                        }
+                    }).observe(el, { childList: true, subtree: true });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
