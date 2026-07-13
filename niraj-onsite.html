@@ -90,7 +90,20 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* QA Suite Grid Framework */
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            border-bottom: 1px solid var(--panel-border);
+            padding-bottom: 25px;
+            margin-bottom: 25px;
+        }
+
+        .header-text h2 { margin: 0 0 10px 0; font-size: 1.8rem; }
+        .header-text p { margin: 0; color: var(--text-muted); }
+
+        /* QA Suite Configuration Framework Layouts */
         .qa-suite-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
@@ -145,7 +158,7 @@
 
         .suite-input:focus, select:focus { outline: none; border-color: #0ea5e9; }
 
-        /* Variable Conditions Dashboard Panel */
+        /* Pipeline Visual Status Board panel */
         .registered-dashboard {
             background: #070a12;
             border: 1px solid #1e293b;
@@ -170,7 +183,7 @@
         .badge-var { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
         .badge-cookie { background: rgba(236, 72, 153, 0.2); color: #f472b6; }
 
-        /* Twin Diagnostics Layout (Inspector & Network Errors) */
+        /* Twin Diagnostics Panels */
         .twin-diagnostics-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -182,14 +195,8 @@
             .twin-diagnostics-grid { grid-template-columns: 1fr; }
         }
 
-        .diag-panel {
-            background: #080d1a;
-            border: 1px solid #1e293b;
-            border-radius: 10px;
-            padding: 15px;
-        }
+        .diag-panel { background: #080d1a; border: 1px solid #1e293b; border-radius: 10px; padding: 15px; }
         .diag-panel h4 { margin: 0 0 10px 0; font-size: 0.9rem; text-transform: uppercase; color: #cbd5e1; border-bottom: 1px solid #1e293b; padding-bottom: 8px;}
-
         .audit-row { display: flex; justify-content: space-between; padding: 6px 4px; border-bottom: 1px solid #111827; font-family: monospace; font-size: 0.85rem; }
         .status-pill { font-size: 0.75rem; font-weight: bold; padding: 1px 6px; border-radius: 4px; }
         .pill-success { background: rgba(16, 185, 129, 0.15); color: #34d399; }
@@ -199,7 +206,7 @@
         .network-err-stream { max-height: 120px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; color: #ff6b6b; padding: 5px; }
         .network-err-entry { border-bottom: 1px solid #111827; padding: 4px 0; word-break: break-all; }
 
-        /* Injector Base Elements */
+        /* Injector Components */
         .injector-panel { background: #090d16; border-radius: 12px; padding: 25px; border: 1px solid var(--panel-border); margin-bottom: 30px; }
         textarea { width: 100%; height: 110px; background-color: #111827; color: #38bdf8; border: 1px solid #334155; border-radius: 8px; padding: 14px; font-family: monospace; resize: vertical; box-sizing: border-box; margin-top: 10px; }
         textarea:disabled { opacity: 0.7; cursor: not-allowed; }
@@ -248,19 +255,14 @@
     </style>
     <script>
         // =========================================================================
-        // 🛡️ CRITICAL MONKEY PATCH NETWORK INTERCEPTOR (FETCH & XHR)
+        // 🛡️ BACKGROUND NETWORK PIPE INTERCEPTOR PROTCOLS (FETCH & XHR)
         // =========================================================================
-        // Intercepts background request channels. Automatically captures 4xx & 5xx statuses
-        // from asynchronous tag allocations, logging telemetry data into the tracker log console.
-
         const originalFetch = window.fetch;
         window.fetch = async function(...args) {
             const requestUrl = args[0] instanceof Request ? args[0].url : args[0];
             try {
                 const response = await originalFetch.apply(this, args);
-                if (!response.ok) {
-                    triggerNetworkErrorLog(response.status, 'FETCH', requestUrl);
-                }
+                if (!response.ok) triggerNetworkErrorLog(response.status, 'FETCH', requestUrl);
                 return response;
             } catch (err) {
                 triggerNetworkErrorLog('FAILED', 'FETCH', requestUrl);
@@ -271,13 +273,9 @@
         const originalXHR = window.XMLHttpRequest.prototype.open;
         window.XMLHttpRequest.prototype.open = function(method, url, ...args) {
             this.addEventListener('load', function() {
-                if (this.status >= 400) {
-                    triggerNetworkErrorLog(this.status, 'XHR', url);
-                }
+                if (this.status >= 400) triggerNetworkErrorLog(this.status, 'XHR', url);
             });
-            this.addEventListener('error', function() {
-                triggerNetworkErrorLog('FAILED', 'XHR', url);
-            });
+            this.addEventListener('error', function() { triggerNetworkErrorLog('FAILED', 'XHR', url); });
             return originalXHR.apply(this, [method, url, ...args]);
         };
 
@@ -306,7 +304,7 @@
         <div class="qa-suite-grid">
             <div class="suite-panel">
                 <h4>🎯 Live Parameter Factory Builder</h4>
-                <div class="suite-description">Build targeting rules sequentially. Parameter value fields update validation layouts automatically on chosen type changes.</div>
+                <div class="suite-description">Build targeting rules sequentially. Configuration profiles auto-append onto browser location streams immediately on add execution callbacks.</div>
                 
                 <div class="factory-row">
                     <div class="input-block">
@@ -448,7 +446,6 @@
         </div>
 
         <div class="twin-diagnostics-grid">
-            
             <div class="diag-panel">
                 <h4>🔎 Container DOM Structure Inspector</h4>
                 <div id="dom-audit-hook-0" class="audit-row"><span>div#embedded_form</span><span class="status-pill pill-warn">Checking...</span></div>
@@ -480,7 +477,7 @@
         let virtualGlobalVariables = {};
         let virtualSessionCookies = [];
 
-        // --- 1. TIMELINE RUNTIME LOG ARCHITECTURE ---
+        // --- 1. REAL-TIME LOG MATRIX ---
         function writeLog(message, type = 'info') {
             const streamBox = document.getElementById('log-stream-box');
             if (!streamBox) return;
@@ -497,7 +494,7 @@
             writeLog("Execution stream trace cleared.", "info");
         }
 
-        // --- 2. NETWORK ERROR INTERCEPTION ACTION PIPELINES ---
+        // --- 2. HTTP SERVER ERROR PARSING CONSOLE LOGGERS ---
         window.addEventListener('qa_network_error', (e) => {
             const notice = document.getElementById('empty-network-notice');
             if (notice) notice.remove();
@@ -509,11 +506,10 @@
             
             stream.appendChild(entry);
             stream.scrollTop = stream.scrollHeight;
-
-            writeLog(`Network Alert: Capture background HTTP Error [Status ${e.detail.status}] on request vector: ${e.detail.url}`, 'warn');
+            writeLog(`Network Interceptor: Captured Background HTTP Error [Status ${e.detail.status}] on endpoint: ${e.detail.url}`, 'warn');
         });
 
-        // --- 3. DYNAMIC DOM STRUCTURE STRUCTURAL AUDITOR TREE ---
+        // --- 3. DYNAMIC DOM INTERCEPT MONITOR DECK ---
         function runLiveDOMStructureAudit() {
             const targets = ['embedded_form', 'embedded_form1', 'embedded_form2'];
             targets.forEach((id, index) => {
@@ -522,8 +518,6 @@
                 if (!node || !auditRow) return;
 
                 let pill = auditRow.querySelector('.status-pill');
-                
-                // Read active visual parameters properties from elements nodes
                 let computationStyles = window.getComputedStyle(node);
                 let isHidden = computationStyles.display === 'none' || computationStyles.visibility === 'hidden';
 
@@ -539,11 +533,9 @@
                 }
             });
         }
-
-        // Run structural inspection logs periodically every 500ms
         setInterval(runLiveDOMStructureAudit, 500);
 
-        // --- 4. DATA FACTORY ENGINE BUILDER LAYER ---
+        // --- 4. NETWORK LATENCY SLIDERS TRANSLATORS ---
         function processLatencyTelemetryChange() {
             const val = parseInt(document.getElementById('latency-slider').value);
             document.getElementById('latency-val').innerText = `${val}ms`;
@@ -600,6 +592,7 @@
             }
         }
 
+        // --- 5. PARAMETER EMISSION AND COMMIT HANDLERS ---
         function commitFactoryParameterElement() {
             const target = document.getElementById('param-target-type').value;
             const dataType = document.getElementById('param-data-type').value;
@@ -642,8 +635,13 @@
                 }
             }
 
-            writeLog(`Injected tracking parameter constraint target [${target.toUpperCase()}] ➔ ${nameKey} = ${validatedFinalValue}`, 'success');
+            writeLog(`Injected parameter target structure [${target.toUpperCase()}] ➔ ${nameKey} = ${validatedFinalValue}`, 'success');
             renderActiveParametersDashboardList();
+            
+            // --- CRITICAL RE-ROUTE FIX 1 ---
+            // Instantly sync address pipeline and fire evaluator matching loops right on your current view panel card!
+            updateActiveBrowserAddressBarQueryString(true);
+            
             document.getElementById('param-key-name').value = '';
         }
 
@@ -727,7 +725,7 @@
             }
         }
 
-        // --- 5. CLOUD ROUTING SYSTEMS INTERFACES ---
+        // --- 6. PRODUCTION ROUTING GATEWAYS ---
         function navigateTo(pageId) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.getElementById(pageId).classList.add('active');
@@ -747,7 +745,12 @@
             }, 200);
         }
 
-        // --- 6. CORE CACHE SNAPSHOT MANAGERS ---
+        window.addEventListener('popstate', (e) => {
+            const pageId = e.state ? e.state.page : 'main-page';
+            navigateTo(pageId);
+        });
+
+        // --- 7. RECOVERY PRESETS AND PROFILE ALLOCATORS ---
         function saveCurrentToProfile() {
             const activePage = allPages.find(p => document.getElementById(p).classList.contains('active')) || 'main-page';
             const scriptCode = document.getElementById(`input-${activePage}`).value.trim();
@@ -785,14 +788,15 @@
                     const groupRow = document.createElement('div');
                     groupRow.className = "refresh-button-group-row";
                     
+                    // --- CRITICAL RE-ROUTE FIX 2: HOT RE-LOAD LIFE CYCLE ---
+                    // Triggers a literal physical document reload, completely clearing local engine state caches while keeping your scripts active in the cache framework.
                     const softBtn = document.createElement('button');
                     softBtn.innerText = "⚡ Hot Reload Form"; softBtn.className = "hot-reload-state";
                     softBtn.onclick = function() {
-                        writeLog("Hot Reload Invoked: Re-triggering form evaluation loop...", "info");
-                        if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
-                            window.KAMPYLE_ONSITE_SDK.updatePageView();
-                            writeLog("✓ Medallia core engine evaluation state refreshed.", "success");
-                        }
+                        writeLog("Hot Reload Triggered: Executing true browser engine environment flush to re-fetch target form asset bundles...", "info");
+                        // Temporarily preserve active location context parameters mapping during true reload lifecycle
+                        sessionStorage.setItem('qa_hot_reload_active_route', allPages.find(p => document.getElementById(p).classList.contains('active')) || 'main-page');
+                        window.location.reload();
                     };
 
                     const hardBtn = document.createElement('button');
@@ -848,38 +852,40 @@
             }, simulationLatency);
         }
 
-        // INITIALIZATION DECK
+        // --- 8. INITIALIZATION LIFECYCLE DECK ---
         window.addEventListener('DOMContentLoaded', () => {
-            writeLog("Sandbox execution hub online. Core proxy intercepts active.", 'info');
+            writeLog("Sandbox execution hub online. Core proxy network intercepts active.", 'info');
             
             if (sessionStorage.getItem('qa_saved_url_obj')) virtualQueriesObject = JSON.parse(sessionStorage.getItem('qa_saved_url_obj'));
             if (sessionStorage.getItem('qa_saved_var_obj')) virtualGlobalVariables = JSON.parse(sessionStorage.getItem('qa_saved_var_obj'));
             if (sessionStorage.getItem('qa_saved_cookie_arr')) virtualSessionCookies = JSON.parse(sessionStorage.getItem('qa_saved_cookie_arr'));
+            
+            // Re-instantiate window variable context mapping objects references globally across true page refreshes
             Object.keys(virtualGlobalVariables).forEach(k => { window[k] = virtualGlobalVariables[k].val; });
             
             renderActiveParametersDashboardList();
+
+            // Intercept Hot-Reload structural path states if present
+            const hotReloadActiveRoute = sessionStorage.getItem('qa_hot_reload_active_route');
+            if (hotReloadActiveRoute) {
+                sessionStorage.removeItem('qa_hot_reload_active_route');
+                // Force workspace cards views to active coordinate states without flushing parameters
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                document.getElementById(hotReloadActiveRoute).classList.add('active');
+                document.querySelectorAll('nav a').forEach(a => a.classList.remove('active-nav'));
+                let link = document.getElementById(`nav-${hotReloadActiveRoute}`);
+                if (link) link.classList.add('active-nav');
+            }
 
             const saved = sessionStorage.getItem('saved_script');
             if (saved) {
                 const activePage = allPages.find(p => document.getElementById(p).classList.contains('active')) || 'main-page';
                 document.getElementById(`input-${activePage}`).value = saved;
                 injectProperty(activePage);
+                
+                // Force sync URL path structures cleanly on boot parameters
+                updateActiveBrowserAddressBarQueryString(true);
             }
-
-            const banner = document.getElementById('dom-capture-alert');
-            ['embedded_form', 'embedded_form1', 'embedded_form2'].forEach((id, idx) => {
-                const el = document.getElementById(id);
-                if (el) {
-                    new MutationObserver(() => {
-                        if (el.children.length > 0 || el.innerText.trim() !== "") {
-                            banner.innerHTML = `🔔 <strong>Interception Successful:</strong> Dropzone Hook Target Container <code>${id}</code> has been dynamically populated with forms components!`;
-                            banner.style.display = "block";
-                            banner.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            writeLog(`🔔 [SDK Interceptor Triggered] Dropzone container target ${idx + 1} (${id}) updated with form frames!`, 'success');
-                        }
-                    }).observe(el, { childList: true, subtree: true });
-                }
-            });
         });
     </script>
 </body>
