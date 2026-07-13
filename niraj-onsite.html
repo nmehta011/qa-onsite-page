@@ -557,7 +557,6 @@
 
         // --- 3. DYNAMIC DOM INTERCEPT & SDK STORAGE OBSERVERS ---
         function runLiveStorageAndDOMStructureAudit() {
-            // A. Audit DOM Target Containers Nodes
             const targets = ['embedded_form', 'embedded_form1', 'embedded_form2'];
             targets.forEach((id, index) => {
                 const node = document.getElementById(id);
@@ -580,7 +579,6 @@
                 }
             });
 
-            // B. Reactive LocalStorage Pipeline Parsing Engine
             const keysToMonitor = [
                 { id: 'sdk-meta-percentile', storageKey: 'kampyleUserPercentile' },
                 { id: 'sdk-meta-pagecounter', storageKey: 'kampyleSessionPageCounter' },
@@ -612,13 +610,12 @@
         function startInjectionChronometer() {
             document.getElementById('lifecycle-timer-panel').style.display = 'flex';
             
-            // Re-inflate previous clock states across hot refreshes if present
             if (sessionStorage.getItem('qa_timer_elapsed')) {
                 elapsedMillisecondsTime = parseInt(sessionStorage.getItem('qa_timer_elapsed'));
                 const runs = sessionStorage.getItem('qa_timer_was_running') === 'true';
                 if (!runs) {
                     updateChronometerUIMetrics();
-                    document.getElementById('btn-timer-pause').innerText = "Resume";
+                    document.getElementById('btn-timer-pause').innerText = "Start";
                     return;
                 }
             }
@@ -633,7 +630,7 @@
                 elapsedMillisecondsTime = Date.now() - startAnchor;
                 updateChronometerUIMetrics();
                 sessionStorage.setItem('qa_timer_elapsed', elapsedMillisecondsTime);
-            }, 43); // Synced refresh frame rates layout
+            }, 43); 
         }
 
         function updateChronometerUIMetrics() {
@@ -653,31 +650,31 @@
                 // Pause Action
                 clearInterval(chronometerIntervalToken);
                 isChronometerRunningFlag = false;
-                btn.innerText = "Resume";
+                btn.innerText = "Start";
                 sessionStorage.setItem('qa_timer_was_running', 'false');
                 writeLog("Injection chronological lifecycle timer paused by user.", "info");
             } else {
-                // Resume Action
+                // Start / Resume Action
                 sessionStorage.setItem('qa_timer_was_running', 'true');
                 startInjectionChronometer();
-                writeLog("Injection chronological lifecycle timer resumed.", "info");
+                writeLog("Injection chronological lifecycle timer started.", "info");
             }
         }
 
+        // FIXED CHRONOMETER HARD RESET LOGIC
+        // Explicitly handles clearing loop intervals and pinning state to 0 without trigger-loops cascading.
         function resetInjectionChronometer() {
             clearInterval(chronometerIntervalToken);
             elapsedMillisecondsTime = 0;
             isChronometerRunningFlag = false;
-            updateChronometerUIMetrics();
-            sessionStorage.removeItem('qa_timer_elapsed');
-            sessionStorage.removeItem('qa_timer_was_running');
-            document.getElementById('btn-timer-pause').innerText = "Start";
-            writeLog("Chronometer telemetry tracking variables reset to zero.", "info");
             
-            const saved = sessionStorage.getItem('saved_script');
-            if (saved) {
-                startInjectionChronometer();
-            }
+            updateChronometerUIMetrics();
+            
+            sessionStorage.removeItem('qa_timer_elapsed');
+            sessionStorage.setItem('qa_timer_was_running', 'false');
+            
+            document.getElementById('btn-timer-pause').innerText = "Start";
+            writeLog("Chronometer telemetry metrics explicitly reset to zero. Standing by for manual Start click...", "info");
         }
 
         // --- 5. NETWORK LATENCY SLIDERS TRANSLATORS ---
@@ -737,7 +734,7 @@
             }
         }
 
-        // --- 6. ADVANCED FACTORY GENERATOR PIPELINE ---
+        // --- 6. PARAMETER EMISSION AND COMMIT HANDLERS ---
         function commitFactoryParameterElement() {
             const target = document.getElementById('param-target-type').value;
             const dataType = document.getElementById('param-data-type').value;
@@ -835,7 +832,7 @@
             `;
             item.querySelector('.delete-single-param-btn').onclick = function() {
                 deleteCallback();
-                writeLog(`Purged targeting parameter constraint configuration: ${key}`, 'info');
+                writeLog(`Purged targeting parameter configuration: ${key}`, 'info');
                 renderActiveParametersDashboardList();
                 updateActiveBrowserAddressBarQueryString(true);
             };
@@ -881,7 +878,7 @@
             setTimeout(() => {
                 if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
                     window.KAMPYLE_ONSITE_SDK.updatePageView();
-                    writeLog(`Medallia updatePageView() initialized on clean server path: ${window.location.pathname}${window.location.search}`, 'success');
+                    writeLog(`Medallia updatePageView() initialized on clean path: ${window.location.pathname}${window.location.search}`, 'success');
                 }
             }, 200);
         }
@@ -907,7 +904,7 @@
             const slotId = document.getElementById('profile-selector').value;
             if (!slotId) return;
             const savedCode = localStorage.getItem(`qa_profile_slot_${slotId}`);
-            if (!savedCode) { writeLog(`Target local profile slot mapping configuration token empty [${slotId.toUpperCase()}]`, 'warn'); return; }
+            if (!savedCode) { writeLog(`Target local profile slot configuration token empty [${slotId.toUpperCase()}]`, 'warn'); return; }
             allPages.forEach(pId => {
                 const textContainer = document.getElementById(`input-${pId}`);
                 if (textContainer && !textContainer.disabled) textContainer.value = savedCode;
@@ -951,7 +948,6 @@
                 }
             });
             
-            // Activate chronometer metric tracing logs instantly upon injection success validation completion
             startInjectionChronometer();
         }
 
@@ -994,13 +990,14 @@
             }, simulationLatency);
         }
 
-        // INITIALIZATION LIFECYCLE DECK
+        // --- 9. INITIALIZATION LIFECYCLE DECK ---
         window.addEventListener('DOMContentLoaded', () => {
             writeLog("Sandbox execution hub online. Core proxy network intercepts active.", 'info');
             
             if (sessionStorage.getItem('qa_saved_url_obj')) virtualQueriesObject = JSON.parse(sessionStorage.getItem('qa_saved_url_obj'));
             if (sessionStorage.getItem('qa_saved_var_obj')) virtualGlobalVariables = JSON.parse(sessionStorage.getItem('qa_saved_var_obj'));
             if (sessionStorage.getItem('qa_saved_cookie_arr')) virtualSessionCookies = JSON.parse(sessionStorage.getItem('qa_saved_cookie_arr'));
+            
             Object.keys(virtualGlobalVariables).forEach(k => { window[k] = virtualGlobalVariables[k].val; });
             
             renderActiveParametersDashboardList();
@@ -1022,21 +1019,6 @@
                 injectProperty(activePage);
                 updateActiveBrowserAddressBarQueryString(true);
             }
-
-            const banner = document.getElementById('dom-capture-alert');
-            ['embedded_form', 'embedded_form1', 'embedded_form2'].forEach((id, idx) => {
-                const el = document.getElementById(id);
-                if (el) {
-                    new MutationObserver(() => {
-                        if (el.children.length > 0 || el.innerText.trim() !== "") {
-                            banner.innerHTML = `🔔 <strong>Interception Successful:</strong> Dropzone Hook Target Container <code>${id}</code> has been dynamically populated with forms components!`;
-                            banner.style.display = "block";
-                            banner.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            writeLog(`🔔 [SDK Interceptor Triggered] Dropzone container target ${idx + 1} (${id}) updated with form frames!`, 'success');
-                        }
-                    }).observe(el, { childList: true, subtree: true });
-                }
-            });
         });
     </script>
 </body>
