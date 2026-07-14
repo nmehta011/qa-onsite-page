@@ -423,7 +423,7 @@
         <div class="qa-suite-grid">
             
             <div class="suite-panel">
-                <h4>🎯 Live Parameter Factory Builder</h4>
+                <h4>🎯 Live Custom Parameter Builder</h4>
                 <div class="suite-description">Build variable structures sequentially. Target parameters auto-commit onto address streams immediately on action click.</div>
                 
                 <div class="factory-row">
@@ -471,7 +471,7 @@
             </div>
 
             <div class="suite-panel">
-                <h4>💻 Manual SDK Code Form Console</h4>
+                <h4>💻 Manual Code Form Injection</h4>
                 <div class="suite-description">Execute direct SDK framework commands to dynamically instantiate or present coded form configurations.</div>
                 
                 <div class="input-block">
@@ -494,19 +494,6 @@
                 <h4>⚙️ Workspace Config & Responsive Viewport Scale</h4>
                 <div class="suite-description">Manage local code presets and scale layout frame parameters up to 400% to validate fluid grid break conditions.</div>
                 
-                <div class="input-block">
-                    <label>Profiles Manager</label>
-                    <div class="profile-row">
-                        <select id="profile-selector" onchange="loadSelectedProfile()">
-                            <option value="">-- Select Profile Slot --</option>
-                            <option value="profile_1">Slot 1: Staging Tag</option>
-                            <option value="profile_2">Slot 2: Production Tag</option>
-                            <option value="profile_3">Slot 3: Custom Intercept</option>
-                        </select>
-                        <button onclick="saveCurrentToProfile()" style="background:#1e293b; color:#38bdf8; border:1px solid #334155; padding:0 12px;">Save</button>
-                    </div>
-                </div>
-
                 <div class="input-block" style="margin-top:15px;">
                     <label>Fluid Viewport Canvas Scaling Matrix</label>
                     <div class="zoom-controls-row">
@@ -516,6 +503,19 @@
                             <span class="zoom-unit-label">%</span>
                         </div>
                         <button onclick="modifyViewportScaleMatrix(10)" style="background:#1e293b; padding:0 10px; height:28px;">➕</button>
+                    </div>
+                </div>
+                
+             <div class="input-block">
+                    <label>Profiles Manager</label>
+                    <div class="profile-row">
+                        <select id="profile-selector" onchange="loadSelectedProfile()">
+                            <option value="">-- Select Profile Slot --</option>
+                            <option value="profile_1">Slot 1: Staging Tag</option>
+                            <option value="profile_2">Slot 2: Production Tag</option>
+                            <option value="profile_3">Slot 3: Custom Intercept</option>
+                        </select>
+                        <button onclick="saveCurrentToProfile()" style="background:#1e293b; color:#38bdf8; border:1px solid #334155; padding:0 12px;">Save</button>
                     </div>
                 </div>
 
@@ -647,7 +647,7 @@
             </div>
 
             <div class="diag-panel">
-                <h4>📜 List of Enabled SDK Provisions</h4>
+                <h4>📜 List of Enabled Provisions</h4>
                 <div id="provisions-matrix-stream-box" class="telemetry-scroll-box">
                     <div style="color:#64748b; font-style:italic; font-size:0.8rem;" id="empty-provisions-notice">Awaiting onsite manifest metadata retrieval...</div>
                 </div>
