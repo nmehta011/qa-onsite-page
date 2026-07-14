@@ -313,6 +313,29 @@
     </style>
     <script>
         // =========================================================================
+        // 🛑 GLOBAL BROWSER CONSOLE RUNTIME ERROR INTERCEPTOR
+        // =========================================================================
+        // Catches uncaught syntax errors or unhandled script rejections and pipes 
+        // them seamlessly into the red diagnostic error console panel.
+        window.onerror = function(message, source, lineno, colno, error) {
+            const fileName = source ? source.split('/').pop() : 'inline_script';
+            const structuredMessage = `Console Error ➔ ${message} (at ${fileName}:${lineno}:${colno})`;
+            
+            // Dispatch to the exact same rendering network pipeline
+            window.dispatchEvent(new CustomEvent('qa_network_error', { 
+                detail: { status: 'CRASH', type: 'JS_ERR', url: structuredMessage } 
+            }));
+            return false; // Let the error still print to the native devtools console
+        };
+
+        window.addEventListener('unhandledrejection', function(event) {
+            const structuredMessage = `Unhandled Promise Rejection ➔ ${event.reason}`;
+            window.dispatchEvent(new CustomEvent('qa_network_error', { 
+                detail: { status: 'REJECT', type: 'ASYNC_ERR', url: structuredMessage } 
+            }));
+        });
+        
+        // =========================================================================
         // 🛡️ BACKGROUND PROXY INTERCEPTOR DECK (FETCH & XMLHTTPREQUEST)
         // =========================================================================
         let collectedAnalyticsEventsCacheList = [];
@@ -694,14 +717,21 @@
             writeLog("Execution stream trace cleared.", "info");
         }
 
-        // --- 2. HTTP SERVER ERROR TRAFFIC DETECTOR LISTENER ---
+      // --- 2. HTTP SERVER & CONSOLE ERROR TRAFFIC DETECTOR LISTENER ---
         window.addEventListener('qa_network_error', (e) => {
             const notice = document.getElementById('empty-network-notice');
             if (notice) notice.remove();
             const stream = document.getElementById('network-error-stream-box');
             const entry = document.createElement('div');
             entry.className = "network-err-entry";
-            entry.innerHTML = `⚠️ <strong>[HTTP ${e.detail.status}]</strong> ${e.detail.type} Failed ➔ <span style="color:#cbd5e1; font-size:0.75rem;">${e.detail.url}</span>`;
+            
+            // Differentiate rendering styles if it's a console error vs network response drops
+            if (e.detail.type === 'JS_ERR' || e.detail.type === 'ASYNC_ERR') {
+                entry.innerHTML = `❌ <strong>[${e.detail.type}]</strong> <span style="color:#cbd5e1; font-size:0.75rem;">${e.detail.url}</span>`;
+            } else {
+                entry.innerHTML = `⚠️ <strong>[HTTP ${e.detail.status}]</strong> ${e.detail.type} Failed ➔ <span style="color:#cbd5e1; font-size:0.75rem;">${e.detail.url}</span>`;
+            }
+            
             stream.appendChild(entry);
             stream.scrollTop = stream.scrollHeight;
         });
