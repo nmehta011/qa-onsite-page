@@ -75,8 +75,6 @@
             max-width: 1100px;
             margin: 40px auto;
             padding: 0 20px;
-            transform-origin: top center;
-            transition: transform 0.15s ease-out;
         }
 
         .page {
@@ -846,8 +844,9 @@
 
         // --- 6. EXPANDED VIEWPORT SCALE ENGINE CONTROLLERS ---
         function applyViewportZoomStyle() {
-            const canvas = document.getElementById('master-canvas-wrapper');
-            if (canvas) canvas.style.transform = `scale(${currentViewportZoomPercent / 100})`;
+            // FIXED CHERRY-PICK: Uses true body zoom to match native browser settings exactly
+            document.body.style.zoom = currentViewportZoomPercent + "%";
+            
             const inputField = document.getElementById('zoom-manual-input-field');
             if (inputField) inputField.value = currentViewportZoomPercent;
         }
@@ -858,7 +857,7 @@
             if (targetZoom > 400) targetZoom = 400;
             currentViewportZoomPercent = targetZoom;
             applyViewportZoomStyle();
-            writeLog(`Viewport scaled step offset via layout engine: ${currentViewportZoomPercent}%`, 'info');
+            writeLog(`Native browser body viewport zoomed via script engine: ${currentViewportZoomPercent}%`, 'info');
         }
 
         UXString = "";
