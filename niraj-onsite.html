@@ -41,11 +41,13 @@
             padding: 15px 30px;
             display: flex;
             align-items: center;
+            justify-content: space-between;
             flex-wrap: wrap;
             z-index: 1000;
             box-shadow: 0 4px 20px rgba(0,0,0,0.3);
         }
 
+        .nav-left { display: flex; align-items: center; flex-wrap: wrap; }
         nav strong {
             font-size: 1.1rem;
             margin-right: 25px;
@@ -69,6 +71,7 @@
             text-shadow: 0 0 10px rgba(14, 165, 233, 0.4);
         }
 
+        /* Scalable Canvas Wrapper Node */
         .wrapper {
             max-width: 1100px;
             margin: 40px auto;
@@ -93,6 +96,19 @@
             from { opacity: 0; transform: translateY(5px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            border-bottom: 1px solid var(--panel-border);
+            padding-bottom: 25px;
+            margin-bottom: 25px;
+        }
+
+        .header-text h2 { margin: 0 0 10px 0; font-size: 1.8rem; }
+        .header-text p { margin: 0; color: var(--text-muted); }
 
         /* QA Dynamic 3-Column Configuration Grid Framework */
         .qa-suite-grid {
@@ -244,7 +260,7 @@
         .telemetry-scroll-box { max-height: 140px; overflow-y: auto; font-family: monospace; font-size: 0.85rem; padding: 5px; box-sizing: border-box; }
         .network-err-entry { border-bottom: 1px solid #111827; padding: 5px 0; color: #ff6b6b; word-break: break-all; }
         
-        .analytics-event-entry { border-bottom: 1px solid #111827; padding: 5px 4px; display: flex; justify-content: space-between; align-items: center; color: #f97316; }
+        .analytics-event-entry { border-bottom: 1px solid #111827; padding: 6px 4px; display: flex; justify-content: space-between; align-items: center; color: #f97316; }
         .provisions-entry-item { border-bottom: 1px solid #111827; padding: 5px 4px; display: flex; justify-content: space-between; align-items: center; color: #10b981; }
 
         .injector-panel { background: #090d16; border-radius: 12px; padding: 25px; border: 1px solid var(--panel-border); margin-bottom: 30px; }
@@ -254,12 +270,12 @@
         .action-bar { margin-top: 15px; display: flex; flex-direction: column; gap: 15px; }
         .refresh-button-group-row { display: flex; flex-wrap: wrap; gap: 12px; width: 100%; margin-top: 5px; }
         
-        .injector-panel button, .factory-row button, .profile-row button, .zoom-controls-row button {
+        nav button, .injector-panel button, .factory-row button, .profile-row button, .zoom-controls-row button, .diag-panel button {
             background: var(--primary-gradient); color: white; border: none; padding: 10px 20px; font-size: 0.9rem; font-weight: bold; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3); transition: transform 0.2s; height: 38px; display: flex; align-items: center; justify-content: center; box-sizing: border-box;
         }
-        .injector-panel button:hover, .factory-row button:hover, .profile-row button:hover, .zoom-controls-row button:hover { transform: translateY(-1px); }
+        nav button:hover, .injector-panel button:hover, .factory-row button:hover, .profile-row button:hover, .zoom-controls-row button:hover, .diag-panel button:hover { transform: translateY(-1px); }
         .injector-panel button.hot-reload-state { background: var(--hot-blue); box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3); }
-        .injector-panel button.reload-state { background: var(--reload-gradient); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); height: auto; padding: 12px 24px;}
+        .injector-panel button.reload-state, nav button.global-purge-btn { background: var(--reload-gradient); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); }
 
         .profile-row { display: flex; gap: 10px; align-items: center; }
 
@@ -293,7 +309,6 @@
         .form-target-div iframe { width: 100% !important; min-height: 500px !important; border: none !important; }
         .embedded-code-display { background: #090d16; padding: 10px; border-radius: 6px; margin-top: 8px; color: #34d399; font-family: monospace; font-size: 0.85rem; word-break: break-all; max-height: 75px; overflow-y: auto; border: 1px solid var(--panel-border); }
         
-        /* Footer panel layout */
         footer { margin-top: 60px; border-top: 1px solid #1e293b; padding: 25px 0; text-align: center; font-size: 0.85rem; color: var(--text-muted); }
         footer span { color: #ef4444; font-size: 1rem; margin: 0 2px; }
     </style>
@@ -301,10 +316,7 @@
         // =========================================================================
         // 🛡️ BACKGROUND PROXY INTERCEPTOR DECK (FETCH & XMLHTTPREQUEST)
         // =========================================================================
-        // Monkey-patches browser request conduits to extract:
-        // 1. HTTP Network errors (4xx/5xx responses)
-        // 2. Medallia active analytics event names array payloads (/events endpoint POSTs)
-        // 3. True provision manifests flags lists (onsiteData*.json network downloads)
+        let collectedAnalyticsEventsCacheList = [];
 
         const originalFetch = window.fetch;
         window.fetch = async function(...args) {
@@ -313,7 +325,6 @@
                 const response = await originalFetch.apply(this, args);
                 if (!response.ok) triggerNetworkErrorLog(response.status, 'FETCH', requestUrl);
                 
-                // Deep read response payloads from manifest files
                 if (/onsiteData.*\.json/i.test(requestUrl)) {
                     const clone = response.clone();
                     clone.text().then(txt => triggerProvisionsManifestEvaluation(txt));
@@ -333,10 +344,7 @@
             this._methodContext = method;
             this.addEventListener('load', function() {
                 if (this.status >= 400) triggerNetworkErrorLog(this.status, 'XHR', url);
-                
-                if (/onsiteData.*\.json/i.test(url)) {
-                    triggerProvisionsManifestEvaluation(this.responseText);
-                }
+                if (/onsiteData.*\.json/i.test(url)) triggerProvisionsManifestEvaluation(this.responseText);
             });
             this.addEventListener('error', function() { triggerNetworkErrorLog('FAILED', 'XHR', url); });
             return originalXHR.apply(this, [method, url, ...args]);
@@ -353,12 +361,18 @@
             window.dispatchEvent(new CustomEvent('qa_network_error', { detail: { status, type, url } }));
         }
 
+        // CHERRY-PICK EXTRACTOR: Isolates both eventName and formId parameters from background telemetry uploads
         function triggerAnalyticsPayloadEvaluation(rawBody) {
             try {
                 const parsed = JSON.parse(rawBody);
                 const eventArray = Array.isArray(parsed) ? parsed : [parsed];
                 if (eventArray[0] && eventArray[0].eventName) {
-                    window.dispatchEvent(new CustomEvent('qa_analytics_event', { detail: { name: eventArray[0].eventName } }));
+                    const matchedEventName = eventArray[0].eventName;
+                    const matchedFormId = eventArray[0].formId || 'N/A';
+                    
+                    window.dispatchEvent(new CustomEvent('qa_analytics_event', { 
+                        detail: { name: matchedEventName, formId: matchedFormId } 
+                    }));
                 }
             } catch(e) {}
         }
@@ -371,18 +385,34 @@
                 }
             } catch(e) {}
         }
+
+        // Pinned Global Purge Action
+        function executeGlobalNuclearApplicationReset() {
+            localStorage.clear();
+            sessionStorage.clear();
+            
+            // Delete all cookies
+            document.cookie.split(";").forEach(function(c) { 
+                document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+            });
+            
+            window.location.href = window.location.origin + '/';
+        }
     </script>
 </head>
 <body>
 
     <nav>
-        <strong>🔍 ONSITE VALIDATION HUB</strong> 
-        <a id="nav-main-page" class="active-nav" onclick="navigateTo('main-page')">🏠 Main Dashboard</a>
-        <a id="nav-page1" onclick="navigateTo('page1')">📋 Page 1</a>
-        <a id="nav-page2" onclick="navigateTo('page2')">⚙️ Page 2</a>
-        <a id="nav-page3" onclick="navigateTo('page3')">📱 Page 3</a>
-        <a id="nav-page4" onclick="navigateTo('page4')">🌐 Page 4</a>
-        <a id="nav-page5" onclick="navigateTo('page5')">🛡️ Page 5</a>
+        <div class="nav-left">
+            <strong>🔍 ONSITE VALIDATION HUB</strong> 
+            <a id="nav-main-page" class="active-nav" onclick="navigateTo('main-page')">🏠 Main Dashboard</a>
+            <a id="nav-page1" onclick="navigateTo('page1')">📋 Page 1</a>
+            <a id="nav-page2" onclick="navigateTo('page2')">⚙️ Page 2</a>
+            <a id="nav-page3" onclick="navigateTo('page3')">📱 Page 3</a>
+            <a id="nav-page4" onclick="navigateTo('page4')">🌐 Page 4</a>
+            <a id="nav-page5" onclick="navigateTo('page5')">🛡️ Page 5</a>
+        </div>
+        <button class="global-purge-btn" onclick="executeGlobalNuclearApplicationReset()" style="height:32px; font-size:0.8rem; padding:0 12px;">🔄 Hard Purge & Reset</button>
     </nav>
 
     <div id="master-canvas-wrapper" class="wrapper">
@@ -578,7 +608,7 @@
         <div class="telemetry-diagnostics-quad-grid">
             
             <div class="diag-panel">
-                <h4>🔎 Container DOM & SDK Storage Monitor</h4>
+                <h4>🔎 Container DOM & SDK Storage Inspector</h4>
                 <div id="dom-audit-hook-0" class="audit-row"><span>div#embedded_form</span><span class="status-pill pill-warn">Checking...</span></div>
                 <div id="dom-audit-hook-1" class="audit-row"><span>div#embedded_form1</span><span class="status-pill pill-warn">Checking...</span></div>
                 <div id="dom-audit-hook-2" class="audit-row"><span>div#embedded_form2</span><span class="status-pill pill-warn">Checking...</span></div>
@@ -597,7 +627,10 @@
             </div>
 
             <div class="diag-panel">
-                <h4>📊 Live Analytics Event Trigger Data</h4>
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:10px;">
+                    <h4 style="margin:0; border:none; padding:0;">📊 Analytics Event Tracker Data [<span id="analytics-counter-badge" style="color:var(--analytics-orange);">0</span>]</h4>
+                    <button onclick="downloadCapturedAnalyticsDataAsCSV()" style="height:26px; font-size:0.75rem; padding:0 10px; background:linear-gradient(135deg, #f97316 0%, #ea580c 100%);">📥 Export CSV</button>
+                </div>
                 <div id="analytics-events-stream-box" class="telemetry-scroll-box">
                     <div style="color:#64748b; font-style:italic; font-size:0.8rem;" id="empty-analytics-notice">Standing by for background user action telemetry events...</div>
                 </div>
@@ -665,28 +698,71 @@
             stream.scrollTop = stream.scrollHeight;
         });
 
-        // --- 3. LIVE ANALYTICS EVENT LOG STREAM BROKER INTERCEPTOR ---
+        // --- 3. LIVE ANALYTICS EVENT LOG ENGINE (Captures both eventName and formId parameters) ---
         window.addEventListener('qa_analytics_event', (e) => {
             const notice = document.getElementById('empty-analytics-notice');
             if (notice) notice.remove();
             
+            // Push parameters to local analytics list array cache
+            const timestamp = new Date().toLocaleTimeString();
+            collectedAnalyticsEventsCacheList.push({
+                time: timestamp,
+                eventName: e.detail.name,
+                formId: e.detail.formId
+            });
+
+            // Update UI element counter badge
+            document.getElementById('analytics-counter-badge').innerText = collectedAnalyticsEventsCacheList.length;
+
             const stream = document.getElementById('analytics-events-stream-box');
             const entry = document.createElement('div');
             entry.className = "analytics-event-entry";
-            entry.innerHTML = `<div><span class="badge badge-analytics">Event</span> <strong>${e.detail.name}</strong></div><span style="color:#64748b; font-size:0.75rem;">Dispatched</span>`;
+            entry.innerHTML = `
+                <div>
+                    <span class="badge badge-analytics">Event</span> 
+                    <strong>${e.detail.name}</strong>
+                </div>
+                <div style="color:#94a3b8; font-size:0.75rem; text-align:right;">
+                    FormID: <span style="color:#fb923c; font-weight:bold;">${e.detail.formId}</span>
+                </div>
+            `;
             
             stream.appendChild(entry);
             stream.scrollTop = stream.scrollHeight;
-            writeLog(`Analytics Telemetry: Intercepted payload log metric ➔ [eventName: "${e.detail.name}"]`, 'info');
+            writeLog(`Analytics Telemetry Intercepted ➔ [eventName: "${e.detail.name}"] [formId: "${e.detail.formId}"]`, 'info');
         });
 
-        // --- 4. SDK PROVISIONS CONFIG MANIFEST MATRICES PARSER ---
+        // AUTOMATED CSV BUILDER EXPORT UTILITY
+        function downloadCapturedAnalyticsDataAsCSV() {
+            if (collectedAnalyticsEventsCacheList.length === 0) {
+                alert("Analytics Stream Monitor is empty. Trigger some form interactions first!");
+                return;
+            }
+
+            // Build CSV rows structure safely stringifying quotes
+            let csvBodyContent = "Timestamp,Analytics Event Name,Form ID\n";
+            collectedAnalyticsEventsCacheList.forEach(item => {
+                csvBodyContent += `"${item.time}","${item.eventName}","${item.formId}"\n`;
+            });
+
+            const blobObject = new Blob([csvBodyContent], { type: 'text/csv;charset=utf-8;' });
+            const temporaryAnchorLink = document.createElement("a");
+            
+            temporaryAnchorLink.href = URL.createObjectURL(blobObject);
+            temporaryAnchorLink.setAttribute("download", `Medallia_Analytics_QA_Report_Total_${collectedAnalyticsEventsCacheList.length}_Events.csv`);
+            document.body.appendChild(temporaryAnchorLink);
+            
+            temporaryAnchorLink.click();
+            document.body.removeChild(temporaryAnchorLink);
+            writeLog(`CSV Export Engine Complete: Downloaded structured analysis spreadsheet dataset.`, 'success');
+        }
+
+        // --- 4. SDK PROVISIONS MANIFEST MATRICES PARSER ---
         window.addEventListener('qa_provisions_loaded', (e) => {
             const notice = document.getElementById('empty-provisions-notice');
             if (notice) notice.remove();
-            
             const stream = document.getElementById('provisions-matrix-stream-box');
-            stream.innerHTML = ""; // Clear standing defaults flags
+            stream.innerHTML = ""; 
 
             const provisions = e.detail.provisions;
             let enabledKeys = Object.keys(provisions).filter(key => provisions[key] === true);
@@ -753,7 +829,7 @@
         }
         setInterval(runLiveStorageAndDOMStructureAudit, 400);
 
-        // --- 6. VIEWPORT MATRIX SCALE LAYOUT GENERATORS ---
+        // --- 6. EXPANDED VIEWPORT SCALE ENGINE CONTROLLERS ---
         function applyViewportZoomStyle() {
             const canvas = document.getElementById('master-canvas-wrapper');
             if (canvas) canvas.style.transform = `scale(${currentViewportZoomPercent / 100})`;
@@ -782,7 +858,7 @@
             }
         }
 
-        // --- 7. MANUAL SDK SIMULATION HOOKS CONSOLE COMMANDS ---
+        // --- 7. MANUAL SDK SIMULATION CONSOLE CORE ---
         function invokeManualSDKCommand(actionType) {
             const formIdToken = document.getElementById('manual-form-id-input').value.trim();
             const consoleTerminal = document.getElementById('sdk-terminal-output');
@@ -819,7 +895,7 @@
             }
         }
 
-        // --- 8. LIFECYCLE CHRONOMETER ENGINE ---
+        // --- 8. PRECISION INJECTION LIFECYCLE CHRONOMETER ---
         function startInjectionChronometer() {
             document.getElementById('lifecycle-timer-panel').style.display = 'flex';
             if (sessionStorage.getItem('qa_timer_elapsed')) {
@@ -879,7 +955,7 @@
             writeLog("Chronometer telemetry metrics explicitly reset to zero.", "info");
         }
 
-        // --- 9. NETWORK LATENCY SLIDERS ---
+        // --- 9. NETWORK LATENCY SLIDERS TRANSLATORS ---
         function processLatencyTelemetryChange() {
             const val = parseInt(document.getElementById('latency-slider').value);
             document.getElementById('latency-val').innerText = `${val}ms`;
@@ -1019,16 +1095,6 @@
             parent.appendChild(item);
         }
 
-        function clearAllSimulatedParameters() {
-            Object.keys(virtualGlobalVariables).forEach(key => delete window[key]);
-            virtualSessionCookies.forEach(c => { document.cookie = `${c.key}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;`; });
-            virtualQueriesObject = {}; virtualGlobalVariables = {}; virtualSessionCookies = [];
-            sessionStorage.removeItem('qa_saved_url_obj'); sessionStorage.removeItem('qa_saved_var_obj'); sessionStorage.removeItem('qa_saved_cookie_arr');
-            writeLog("Nuclear Parameter Purge: All parameters, window scopes, and cookies flushed completely.", "warn");
-            renderActiveParametersDashboardList();
-            updateActiveBrowserAddressBarQueryString(true);
-        }
-
         function updateActiveBrowserAddressBarQueryString(forceEvaluateSDK = false) {
             let activePage = allPages.find(p => document.getElementById(p).classList.contains('active')) || 'main-page';
             let baseFileLink = activePage === 'main-page' ? '/' : '/' + activePage;
@@ -1043,7 +1109,7 @@
             }
         }
 
-        // --- 11. PRODUCTION VERCEL ROUTINGS INTERFACES ---
+        // --- 11. PRODUCTION VERCEL NAVIGATION ROUTINGS ---
         function navigateTo(pageId) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.getElementById(pageId).classList.add('active');
@@ -1058,12 +1124,17 @@
             setTimeout(() => {
                 if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
                     window.KAMPYLE_ONSITE_SDK.updatePageView();
-                    writeLog(`Medallia updatePageView() initialized on clean path: ${window.location.pathname}${window.location.search}`, 'success');
+                    writeLog(`Medallia updatePageView() initialized on clean server path: ${window.location.pathname}${window.location.search}`, 'success');
                 }
             }, 200);
         }
 
-        // --- 12. MASTER PROFILES snapshot LOGIC ---
+        window.addEventListener('popstate', (e) => {
+            const pageId = e.state ? e.state.page : 'main-page';
+            navigateTo(pageId);
+        });
+
+        // --- 12. MASTER PROFILES LOGIC ---
         function saveCurrentToProfile() {
             const activePage = allPages.find(p => document.getElementById(p).classList.contains('active')) || 'main-page';
             const scriptCode = document.getElementById(`input-${activePage}`).value.trim();
@@ -1113,9 +1184,7 @@
                     const hardBtn = document.createElement('button');
                     hardBtn.innerText = "🔄 Hard Purge & Reset"; hardBtn.className = "reload-state";
                     hardBtn.onclick = function() {
-                        sessionStorage.clear(); clearAllSimulatedParameters();
-                        writeLog("Nuclear Reset Complete: Client cache cleared. Redirecting to app root...", "warn");
-                        window.location.href = window.location.origin + '/';
+                        executeGlobalNuclearApplicationReset();
                     };
 
                     groupRow.appendChild(softBtn); groupRow.appendChild(hardBtn);
