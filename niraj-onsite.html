@@ -873,9 +873,10 @@
         }
 
         // --- 6. EXPANDED VIEWPORT SCALE ENGINE CONTROLLERS ---
-        function applyViewportZoomStyle() {
-            // FIXED CHERRY-PICK: Uses true body zoom to match native browser settings exactly
-            document.body.style.zoom = currentViewportZoomPercent + "%";
+       function applyViewportZoomStyle() {
+            // TARGET FIX: Scales the root document element node to force all absolute floating containers, 
+            // overlays, and embedded modal frames to inherit the sizing changes uniformly.
+            document.documentElement.style.zoom = currentViewportZoomPercent + "%";
             
             const inputField = document.getElementById('zoom-manual-input-field');
             if (inputField) inputField.value = currentViewportZoomPercent;
@@ -887,7 +888,7 @@
             if (targetZoom > 400) targetZoom = 400;
             currentViewportZoomPercent = targetZoom;
             applyViewportZoomStyle();
-            writeLog(`Native browser body viewport zoomed via script engine: ${currentViewportZoomPercent}%`, 'info');
+            writeLog(`Viewport canvas layout zoomed successfully: ${currentViewportZoomPercent}%`, 'info');
         }
 
         UXString = "";
