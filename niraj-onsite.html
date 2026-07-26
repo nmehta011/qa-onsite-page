@@ -384,6 +384,27 @@
         .ua-scope-name { font-family: monospace; color: #cbd5e1; font-weight: bold; font-size: 0.78rem; }
         .ua-scope-value { font-family: monospace; color: #38bdf8; word-break: break-all; font-size: 0.74rem; }
 
+        /* --- FEEDBACK SUBMISSION INSPECTOR --- */
+        .submission-card { background: #090d16; border: 1px solid var(--panel-border); border-left: 3px solid #334155; border-radius: 10px; padding: 15px 17px; margin-bottom: 13px; }
+        .submission-card.card-submitted { border-left-color: var(--accent-green); box-shadow: 0 0 16px rgba(16,185,129,0.1); }
+        .submission-card.card-abandoned { border-left-color: #f59e0b; }
+        .submission-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 11px; }
+        .submission-form-id { font-family: monospace; font-weight: bold; color: #e2e8f0; font-size: 0.9rem; }
+        .submission-elapsed { margin-left: auto; font-family: monospace; font-size: 0.75rem; color: #94a3b8; white-space: nowrap; }
+
+        .uuid-row { display: grid; grid-template-columns: 190px 1fr auto; gap: 10px; align-items: center; padding: 6px 2px; border-bottom: 1px solid #111827; font-size: 0.78rem; }
+        @media (max-width: 900px) { .uuid-row { grid-template-columns: 1fr; gap: 4px; } }
+        .uuid-label { font-family: monospace; color: #64748b; }
+        .uuid-value { font-family: monospace; color: #38bdf8; word-break: break-all; }
+        .uuid-value.value-primary { color: #34d399; font-weight: bold; }
+        .copy-uuid-btn { background: transparent; border: 1px solid #334155; color: #94a3b8; font-size: 0.7rem; padding: 2px 9px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+        .copy-uuid-btn:hover { border-color: var(--accent-green); color: #34d399; }
+
+        .journey-track { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 11px; }
+        .journey-step { font-size: 0.68rem; font-family: monospace; padding: 3px 9px; border-radius: 20px; background: #0d1527; border: 1px solid #1e293b; color: #94a3b8; white-space: nowrap; }
+        .journey-step.step-done { border-color: var(--accent-green); color: #34d399; }
+        .journey-step .step-time { color: #475569; margin-left: 5px; }
+
         .guidance-callout { background: #04060b; border: 1px solid #334155; border-left: 3px solid var(--analytics-orange); border-radius: 8px; padding: 14px 16px; margin-top: 14px; }
         .guidance-callout h5 { margin: 0 0 8px 0; color: #fb923c; font-size: 0.85rem; }
         .guidance-callout ol { margin: 0; padding-left: 20px; color: var(--text-muted); font-size: 0.8rem; line-height: 1.7; }
@@ -500,6 +521,27 @@
         .form-target-div iframe { width: 100% !important; min-height: 500px !important; border: none !important; }
         .embedded-code-display { background: #090d16; padding: 10px; border-radius: 6px; margin-top: 8px; color: #34d399; font-family: monospace; font-size: 0.85rem; word-break: break-all; max-height: 75px; overflow-y: auto; border: 1px solid var(--panel-border); }
         
+        /* Compact toolbar buttons inside diagnostic panels. The panel-wide `.diag-panel button`
+           gradient rule is more specific than a bare class, so it would otherwise win and render
+           these as full-size primary buttons. */
+        .diag-panel button.lifecycle-btn {
+            background: #111827; border: 1px solid #334155; color: #cbd5e1;
+            height: 26px; padding: 0 10px; font-size: 0.72rem; font-weight: 600;
+            border-radius: 5px; box-shadow: none;
+        }
+        .diag-panel button.lifecycle-btn:hover { background: #1b2438; border-color: #64748b; color: #ffffff; transform: none; }
+        .diag-panel button.lifecycle-btn.btn-commit { background: var(--sdk-purple); border-color: var(--sdk-purple); color: #ffffff; }
+        .diag-panel button.lifecycle-btn.btn-commit:hover { background: #7c3aed; }
+        .diag-panel button.lifecycle-btn.btn-purge { color: #f87171; }
+        .diag-panel button.lifecycle-btn.btn-purge:hover { border-color: var(--danger-red); background: rgba(239, 68, 68, 0.12); }
+
+        .diag-panel button.copy-uuid-btn {
+            background: transparent; border: 1px solid #334155; color: #94a3b8;
+            height: 22px; padding: 0 9px; font-size: 0.7rem; font-weight: 600;
+            border-radius: 4px; box-shadow: none;
+        }
+        .diag-panel button.copy-uuid-btn:hover { background: rgba(16, 185, 129, 0.1); border-color: var(--accent-green); color: #34d399; transform: none; }
+
         footer { margin-top: 60px; border-top: 1px solid #1e293b; padding: 25px 0; text-align: center; font-size: 0.85rem; color: var(--text-muted); }
         footer span { color: #ef4444; font-size: 1rem; margin: 0 2px; }
     </style>
@@ -736,6 +778,27 @@
                 }
             } catch(e) {}
         }
+
+        // =========================================================================
+        // 🧾 FEEDBACK SUBMISSION INSPECTOR TAP
+        // =========================================================================
+        // The form runs in a cross-origin iframe, so its submit request itself is unreachable.
+        // It does however report lifecycle back to the parent over postMessage, and those
+        // messages carry the identifiers that matter — including feedbackUUID, which is the
+        // record id needed to find this exact submission in the Inbox.
+        window.addEventListener('message', function captureOnsiteFormLifecycleMessage(event) {
+            if (!/medallia|kampyle|nebula/i.test(event.origin || '')) return;
+
+            let payload = event.data;
+            if (typeof payload === 'string') {
+                try { payload = JSON.parse(payload); } catch (err) { return; }
+            }
+            if (!payload || typeof payload !== 'object' || !payload.action) return;
+
+            window.dispatchEvent(new CustomEvent('qa_form_lifecycle_message', {
+                detail: { origin: event.origin, action: payload.action, payload }
+            }));
+        }, true);
 
         // =========================================================================
         // 🛰️ NATIVE SDK CUSTOM EVENT BUS TAP
@@ -1115,6 +1178,23 @@
                 exactly how far the emulation carries, so a submission is never mistaken for a genuine mobile one.
             </p>
             <div id="ua-scope-report" style="margin-top:14px;"></div>
+        </div>
+
+        <div class="diag-panel" style="margin-top:25px;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">🧾 Feedback Submission Inspector [<span id="submission-counter-badge" style="color:var(--accent-green);">0</span>]</h4>
+                <button class="lifecycle-btn" onclick="downloadSubmissionReportAsCSV()">📥 Export CSV</button>
+                <button class="lifecycle-btn btn-purge" onclick="clearCapturedSubmissions()">Clear</button>
+            </div>
+            <p style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                The form reports its lifecycle to this page over <code style="color:#a78bfa;">postMessage</code>, which carries the
+                identifiers a submitted record is filed under. <strong>Copy the Feedback UUID to locate that exact response in the
+                Inbox</strong> instead of hunting by timestamp. The answers themselves travel from the form straight to Medallia and
+                never pass through this page, so they cannot be shown here.
+            </p>
+            <div id="submission-inspector-container" style="margin-top:14px;">
+                <div class="no-rules-notice">Awaiting form activity. Open a form and submit feedback to capture a submission trace...</div>
+            </div>
         </div>
 
         <div class="diag-panel" style="margin-top:25px;">
@@ -1579,6 +1659,163 @@
             temporaryAnchorLink.click(); document.body.removeChild(temporaryAnchorLink);
             URL.revokeObjectURL(temporaryAnchorLink.href);
             writeLog(`CSV Export Engine Complete: Downloaded ${collectedSdkBusEventsCacheList.length} native SDK bus broadcasts.`, 'success');
+        }
+
+        // --- 3c. FEEDBACK SUBMISSION INSPECTOR ---
+        // One trace per form journey, keyed by form id. Traces are keyed rather than appended so
+        // the messages of a single journey (loaded → shown → each page → submitted) collapse into
+        // one readable record instead of a flat stream the tester has to reassemble.
+        let capturedSubmissionTraces = [];
+
+        const SUBMISSION_JOURNEY_STEPS = [
+            { action: 'formLoaded', label: 'Loaded' },
+            { action: 'inviteAccepted', label: 'Invite accepted' },
+            { action: 'formPageShown', label: 'Page shown' },
+            { action: 'formSubmitted', label: 'Submitted' },
+            { action: 'MDigital_ThankYou_Displayed', label: 'Thank-you shown' }
+        ];
+
+        window.addEventListener('qa_form_lifecycle_message', (e) => {
+            const { action, payload } = e.detail;
+            const formId = String(payload.formId || 'unknown');
+
+            // Height chatter carries no diagnostic value and would drown the trace.
+            if (action === 'iFrameHeightChanged') return;
+
+            let trace = capturedSubmissionTraces.find(item => item.formId === formId && !item.isComplete);
+            if (!trace) {
+                trace = { formId, startedAt: Date.now(), steps: [], isComplete: false,
+                          feedbackUUID: null, correlationUUID: null, formLanguage: null,
+                          isAutoAction: null, pagesShown: 0, screenCaptureEnabled: null };
+                capturedSubmissionTraces.push(trace);
+            }
+
+            trace.steps.push({ action, at: Date.now(), time: new Date().toLocaleTimeString() });
+            if (payload.feedbackUUID) trace.feedbackUUID = payload.feedbackUUID;
+            if (payload.feedbackCorrelationUUID) trace.correlationUUID = payload.feedbackCorrelationUUID;
+            if (payload.formLanguage) trace.formLanguage = payload.formLanguage;
+            if (typeof payload.isAutoAction === 'boolean') trace.isAutoAction = payload.isAutoAction;
+            if (typeof payload.isScreenCaptureEnabled === 'boolean') trace.screenCaptureEnabled = payload.isScreenCaptureEnabled;
+            if (action === 'formPageShown') trace.pagesShown = Math.max(trace.pagesShown, (payload.pageNumber || 0) + 1);
+
+            if (action === 'formSubmitted') {
+                trace.isComplete = true;
+                trace.submittedAt = Date.now();
+                writeLog(`✅ Feedback submitted ➔ form ${formId} · feedbackUUID ${payload.feedbackUUID || 'n/a'}`, 'success');
+            }
+
+            renderSubmissionInspector();
+        });
+
+        function findFirstStepTimestamp(trace, action) {
+            const step = trace.steps.find(item => item.action === action);
+            return step ? step.at : null;
+        }
+
+        function renderSubmissionInspector() {
+            const container = document.getElementById('submission-inspector-container');
+            if (!container) return;
+
+            const counter = document.getElementById('submission-counter-badge');
+            const submittedCount = capturedSubmissionTraces.filter(t => t.isComplete).length;
+            if (counter) counter.innerText = submittedCount ? `${submittedCount} submitted` : `${capturedSubmissionTraces.length} in progress`;
+
+            if (capturedSubmissionTraces.length === 0) {
+                container.innerHTML = `<div class="no-rules-notice">Awaiting form activity. Open a form and submit feedback to capture a submission trace...</div>`;
+                return;
+            }
+
+            container.innerHTML = "";
+            // Newest first: the trace a tester just produced is the one they want to read.
+            capturedSubmissionTraces.slice().reverse().forEach(trace => {
+                const shownAt = findFirstStepTimestamp(trace, 'formPageShown') || trace.startedAt;
+                const elapsedLabel = trace.isComplete && trace.submittedAt
+                    ? `${((trace.submittedAt - shownAt) / 1000).toFixed(1)}s from first page to submit`
+                    : 'in progress';
+
+                const identityRows = [
+                    { label: 'Feedback UUID', value: trace.feedbackUUID, primary: true,
+                      hint: 'Search this in the Inbox to open this exact response.' },
+                    { label: 'Correlation UUID', value: trace.correlationUUID },
+                    { label: 'Form language', value: trace.formLanguage },
+                    { label: 'Pages displayed', value: trace.pagesShown || null },
+                    { label: 'Screen capture', value: trace.screenCaptureEnabled === null ? null : String(trace.screenCaptureEnabled) },
+                    { label: 'Auto-submitted', value: trace.isAutoAction === null ? null : String(trace.isAutoAction) }
+                ].filter(row => row.value !== null && row.value !== undefined);
+
+                const card = document.createElement('div');
+                card.className = "submission-card " + (trace.isComplete ? "card-submitted" : "card-abandoned");
+                card.innerHTML = `
+                    <div class="submission-head">
+                        <span class="badge ${trace.isComplete ? 'badge-provisions' : 'badge-analytics'}">${trace.isComplete ? 'Submitted' : 'Open'}</span>
+                        <span class="submission-form-id">form ${escapeMarkupForSafeRender(trace.formId)}</span>
+                        <span class="submission-elapsed">${escapeMarkupForSafeRender(elapsedLabel)}</span>
+                    </div>
+                    ${identityRows.map(row => `
+                        <div class="uuid-row">
+                            <div>
+                                <div class="uuid-label">${escapeMarkupForSafeRender(row.label)}</div>
+                                ${row.hint ? `<div class="design-note">${escapeMarkupForSafeRender(row.hint)}</div>` : ''}
+                            </div>
+                            <div class="uuid-value ${row.primary ? 'value-primary' : ''}">${escapeMarkupForSafeRender(row.value)}</div>
+                            <button class="copy-uuid-btn" data-copy="${escapeMarkupForSafeRender(row.value)}">Copy</button>
+                        </div>`).join('')}
+                    <div class="journey-track">
+                        ${SUBMISSION_JOURNEY_STEPS.map(step => {
+                            const at = findFirstStepTimestamp(trace, step.action);
+                            const relative = at ? `+${((at - trace.startedAt) / 1000).toFixed(1)}s` : '';
+                            return `<span class="journey-step ${at ? 'step-done' : ''}">${escapeMarkupForSafeRender(step.label)}${at ? `<span class="step-time">${relative}</span>` : ''}</span>`;
+                        }).join('')}
+                    </div>`;
+
+                card.querySelectorAll('.copy-uuid-btn').forEach(button => {
+                    button.onclick = () => {
+                        const value = button.getAttribute('data-copy');
+                        if (!navigator.clipboard) { writeLog(`Clipboard unavailable. Value: ${value}`, 'warn'); return; }
+                        navigator.clipboard.writeText(value)
+                            .then(() => { button.innerText = "Copied"; setTimeout(() => button.innerText = "Copy", 1400); })
+                            .catch(err => writeLog(`Clipboard write rejected: ${err.message}`, 'warn'));
+                    };
+                });
+                container.appendChild(card);
+            });
+        }
+
+        function clearCapturedSubmissions() {
+            capturedSubmissionTraces = [];
+            renderSubmissionInspector();
+            writeLog("Submission inspector traces cleared.", "info");
+        }
+
+        function downloadSubmissionReportAsCSV() {
+            if (capturedSubmissionTraces.length === 0) { alert("No submission traces captured yet. Submit some feedback first!"); return; }
+
+            const escapeCsvCell = value => `"${String(value === null || value === undefined ? '' : value).replace(/"/g, '""')}"`;
+            let csv = ["Form ID", "Status", "Feedback UUID", "Correlation UUID", "Language",
+                       "Pages Displayed", "Auto Submitted", "Seconds To Submit", "Journey"].map(escapeCsvCell).join(",") + "\n";
+
+            capturedSubmissionTraces.forEach(trace => {
+                const shownAt = findFirstStepTimestamp(trace, 'formPageShown') || trace.startedAt;
+                csv += [
+                    trace.formId,
+                    trace.isComplete ? "submitted" : "not submitted",
+                    trace.feedbackUUID || "",
+                    trace.correlationUUID || "",
+                    trace.formLanguage || "",
+                    trace.pagesShown || "",
+                    trace.isAutoAction === null ? "" : trace.isAutoAction,
+                    trace.isComplete && trace.submittedAt ? ((trace.submittedAt - shownAt) / 1000).toFixed(1) : "",
+                    trace.steps.map(s => s.action).join(" → ")
+                ].map(escapeCsvCell).join(",") + "\n";
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute("download", `Medallia_Submission_Traces_${capturedSubmissionTraces.length}.csv`);
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            writeLog(`CSV Export Engine Complete: Downloaded ${capturedSubmissionTraces.length} submission traces.`, 'success');
         }
 
         // --- 4. SDK PROVISIONS CONFIG MANIFEST MATRICES PARSER ---
