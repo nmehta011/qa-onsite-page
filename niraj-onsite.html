@@ -454,6 +454,32 @@
         .state-pill-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 14px 0; }
         .no-rules-notice { color: #64748b; font-style: italic; font-size: 0.8rem; padding: 10px 4px; }
 
+        /* --- CONFIG DRIFT BASELINE --- */
+        .baseline-meta-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; font-family: monospace; font-size: 0.76rem; color: #64748b; margin-top: 12px; }
+        .drift-row { display: grid; grid-template-columns: 150px 220px 1fr 1fr; gap: 12px; align-items: start; padding: 8px 4px; border-bottom: 1px solid #111827; font-size: 0.78rem; }
+        @media (max-width: 1000px) { .drift-row { grid-template-columns: 1fr; gap: 4px; } }
+        .drift-scope { font-family: monospace; font-size: 0.72rem; color: #94a3b8; }
+        .drift-key { font-family: monospace; color: #cbd5e1; font-weight: bold; word-break: break-word; }
+        .drift-from { font-family: monospace; color: #f87171; word-break: break-word; }
+        .drift-to { font-family: monospace; color: #34d399; word-break: break-word; }
+        .drift-kind { font-size: 0.66rem; font-weight: bold; padding: 1px 7px; border-radius: 4px; text-transform: uppercase; }
+        .kind-changed { background: rgba(245, 158, 11, 0.16); color: #fbbf24; }
+        .kind-added { background: rgba(16, 185, 129, 0.16); color: #34d399; }
+        .kind-removed { background: rgba(239, 68, 68, 0.16); color: #f87171; }
+
+        /* --- JOURNEY AUTOMATION --- */
+        .journey-controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-top: 14px; }
+        .journey-field { display: flex; flex-direction: column; gap: 5px; }
+        .journey-field label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+        .journey-field input { width: 110px; height: 32px; background: #111827; border: 1px solid #334155; border-radius: 6px; color: var(--text-main); padding: 0 10px; font-family: monospace; font-size: 0.8rem; }
+        .journey-field input:focus { outline: none; border-color: #0ea5e9; }
+        .journey-progress { height: 5px; background: #0d1527; border-radius: 3px; overflow: hidden; margin-top: 14px; }
+        .journey-progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #0ea5e9, #6366f1); transition: width 0.35s ease; }
+        .journey-log-row { display: grid; grid-template-columns: 110px 1fr; gap: 12px; padding: 7px 4px; border-bottom: 1px solid #111827; font-size: 0.78rem; font-family: monospace; }
+        .journey-log-page { color: #38bdf8; font-weight: bold; }
+        .journey-log-detail { color: #94a3b8; word-break: break-word; }
+        .journey-flip { color: #34d399; font-weight: bold; }
+
         /* --- LIFECYCLE STATE & DATE MANAGER --- */
         .lifecycle-state-panel { background: #0d1527; border: 1px solid #1e293b; border-radius: 12px; padding: 24px; margin-top: 25px; }
         .lifecycle-state-panel h3 { margin: 0 0 6px 0; font-size: 1.1rem; color: #cbd5e1; }
@@ -853,7 +879,14 @@
         const sdkCustomEventBusTapPollToken = setInterval(installNativeSdkCustomEventBusTap, 25);
 
         function executeGlobalNuclearApplicationReset() {
+            // The purge exists to reset SDK respondent state. A saved config baseline is QA
+            // tooling rather than SDK state, and losing it to a routine purge would quietly
+            // discard the reference a drift comparison depends on.
+            const preservedConfigBaseline = localStorage.getItem('qa_config_baseline_v1');
+
             localStorage.clear(); sessionStorage.clear();
+            if (preservedConfigBaseline) localStorage.setItem('qa_config_baseline_v1', preservedConfigBaseline);
+
             document.cookie.split(";").forEach(function(c) { 
                 document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
             });
@@ -1238,6 +1271,53 @@
             </div>
             <div id="targeting-matrix-container" style="margin-top:12px;">
                 <div class="no-rules-notice">Inject a property embed to enumerate published forms and their targeting configuration...</div>
+            </div>
+        </div>
+
+        <div class="diag-panel" style="margin-top:25px;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">🧭 Config Drift Baseline <span id="drift-summary-pill" class="status-pill pill-warn">No baseline saved</span></h4>
+                <button class="lifecycle-btn btn-commit" onclick="saveConfigurationBaseline()">💾 Save Baseline</button>
+                <button class="lifecycle-btn" onclick="compareAgainstConfigurationBaseline()">🔍 Compare Now</button>
+                <button class="lifecycle-btn" onclick="exportConfigurationBaseline()">📤 Export JSON</button>
+                <button class="lifecycle-btn" onclick="document.getElementById('baseline-import-input').click()">📥 Import JSON</button>
+                <input type="file" id="baseline-import-input" accept="application/json,.json" style="display:none;" onchange="importConfigurationBaseline(event)">
+            </div>
+            <p style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                Records every form's configured targeting rules, button design and enabled provisions as a baseline, then diffs a later
+                run against it. Only <strong>configured</strong> values are stored — never live verdicts — so the comparison stays stable
+                across sessions and surfaces genuine config changes rather than storage state. Export the JSON to compare one
+                environment against another, or to commit it alongside the repo.
+            </p>
+            <div class="baseline-meta-row" id="baseline-meta-row"></div>
+            <div id="drift-report-container" style="margin-top:14px;"></div>
+        </div>
+
+        <div class="diag-panel" style="margin-top:25px;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">🧭 Journey Automation <span id="journey-status-pill" class="status-pill pill-warn">Idle</span></h4>
+                <button class="lifecycle-btn btn-commit" id="journey-start-btn" onclick="startAutomatedPageJourney()">▶ Run Journey</button>
+                <button class="lifecycle-btn btn-purge" onclick="stopAutomatedPageJourney()">■ Stop</button>
+            </div>
+            <p style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                Walks the scenario pages automatically, calling <code style="color:#a78bfa;">updatePageView()</code> at each hop, so
+                count- and time-based rules advance without manual clicking. Rules shown as
+                <span class="verdict-pill verdict-info" style="display:inline;">ⓘ runtime</span> in the targeting matrix are exactly the
+                ones this exercises — the journey reports any verdict that flips as it runs.
+            </p>
+            <div class="journey-controls">
+                <div class="journey-field">
+                    <label for="journey-dwell-input">Dwell per page (s)</label>
+                    <input type="number" id="journey-dwell-input" value="8" min="1" max="120">
+                </div>
+                <div class="journey-field">
+                    <label for="journey-loops-input">Full loops</label>
+                    <input type="number" id="journey-loops-input" value="1" min="1" max="10">
+                </div>
+            </div>
+            <div class="journey-progress"><div class="journey-progress-bar" id="journey-progress-bar"></div></div>
+            <div id="journey-log-container" style="margin-top:12px;">
+                <div class="no-rules-notice">Journey has not been run yet. Inject a property first so rule changes can be observed.</div>
             </div>
         </div>
 
@@ -3224,6 +3304,327 @@
             writeLog(`CSV Export Engine Complete: Downloaded targeting matrix for ${registry.length} published forms.`, 'success');
         }
 
+        // --- 5d. CONFIG DRIFT BASELINE ---
+        // Snapshots capture CONFIGURED values only. Live verdicts depend on stored lifecycle
+        // dates and wall-clock time, so including them would report drift on every comparison
+        // and bury the genuine configuration changes this is meant to surface.
+        const CONFIG_BASELINE_STORAGE_KEY = 'qa_config_baseline_v1';
+
+        function buildCurrentConfigurationSnapshot() {
+            const registry = readPublishedFormRegistryFromSdk();
+            if (!registry) return null;
+
+            const readSdk = (fn, fallback) => { try { return fn(); } catch (err) { return fallback; } };
+            const latestEvent = collectedAnalyticsEventsCacheList.length
+                ? collectedAnalyticsEventsCacheList[collectedAnalyticsEventsCacheList.length - 1].payload : {};
+
+            let enabledProvisions = [];
+            const provisionsMap = readSdk(() => KAMPYLE_DATA.getMemoryData(KAMPYLE_CONSTANT.MEMORY_DATA_FIELDS.DATA_JSON).provisions, null);
+            if (provisionsMap) enabledProvisions = Object.keys(provisionsMap).filter(k => provisionsMap[k] === true).sort();
+
+            const snapshot = {
+                version: 1,
+                capturedAt: new Date().toISOString(),
+                propertyId: readSdk(() => String(KAMPYLE_DATA.getPropertyId()), null) || latestEvent.propertyId || null,
+                accountId: latestEvent.accountId || null,
+                sdkVersion: latestEvent.sdkVersion || null,
+                provisions: enabledProvisions,
+                forms: {}
+            };
+
+            registry.forEach(form => {
+                const rules = {};
+                decodeTargetingRulesForForm(form).forEach(rule => { rules[rule.name] = String(rule.configured); });
+
+                snapshot.forms[form.formId] = {
+                    formType: form.formType,
+                    displayType: form.displayType,
+                    displayDirection: form.displayDirection || null,
+                    buttonData: form.buttonData ? Object.keys(form.buttonData)
+                        .filter(k => typeof form.buttonData[k] !== 'object')
+                        .reduce((acc, k) => { acc[k] = String(form.buttonData[k]); return acc; }, {}) : null,
+                    rules
+                };
+            });
+            return snapshot;
+        }
+
+        function loadStoredConfigurationBaseline() {
+            try {
+                const raw = localStorage.getItem(CONFIG_BASELINE_STORAGE_KEY);
+                return raw ? JSON.parse(raw) : null;
+            } catch (err) {
+                writeLog(`Stored baseline could not be parsed: ${err.message}`, 'warn');
+                return null;
+            }
+        }
+
+        function saveConfigurationBaseline() {
+            const snapshot = buildCurrentConfigurationSnapshot();
+            if (!snapshot) { alert("No form registry available yet. Inject a property embed first!"); return; }
+
+            localStorage.setItem(CONFIG_BASELINE_STORAGE_KEY, JSON.stringify(snapshot));
+            renderConfigurationBaselineMeta();
+            document.getElementById('drift-report-container').innerHTML =
+                `<div class="no-rules-notice">Baseline saved for ${Object.keys(snapshot.forms).length} forms. Load another environment or re-inject after a config change, then press Compare Now.</div>`;
+            writeLog(`Config baseline saved: ${Object.keys(snapshot.forms).length} forms, ${snapshot.provisions.length} enabled provisions.`, 'success');
+        }
+
+        function renderConfigurationBaselineMeta() {
+            const metaRow = document.getElementById('baseline-meta-row');
+            const pill = document.getElementById('drift-summary-pill');
+            if (!metaRow || !pill) return;
+
+            const baseline = loadStoredConfigurationBaseline();
+            if (!baseline) {
+                metaRow.innerHTML = "";
+                pill.className = "status-pill pill-warn";
+                pill.innerText = "No baseline saved";
+                return;
+            }
+            pill.className = "status-pill pill-sdk";
+            pill.innerText = "Baseline ready";
+            metaRow.innerHTML = `
+                <span>captured: ${escapeMarkupForSafeRender(new Date(baseline.capturedAt).toLocaleString())}</span>
+                <span>property: ${escapeMarkupForSafeRender(baseline.propertyId || 'n/a')}</span>
+                <span>forms: ${Object.keys(baseline.forms || {}).length}</span>
+                <span>provisions: ${(baseline.provisions || []).length}</span>
+                <span>sdk: ${escapeMarkupForSafeRender(baseline.sdkVersion || 'n/a')}</span>`;
+        }
+
+        function diffConfigurationSnapshots(baseline, current) {
+            const changes = [];
+            const record = (scope, key, from, to, kind) => changes.push({ scope, key, from, to, kind });
+
+            const baselineProvisions = new Set(baseline.provisions || []);
+            const currentProvisions = new Set(current.provisions || []);
+            baselineProvisions.forEach(p => { if (!currentProvisions.has(p)) record('provisions', p, 'enabled', 'disabled', 'removed'); });
+            currentProvisions.forEach(p => { if (!baselineProvisions.has(p)) record('provisions', p, 'disabled', 'enabled', 'added'); });
+
+            const baselineForms = baseline.forms || {};
+            const currentForms = current.forms || {};
+            const allFormIds = Array.from(new Set([...Object.keys(baselineForms), ...Object.keys(currentForms)])).sort();
+
+            allFormIds.forEach(formId => {
+                const before = baselineForms[formId];
+                const after = currentForms[formId];
+
+                if (!after) { record(`form ${formId}`, '(entire form)', `${before.formType} form present`, 'missing', 'removed'); return; }
+                if (!before) { record(`form ${formId}`, '(entire form)', 'not in baseline', `${after.formType} form added`, 'added'); return; }
+
+                ['formType', 'displayType', 'displayDirection'].forEach(field => {
+                    if (String(before[field]) !== String(after[field])) record(`form ${formId}`, field, before[field], after[field], 'changed');
+                });
+
+                const ruleNames = Array.from(new Set([...Object.keys(before.rules || {}), ...Object.keys(after.rules || {})])).sort();
+                ruleNames.forEach(name => {
+                    const fromValue = (before.rules || {})[name];
+                    const toValue = (after.rules || {})[name];
+                    if (fromValue === undefined) record(`form ${formId}`, `rule: ${name}`, 'not configured', toValue, 'added');
+                    else if (toValue === undefined) record(`form ${formId}`, `rule: ${name}`, fromValue, 'not configured', 'removed');
+                    else if (fromValue !== toValue) record(`form ${formId}`, `rule: ${name}`, fromValue, toValue, 'changed');
+                });
+
+                const beforeButton = before.buttonData || {};
+                const afterButton = after.buttonData || {};
+                Array.from(new Set([...Object.keys(beforeButton), ...Object.keys(afterButton)])).sort().forEach(key => {
+                    if (String(beforeButton[key]) !== String(afterButton[key])) {
+                        record(`form ${formId}`, `button: ${key}`, beforeButton[key] === undefined ? 'not set' : beforeButton[key],
+                               afterButton[key] === undefined ? 'not set' : afterButton[key], 'changed');
+                    }
+                });
+            });
+            return changes;
+        }
+
+        function compareAgainstConfigurationBaseline() {
+            const container = document.getElementById('drift-report-container');
+            const pill = document.getElementById('drift-summary-pill');
+            const baseline = loadStoredConfigurationBaseline();
+
+            if (!baseline) { alert("No baseline saved yet. Press Save Baseline first, or import one."); return; }
+            const current = buildCurrentConfigurationSnapshot();
+            if (!current) { alert("No form registry available yet. Inject a property embed first!"); return; }
+
+            const changes = diffConfigurationSnapshots(baseline, current);
+
+            if (changes.length === 0) {
+                pill.className = "status-pill pill-success";
+                pill.innerText = "No drift detected";
+                container.innerHTML = `<div class="design-group"><div class="design-group-title">
+                    <span>Configuration matches the baseline</span>
+                    <span class="status-pill pill-success">${Object.keys(current.forms).length} forms · ${current.provisions.length} provisions identical</span>
+                </div></div>`;
+                writeLog("Config drift comparison: no differences against the saved baseline.", 'success');
+                return;
+            }
+
+            pill.className = "status-pill pill-danger";
+            pill.innerText = `${changes.length} difference(s)`;
+            container.innerHTML = `
+                <div class="design-group">
+                    <div class="design-group-title">
+                        <span>Drift against baseline captured ${escapeMarkupForSafeRender(new Date(baseline.capturedAt).toLocaleString())}</span>
+                        <span class="status-pill pill-danger">${changes.length} difference(s)</span>
+                    </div>
+                    <div class="drift-row design-check-head">
+                        <div>Scope</div><div>Setting</div><div>Baseline</div><div>Current</div>
+                    </div>
+                    ${changes.map(change => `
+                        <div class="drift-row">
+                            <div>
+                                <div class="drift-scope">${escapeMarkupForSafeRender(change.scope)}</div>
+                                <span class="drift-kind kind-${change.kind}">${change.kind}</span>
+                            </div>
+                            <div class="drift-key">${escapeMarkupForSafeRender(change.key)}</div>
+                            <div class="drift-from">${escapeMarkupForSafeRender(change.from)}</div>
+                            <div class="drift-to">${escapeMarkupForSafeRender(change.to)}</div>
+                        </div>`).join('')}
+                </div>`;
+            writeLog(`Config drift comparison: ${changes.length} difference(s) against the saved baseline.`, 'warn');
+        }
+
+        function exportConfigurationBaseline() {
+            const snapshot = loadStoredConfigurationBaseline() || buildCurrentConfigurationSnapshot();
+            if (!snapshot) { alert("Nothing to export yet. Inject a property embed first!"); return; }
+
+            const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute("download", `onsite-config-baseline-${snapshot.propertyId || 'property'}.json`);
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            writeLog("Config baseline exported as JSON.", 'success');
+        }
+
+        function importConfigurationBaseline(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    const parsed = JSON.parse(reader.result);
+                    if (!parsed || !parsed.forms) throw new Error("file does not look like a config baseline");
+                    localStorage.setItem(CONFIG_BASELINE_STORAGE_KEY, JSON.stringify(parsed));
+                    renderConfigurationBaselineMeta();
+                    writeLog(`Config baseline imported from ${file.name}: ${Object.keys(parsed.forms).length} forms.`, 'success');
+                    compareAgainstConfigurationBaseline();
+                } catch (err) {
+                    alert(`Could not import baseline: ${err.message}`);
+                    writeLog(`❌ Baseline import failed: ${err.message}`, 'warn');
+                }
+            };
+            reader.onerror = () => writeLog("❌ Baseline file could not be read.", 'warn');
+            reader.readAsText(file);
+            event.target.value = "";
+        }
+
+        // --- 5e. JOURNEY AUTOMATION ---
+        // Count- and time-based targeting rules cannot be evaluated statically, so the matrix
+        // reports them as runtime-only. Walking the scenario pages is what actually advances
+        // them, and the journey reports any verdict that flips while it runs.
+        let activeJourneyTimeoutToken = null;
+        let isJourneyRunning = false;
+
+        function captureTargetingVerdictFingerprint() {
+            const registry = readPublishedFormRegistryFromSdk();
+            const fingerprint = {};
+            if (!registry) return fingerprint;
+            registry.forEach(form => {
+                decodeTargetingRulesForForm(form).forEach(rule => {
+                    fingerprint[`${form.formId}:${rule.name}`] = rule.verdict;
+                });
+            });
+            return fingerprint;
+        }
+
+        function appendJourneyLogRow(pageLabel, detailMarkup) {
+            const container = document.getElementById('journey-log-container');
+            if (!container) return;
+            const placeholder = container.querySelector('.no-rules-notice');
+            if (placeholder) placeholder.remove();
+
+            const row = document.createElement('div');
+            row.className = "journey-log-row";
+            row.innerHTML = `<div class="journey-log-page">${escapeMarkupForSafeRender(pageLabel)}</div>
+                             <div class="journey-log-detail">${detailMarkup}</div>`;
+            container.appendChild(row);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function setJourneyRunningState(running, statusText, statusClass) {
+            isJourneyRunning = running;
+            const pill = document.getElementById('journey-status-pill');
+            const startButton = document.getElementById('journey-start-btn');
+            if (pill) { pill.className = `status-pill ${statusClass}`; pill.innerText = statusText; }
+            if (startButton) startButton.disabled = running;
+        }
+
+        function startAutomatedPageJourney() {
+            if (isJourneyRunning) return;
+            if (!window.KAMPYLE_ONSITE_SDK) {
+                alert("Inject a property embed first — a journey without an active SDK cannot advance any rule.");
+                return;
+            }
+
+            const dwellSeconds = Math.max(1, Math.min(120, parseInt(document.getElementById('journey-dwell-input').value) || 8));
+            const loopCount = Math.max(1, Math.min(10, parseInt(document.getElementById('journey-loops-input').value) || 1));
+            const itinerary = [];
+            for (let loop = 0; loop < loopCount; loop++) allPages.forEach(pageId => itinerary.push(pageId));
+
+            document.getElementById('journey-log-container').innerHTML = "";
+            appendJourneyLogRow('start', `Walking ${itinerary.length} page views at ${dwellSeconds}s dwell. Session page counter now <strong>${escapeMarkupForSafeRender(localStorage.getItem('kampyleSessionPageCounter') || '0')}</strong>.`);
+            setJourneyRunningState(true, `Running · 0/${itinerary.length}`, 'pill-sdk');
+
+            let stepIndex = 0;
+            let previousFingerprint = captureTargetingVerdictFingerprint();
+
+            const advance = () => {
+                if (!isJourneyRunning) return;
+
+                if (stepIndex >= itinerary.length) {
+                    document.getElementById('journey-progress-bar').style.width = "100%";
+                    setJourneyRunningState(false, 'Completed', 'pill-success');
+                    appendJourneyLogRow('done', `Journey complete. Session page counter is now <strong>${escapeMarkupForSafeRender(localStorage.getItem('kampyleSessionPageCounter') || '0')}</strong>.`);
+                    writeLog("Automated page journey completed.", 'success');
+                    return;
+                }
+
+                const pageId = itinerary[stepIndex];
+                navigateTo(pageId);
+                stepIndex += 1;
+
+                document.getElementById('journey-progress-bar').style.width = `${Math.round((stepIndex / itinerary.length) * 100)}%`;
+                setJourneyRunningState(true, `Running · ${stepIndex}/${itinerary.length}`, 'pill-sdk');
+
+                // Verdicts are re-read after the dwell so the SDK has had time to re-evaluate.
+                activeJourneyTimeoutToken = setTimeout(() => {
+                    const currentFingerprint = captureTargetingVerdictFingerprint();
+                    const flips = Object.keys(currentFingerprint).filter(key =>
+                        previousFingerprint[key] && previousFingerprint[key] !== currentFingerprint[key]);
+                    previousFingerprint = currentFingerprint;
+
+                    const counter = localStorage.getItem('kampyleSessionPageCounter') || '0';
+                    const flipMarkup = flips.length
+                        ? flips.map(key => `<span class="journey-flip">${escapeMarkupForSafeRender(key)} → ${escapeMarkupForSafeRender(currentFingerprint[key])}</span>`).join('<br>')
+                        : 'no rule verdict changed';
+                    appendJourneyLogRow(pageId, `page counter <strong>${escapeMarkupForSafeRender(counter)}</strong> · ${flipMarkup}`);
+
+                    advance();
+                }, dwellSeconds * 1000);
+            };
+            advance();
+        }
+
+        function stopAutomatedPageJourney() {
+            if (!isJourneyRunning) return;
+            if (activeJourneyTimeoutToken) clearTimeout(activeJourneyTimeoutToken);
+            setJourneyRunningState(false, 'Stopped', 'pill-warn');
+            appendJourneyLogRow('stopped', 'Journey halted by user.');
+            writeLog("Automated page journey stopped by user.", 'info');
+        }
+
         // --- 6. EXPANDED VIEWPORT SCALE ENGINE CONTROLLERS ---
        function applyViewportZoomStyle() {
             // TARGET FIX: Scales the root document element node to force all absolute floating containers, 
@@ -3642,6 +4043,7 @@
             buildOnsiteLifecycleStateRows();
             refreshOnsiteLifecycleStateValues();
             renderDeviceEmulationBanner();
+            renderConfigurationBaselineMeta();
 
             // The handset preview stays closed until explicitly requested: it duplicates the
             // dashboard inside itself, so showing it unprompted is noise on a desktop session.
