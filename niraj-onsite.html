@@ -160,6 +160,36 @@
 
         .suite-input:focus, select:focus { outline: none; border-color: #0ea5e9; }
 
+        /* Compact inline selects. The global `select` rule is full-width and 38px tall with
+           vertical padding, which clipped the label text when reused for toolbar controls. */
+        select.qa-select {
+            width: auto;
+            max-width: 250px;
+            height: 32px;
+            padding: 0 30px 0 11px;
+            font-size: 0.78rem;
+            font-family: inherit;
+            line-height: 1;
+            color: var(--text-main);
+            background-color: #111827;
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'><path fill='%2394a3b8' d='M0 0h12L6 8z'/></svg>");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            background-size: 9px 6px;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            cursor: pointer;
+            text-overflow: ellipsis;
+            box-sizing: border-box;
+        }
+        select.qa-select:hover { border-color: #475569; }
+        select.qa-select:focus { outline: none; border-color: #0ea5e9; }
+        select.qa-select option { background: #111827; color: var(--text-main); }
+        select.qa-select optgroup { background: #0d1527; color: #64748b; font-style: normal; font-weight: 600; }
+
         .registered-dashboard {
             background: #070a12;
             border: 1px solid #1e293b;
@@ -267,6 +297,168 @@
         .analytics-event-entry { border-bottom: 1px solid #111827; padding: 6px 4px; display: flex; justify-content: space-between; align-items: center; color: #f97316; }
         .provisions-entry-item { border-bottom: 1px solid #111827; padding: 5px 4px; display: flex; justify-content: space-between; align-items: center; color: #10b981; }
 
+        /* --- FULL-WIDTH CUSTOM EVENT TELEMETRY STREAM --- */
+        .diag-panel-full-span { grid-column: 1 / -1; }
+        .event-toolbar-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+        .event-filter-input { flex: 1; min-width: 180px; height: 30px; background: #090d16; border: 1px solid #334155; border-radius: 6px; color: var(--text-main); padding: 0 10px; font-family: monospace; font-size: 0.8rem; }
+        .event-filter-input:focus { outline: none; border-color: var(--analytics-orange); }
+        .event-name-chip { font-family: monospace; font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; border: 1px solid #334155; background: #090d16; color: #94a3b8; cursor: pointer; white-space: nowrap; }
+        .event-name-chip:hover { border-color: var(--analytics-orange); color: #fb923c; }
+        .event-name-chip.chip-active { background: rgba(249, 115, 22, 0.18); border-color: var(--analytics-orange); color: #fb923c; }
+
+        .event-stream-box { min-height: 180px; max-height: 380px; overflow-y: auto; font-family: monospace; font-size: 0.82rem; padding: 5px; box-sizing: border-box; }
+        .event-record { border-bottom: 1px solid #111827; padding: 7px 4px; }
+        .event-record-head { display: flex; align-items: center; gap: 10px; cursor: pointer; flex-wrap: wrap; }
+        .event-record-head:hover .event-record-name { color: #fdba74; }
+        .event-record-name { color: #fb923c; font-weight: bold; flex: 1; min-width: 190px; }
+        .event-record-time { color: #64748b; font-size: 0.75rem; }
+        .event-disclosure-caret { color: #64748b; font-size: 0.7rem; width: 10px; }
+        .event-record-json { display: none; margin-top: 8px; background: #04060b; border: 1px solid #111827; border-radius: 6px; padding: 10px; color: #94a3b8; font-size: 0.75rem; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow-y: auto; }
+        .event-record.record-expanded .event-record-json { display: block; }
+
+        .badge-sdkbus { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+        .event-record-name.name-sdkbus { color: #38bdf8; }
+        .event-record-head:hover .event-record-name.name-sdkbus { color: #7dd3fc; }
+        .event-filter-input.filter-sdkbus:focus { border-color: #38bdf8; }
+        .event-name-chip.chip-sdkbus-active { background: rgba(56, 189, 248, 0.18); border-color: #38bdf8; color: #7dd3fc; }
+        .event-name-chip.chip-sdkbus:hover { border-color: #38bdf8; color: #7dd3fc; }
+
+        .source-tag { font-size: 0.68rem; font-weight: bold; padding: 1px 7px; border-radius: 4px; letter-spacing: 0.3px; }
+        .source-dispatcher { background: rgba(56, 189, 248, 0.18); color: #38bdf8; }
+        .source-window { background: rgba(236, 72, 153, 0.18); color: #f472b6; }
+
+        .trigger-tag { font-size: 0.68rem; font-weight: bold; padding: 1px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.3px; }
+        .trigger-embedded { background: rgba(14, 165, 233, 0.18); color: #38bdf8; }
+        .trigger-invitation { background: rgba(139, 92, 246, 0.18); color: #a78bfa; }
+        .trigger-button { background: rgba(16, 185, 129, 0.18); color: #34d399; }
+        .trigger-none { background: rgba(100, 116, 139, 0.18); color: #94a3b8; }
+
+        /* --- DEVICE EMULATION --- */
+        .device-chip { font-size: 0.72rem; font-weight: bold; padding: 4px 10px; border-radius: 20px; font-family: monospace; white-space: nowrap; }
+        .device-chip-desktop { background: rgba(100, 116, 139, 0.2); color: #94a3b8; border: 1px solid #334155; }
+        .device-chip-emulated { background: rgba(236, 72, 153, 0.18); color: #f472b6; border: 1px solid #ec4899; }
+
+        .device-emulation-banner {
+            display: none; background: rgba(236, 72, 153, 0.1); border: 1px solid #ec4899;
+            border-radius: 10px; padding: 14px 18px; margin-bottom: 22px; animation: fadeIn 0.3s ease-out;
+        }
+        .device-emulation-banner strong { color: #f472b6; }
+        .device-emulation-banner .emulation-detail { font-family: monospace; font-size: 0.75rem; color: #94a3b8; margin-top: 6px; word-break: break-all; line-height: 1.5; }
+        .device-emulation-banner .emulation-controls { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
+        body.viewport-constrained #master-canvas-wrapper { max-width: 430px; transition: max-width 0.25s ease; }
+
+        .device-launch-notice {
+            display: none; background: #0d1527; border: 1px solid #0ea5e9; border-left-width: 3px;
+            border-radius: 8px; padding: 13px 16px; margin-bottom: 20px;
+            font-size: 0.83rem; color: #cbd5e1; line-height: 1.6; animation: fadeIn 0.3s ease-out;
+        }
+        .device-launch-notice code {
+            display: inline-block; background: #04060b; padding: 4px 8px; border-radius: 4px;
+            color: #38bdf8; font-size: 0.78rem; margin-top: 6px; word-break: break-all;
+        }
+
+        /* --- DEVICE PREVIEW FRAME --- */
+        .device-stage { display: flex; gap: 26px; flex-wrap: wrap; align-items: flex-start; justify-content: center; padding: 10px 0; }
+        .device-chassis {
+            background: #05070d; border: 11px solid #1e293b; border-radius: 42px;
+            box-shadow: 0 18px 50px rgba(0,0,0,0.65), inset 0 0 0 2px #0f172a;
+            padding: 11px 6px; position: relative; flex-shrink: 0;
+        }
+        .device-chassis.chassis-tablet { border-radius: 24px; border-width: 13px; }
+        .device-notch {
+            position: absolute; top: 11px; left: 50%; transform: translateX(-50%);
+            width: 128px; height: 22px; background: #1e293b; border-radius: 0 0 14px 14px; z-index: 5;
+        }
+        .device-chassis.chassis-tablet .device-notch { display: none; }
+        .device-screen { border: none; border-radius: 30px; background: #0b0f19; display: block; }
+        .device-chassis.chassis-tablet .device-screen { border-radius: 12px; }
+        .device-home-indicator {
+            position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+            width: 108px; height: 4px; background: #334155; border-radius: 3px;
+        }
+        .device-caption { text-align: center; font-family: monospace; font-size: 0.74rem; color: #64748b; margin-top: 10px; }
+
+        .ua-scope-row { display: grid; grid-template-columns: 240px 1fr 120px; gap: 12px; align-items: center; padding: 9px 4px; border-bottom: 1px solid #111827; font-size: 0.79rem; }
+        @media (max-width: 900px) { .ua-scope-row { grid-template-columns: 1fr; gap: 5px; } }
+        .ua-scope-name { font-family: monospace; color: #cbd5e1; font-weight: bold; font-size: 0.78rem; }
+        .ua-scope-value { font-family: monospace; color: #38bdf8; word-break: break-all; font-size: 0.74rem; }
+
+        .guidance-callout { background: #04060b; border: 1px solid #334155; border-left: 3px solid var(--analytics-orange); border-radius: 8px; padding: 14px 16px; margin-top: 14px; }
+        .guidance-callout h5 { margin: 0 0 8px 0; color: #fb923c; font-size: 0.85rem; }
+        .guidance-callout ol { margin: 0; padding-left: 20px; color: var(--text-muted); font-size: 0.8rem; line-height: 1.7; }
+        .guidance-callout code { background: #111827; padding: 2px 6px; border-radius: 4px; color: #38bdf8; font-size: 0.75rem; }
+
+        /* --- DESIGN & DISPLAY VALIDATOR --- */
+        .design-group { background: #090d16; border: 1px solid var(--panel-border); border-radius: 10px; margin-bottom: 14px; padding: 16px; }
+        .design-group-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; font-size: 0.9rem; font-weight: bold; color: #e2e8f0; font-family: monospace; }
+
+        .design-check-row { display: grid; grid-template-columns: 190px 1fr 1fr 110px; gap: 12px; align-items: center; padding: 8px 4px; border-bottom: 1px solid #111827; font-size: 0.79rem; }
+        @media (max-width: 1000px) { .design-check-row { grid-template-columns: 1fr 1fr; } }
+        .design-check-head { font-weight: bold; color: #64748b; text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.5px; border-bottom: 1px solid #1e293b; }
+        .design-prop-name { font-family: monospace; color: #cbd5e1; font-weight: bold; }
+        .design-value { font-family: monospace; color: #a78bfa; word-break: break-word; display: flex; align-items: center; gap: 7px; }
+        .design-value.value-actual { color: #38bdf8; }
+        .color-swatch { width: 13px; height: 13px; border-radius: 3px; border: 1px solid #475569; flex-shrink: 0; display: inline-block; }
+        .design-note { color: #64748b; font-size: 0.72rem; font-family: 'Segoe UI', sans-serif; margin-top: 2px; }
+
+        /* --- FORM TARGETING RULES MATRIX --- */
+        .targeting-form-card { background: #090d16; border: 1px solid var(--panel-border); border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+        .targeting-form-card.card-is-shown { border-color: var(--accent-green); box-shadow: 0 0 18px rgba(16, 185, 129, 0.12); }
+        .targeting-form-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; flex-wrap: wrap; }
+        .targeting-form-head:hover { background: #0d1527; }
+        .targeting-form-id { font-family: monospace; font-size: 0.9rem; font-weight: bold; color: #e2e8f0; }
+        .targeting-form-meta { color: #64748b; font-size: 0.75rem; font-family: monospace; }
+        .targeting-rule-count { margin-left: auto; font-size: 0.72rem; color: #94a3b8; font-family: monospace; white-space: nowrap; }
+
+        .type-tag { font-size: 0.68rem; font-weight: bold; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.3px; }
+        .type-invitation { background: rgba(139, 92, 246, 0.18); color: #a78bfa; }
+        .type-embedded { background: rgba(14, 165, 233, 0.18); color: #38bdf8; }
+        .type-button { background: rgba(16, 185, 129, 0.18); color: #34d399; }
+        .type-code { background: rgba(249, 115, 22, 0.18); color: #fb923c; }
+
+        .targeting-form-body { display: none; padding: 0 14px 14px 14px; border-top: 1px solid var(--panel-border); }
+        .targeting-form-card.card-expanded .targeting-form-body { display: block; }
+
+        .targeting-rule-row { display: grid; grid-template-columns: 210px 1fr 130px; gap: 12px; align-items: start; padding: 9px 4px; border-bottom: 1px solid #111827; font-size: 0.8rem; }
+        @media (max-width: 900px) { .targeting-rule-row { grid-template-columns: 1fr; gap: 5px; } }
+        .targeting-rule-name { font-family: monospace; color: #cbd5e1; font-weight: bold; font-size: 0.78rem; }
+        .targeting-rule-config { font-family: monospace; color: #a78bfa; font-size: 0.78rem; word-break: break-word; }
+        .targeting-rule-explain { color: #64748b; font-size: 0.72rem; margin-top: 3px; font-family: 'Segoe UI', sans-serif; line-height: 1.4; }
+        .verdict-pill { font-size: 0.7rem; font-weight: bold; padding: 2px 8px; border-radius: 4px; text-align: center; white-space: nowrap; justify-self: start; }
+        .verdict-pass { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+        .verdict-block { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+        .verdict-info { background: rgba(100, 116, 139, 0.18); color: #94a3b8; }
+
+        .state-pill-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 14px 0; }
+        .no-rules-notice { color: #64748b; font-style: italic; font-size: 0.8rem; padding: 10px 4px; }
+
+        /* --- LIFECYCLE STATE & DATE MANAGER --- */
+        .lifecycle-state-panel { background: #0d1527; border: 1px solid #1e293b; border-radius: 12px; padding: 24px; margin-top: 25px; }
+        .lifecycle-state-panel h3 { margin: 0 0 6px 0; font-size: 1.1rem; color: #cbd5e1; }
+        .lifecycle-panel-subtitle { margin: 0 0 18px 0; font-size: 0.85rem; color: var(--text-muted); }
+
+        .lifecycle-key-row { display: grid; grid-template-columns: 220px 150px 1fr; gap: 14px; align-items: center; padding: 12px 4px; border-bottom: 1px solid #111827; }
+        @media (max-width: 900px) { .lifecycle-key-row { grid-template-columns: 1fr; gap: 8px; } }
+
+        .lifecycle-key-name { font-family: monospace; font-size: 0.82rem; color: #e2e8f0; font-weight: bold; }
+        .lifecycle-key-hint { font-size: 0.72rem; color: #64748b; font-family: 'Segoe UI', sans-serif; font-weight: normal; margin-top: 3px; line-height: 1.35; }
+        .lifecycle-raw-value { font-family: monospace; font-size: 0.78rem; color: #a78bfa; word-break: break-all; }
+        .lifecycle-human-value { font-size: 0.72rem; color: #34d399; margin-top: 3px; }
+        .lifecycle-human-value.value-unset { color: #64748b; font-style: italic; }
+
+        .lifecycle-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .lifecycle-date-input { height: 30px; background: #090d16; border: 1px solid #334155; border-radius: 6px; color: #ffffff; font-family: monospace; font-size: 0.78rem; padding: 0 8px; color-scheme: dark; }
+        .lifecycle-date-input:focus { outline: none; border-color: var(--sdk-purple); }
+        .lifecycle-text-input { height: 30px; min-width: 210px; background: #090d16; border: 1px solid #334155; border-radius: 6px; color: #ffffff; font-family: monospace; font-size: 0.78rem; padding: 0 8px; }
+        .lifecycle-text-input:focus { outline: none; border-color: var(--sdk-purple); }
+        .lifecycle-btn { height: 26px; padding: 0 10px; border: 1px solid #334155; background: #111827; border-radius: 5px; color: #cbd5e1; font-size: 0.72rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+        .lifecycle-btn:hover { border-color: #64748b; color: #ffffff; }
+        .lifecycle-btn.btn-commit { background: var(--sdk-purple); border-color: var(--sdk-purple); color: #ffffff; }
+        .lifecycle-btn.btn-commit:hover { background: #7c3aed; }
+        .lifecycle-btn.btn-purge { color: #f87171; }
+        .lifecycle-btn.btn-purge:hover { border-color: var(--danger-red); background: rgba(239, 68, 68, 0.12); }
+
         .injector-panel { background: #090d16; border-radius: 12px; padding: 25px; border: 1px solid var(--panel-border); margin-bottom: 30px; }
         textarea { width: 100%; height: 110px; background-color: #111827; color: #38bdf8; border: 1px solid #334155; border-radius: 8px; padding: 14px; font-family: monospace; resize: vertical; box-sizing: border-box; margin-top: 10px; }
         textarea:disabled { opacity: 0.7; cursor: not-allowed; }
@@ -313,6 +505,90 @@
     </style>
     <script>
         // =========================================================================
+        // 📱 DEVICE EMULATION LAYER  (must execute before any embed is injected)
+        // =========================================================================
+        // The onsite SDK resolves device type purely from the user agent, via
+        // KAMPYLE_UTILS.getDeviceTypeByUserAgent(navigator.userAgent, navigator.userAgentData).
+        // That function checks userAgentData FIRST and only falls back to UA string regexes,
+        // so a convincing emulation has to override both. Overriding here — before the embed
+        // script is ever appended — is what makes "mobile only" targeting rules testable.
+        const DEVICE_EMULATION_PROFILES = {
+            ios: {
+                label: 'iPhone (iOS)', expectedDevice: 'mobile', viewportWidth: 390,
+                userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+                platform: 'iPhone', maxTouchPoints: 5,
+                userAgentData: { mobile: true, platform: 'iOS', brands: [] },
+                screen: { width: 390, height: 844 }
+            },
+            android: {
+                label: 'Android Phone', expectedDevice: 'mobile', viewportWidth: 412,
+                userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
+                platform: 'Linux armv8l', maxTouchPoints: 5,
+                userAgentData: { mobile: true, platform: 'Android', brands: [] },
+                screen: { width: 412, height: 915 }
+            },
+            tablet: {
+                label: 'Android Tablet', expectedDevice: 'tablet', viewportWidth: 820,
+                userAgent: 'Mozilla/5.0 (Linux; Android 14; SM-X910) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                platform: 'Linux aarch64', maxTouchPoints: 5,
+                userAgentData: { mobile: false, platform: 'Android', brands: [] },
+                screen: { width: 820, height: 1180 }
+            }
+        };
+
+        // Recorded before any override so the two emulation strategies can be told apart:
+        // a JS override only reaches THIS document, whereas browser-level emulation (DevTools
+        // device toolbar, or Chrome launched with --user-agent) also reaches cross-origin
+        // iframes — which is what decides whether a feedback submit carries a mobile UA.
+        const GENUINE_BROWSER_USER_AGENT = navigator.userAgent;
+        const IS_BROWSER_LEVEL_MOBILE_EMULATION = /iPhone|Android|iPad|Mobile/i.test(GENUINE_BROWSER_USER_AGENT);
+
+        let activeDeviceEmulationKey = null;
+        let activeDeviceEmulationProfile = null;
+
+        // Captured at parse time, BEFORE the SPA router rewrites the address bar to "/" via
+        // history.replaceState. Without this, a device-emulation tab opened from a plain static
+        // file server would request the directory index instead of this document.
+        const SANDBOX_DOCUMENT_ENTRY_PATH = /\.html?$/i.test(window.location.pathname)
+            ? window.location.pathname
+            : '/';
+
+        (function applyRequestedDeviceEmulationProfile() {
+            const requestedKey = new URLSearchParams(window.location.search).get('qa_device');
+            const profile = requestedKey && DEVICE_EMULATION_PROFILES[requestedKey];
+            if (!profile) return;
+
+            activeDeviceEmulationKey = requestedKey;
+            activeDeviceEmulationProfile = profile;
+
+            const defineNavigatorOverride = (property, value) => {
+                try {
+                    Object.defineProperty(navigator, property, { get: () => value, configurable: true });
+                } catch (err) {
+                    console.warn(`[QA Device Emulation] Could not override navigator.${property}:`, err.message);
+                }
+            };
+
+            defineNavigatorOverride('userAgent', profile.userAgent);
+            defineNavigatorOverride('platform', profile.platform);
+            defineNavigatorOverride('maxTouchPoints', profile.maxTouchPoints);
+            defineNavigatorOverride('userAgentData', profile.userAgentData);
+
+            ['width', 'height'].forEach(dimension => {
+                try {
+                    Object.defineProperty(window.screen, dimension, {
+                        get: () => profile.screen[dimension], configurable: true
+                    });
+                } catch (err) { /* screen dimensions are advisory only for targeting */ }
+            });
+
+            // Presence of this handler is a common touch-capability probe.
+            if (!('ontouchstart' in window)) {
+                try { window.ontouchstart = null; } catch (err) { /* non-fatal */ }
+            }
+        })();
+
+        // =========================================================================
         // 🛑 GLOBAL BROWSER CONSOLE RUNTIME ERROR INTERCEPTOR
         // =========================================================================
         // Catches uncaught syntax errors or unhandled script rejections and pipes 
@@ -340,9 +616,20 @@
         // =========================================================================
         let collectedAnalyticsEventsCacheList = [];
 
+        // The onsite SDK batches telemetry to an "/api/web/events" collector endpoint.
+        // Every transport is proxied because the SDK picks XHR, fetch or sendBeacon
+        // depending on lifecycle stage (unload traffic in particular uses sendBeacon).
+        function isAnalyticsCollectorEndpoint(url) {
+            return typeof url === 'string' && /\/api\/web\/events|analytics-fe|\/events\b/i.test(url);
+        }
+
         const originalFetch = window.fetch;
         window.fetch = async function(...args) {
             const requestUrl = args[0] instanceof Request ? args[0].url : args[0];
+            if (isAnalyticsCollectorEndpoint(requestUrl)) {
+                const requestBody = args[0] instanceof Request ? null : (args[1] && args[1].body);
+                if (requestBody) triggerAnalyticsPayloadEvaluation(requestBody, 'FETCH');
+            }
             try {
                 const response = await originalFetch.apply(this, args);
                 if (!response.ok) triggerNetworkErrorLog(response.status, 'FETCH', requestUrl);
@@ -350,12 +637,24 @@
                     const clone = response.clone();
                     clone.text().then(txt => triggerProvisionsManifestEvaluation(txt));
                 }
+                if (/invitationData.*\.json/i.test(requestUrl)) {
+                    const clone = response.clone();
+                    clone.text().then(txt => captureInvitationDesignManifest(txt));
+                }
                 return response;
             } catch (err) {
                 triggerNetworkErrorLog('FAILED', 'FETCH', requestUrl);
                 throw err;
             }
         };
+
+        if (navigator.sendBeacon) {
+            const originalSendBeacon = navigator.sendBeacon.bind(navigator);
+            navigator.sendBeacon = function(url, data) {
+                if (isAnalyticsCollectorEndpoint(url) && data) triggerAnalyticsPayloadEvaluation(data, 'BEACON');
+                return originalSendBeacon(url, data);
+            };
+        }
 
         const originalXcounter = window.XMLHttpRequest.prototype.open;
         const originalSend = window.XMLHttpRequest.prototype.send;
@@ -365,13 +664,14 @@
             this.addEventListener('load', function() {
                 if (this.status >= 400) triggerNetworkErrorLog(this.status, 'XHR', url);
                 if (/onsiteData.*\.json/i.test(url)) triggerProvisionsManifestEvaluation(this.responseText);
+                if (/invitationData.*\.json/i.test(url)) captureInvitationDesignManifest(this.responseText);
             });
             this.addEventListener('error', function() { triggerNetworkErrorLog('FAILED', 'XHR', url); });
             return originalXcounter.apply(this, [method, url, ...args]);
         };
 
         window.XMLHttpRequest.prototype.send = function(body) {
-            if (body && this._urlContext && /events/i.test(this._urlContext)) triggerAnalyticsPayloadEvaluation(body);
+            if (body && isAnalyticsCollectorEndpoint(this._urlContext)) triggerAnalyticsPayloadEvaluation(body, 'XHR');
             return originalSend.apply(this, [body]);
         };
 
@@ -379,16 +679,53 @@
             window.dispatchEvent(new CustomEvent('qa_network_error', { detail: { status, type, url } }));
         }
 
-        function triggerAnalyticsPayloadEvaluation(rawBody) {
+        // The collector receives an ARRAY of event objects per request. Every element is
+        // surfaced (not just index 0) and the untouched payload rides along on the event so
+        // the dashboard can expose the full ~27 field telemetry envelope, not just the name.
+        function triggerAnalyticsPayloadEvaluation(rawBody, transport) {
+            if (rawBody instanceof Blob) {
+                rawBody.text().then(txt => dispatchAnalyticsEventBatch(txt, transport)).catch(() => {});
+                return;
+            }
+            if (rawBody instanceof ArrayBuffer) {
+                try { dispatchAnalyticsEventBatch(new TextDecoder().decode(rawBody), transport); } catch(e) {}
+                return;
+            }
+            dispatchAnalyticsEventBatch(rawBody, transport);
+        }
+
+        function dispatchAnalyticsEventBatch(rawText, transport) {
+            let parsed;
             try {
-                const parsed = JSON.parse(rawBody);
-                const eventArray = Array.isArray(parsed) ? parsed : [parsed];
-                if (eventArray[0] && eventArray[0].eventName) {
-                    window.dispatchEvent(new CustomEvent('qa_analytics_event', { 
-                        detail: { name: eventArray[0].eventName, formId: eventArray[0].formId || 'N/A' } 
-                    }));
+                parsed = JSON.parse(typeof rawText === 'string' ? rawText : String(rawText));
+            } catch(e) { return; }
+
+            const eventArray = Array.isArray(parsed) ? parsed : [parsed];
+            eventArray.forEach(eventPayload => {
+                if (!eventPayload || !eventPayload.eventName) return;
+                window.dispatchEvent(new CustomEvent('qa_analytics_event', {
+                    detail: {
+                        name: eventPayload.eventName,
+                        formId: eventPayload.formId || 'N/A',
+                        trigger: eventPayload.formTriggerType || null,
+                        transport: transport || 'XHR',
+                        mdData: eventPayload.mdData || {},
+                        payload: eventPayload
+                    }
+                }));
+            });
+        }
+
+        // Invitation design lives in a per-form invitationData manifest rather than on the form
+        // registry object, so it is harvested from the response as the SDK fetches it.
+        const capturedInvitationDesignManifests = {};
+        function captureInvitationDesignManifest(responseText) {
+            try {
+                const parsed = JSON.parse(responseText);
+                if (parsed && parsed.formId) {
+                    capturedInvitationDesignManifests[String(parsed.formId)] = parsed;
                 }
-            } catch(e) {}
+            } catch (err) { /* non-JSON responses are not invitation manifests */ }
         }
 
         function triggerProvisionsManifestEvaluation(responseText) {
@@ -399,6 +736,58 @@
                 }
             } catch(e) {}
         }
+
+        // =========================================================================
+        // 🛰️ NATIVE SDK CUSTOM EVENT BUS TAP
+        // =========================================================================
+        // The onsite SDK owns an internal pub/sub dispatcher and separately rebroadcasts
+        // a subset of events onto window as DOM CustomEvents. Registering subscribers is
+        // unreliable because the SDK calls dispatcher.init() during bootstrap, which wipes
+        // every previously registered subscription. Both emitters are therefore wrapped at
+        // the source, so events are observed natively instead of inferred from network payloads.
+        const sdkCustomEventBusTapState = { dispatcher: false, broadcast: false };
+
+        function publishCapturedSdkCustomEvent(source, eventName, data) {
+            if (!eventName) return;
+            let serializableData;
+            try {
+                serializableData = JSON.parse(JSON.stringify(data === undefined ? null : data));
+            } catch (err) {
+                serializableData = { unserializablePayload: String(data) };
+            }
+            window.dispatchEvent(new CustomEvent('qa_sdk_custom_event', {
+                detail: { source, name: eventName, data: serializableData }
+            }));
+        }
+
+        function installNativeSdkCustomEventBusTap() {
+            if (!sdkCustomEventBusTapState.dispatcher && window.KAMPYLE_EVENT_DISPATCHER &&
+                typeof KAMPYLE_EVENT_DISPATCHER.trigger === 'function') {
+                const originalDispatcherTrigger = KAMPYLE_EVENT_DISPATCHER.trigger;
+                KAMPYLE_EVENT_DISPATCHER.trigger = function(eventName, data) {
+                    publishCapturedSdkCustomEvent('DISPATCHER', eventName, data);
+                    return originalDispatcherTrigger.apply(this, arguments);
+                };
+                sdkCustomEventBusTapState.dispatcher = true;
+            }
+
+            if (!sdkCustomEventBusTapState.broadcast && window.KAMPYLE_UTILS &&
+                typeof KAMPYLE_UTILS.triggerCustomEvent === 'function') {
+                const originalCustomEventBroadcast = KAMPYLE_UTILS.triggerCustomEvent;
+                KAMPYLE_UTILS.triggerCustomEvent = function(eventName, data) {
+                    publishCapturedSdkCustomEvent('WINDOW', eventName, data);
+                    return originalCustomEventBroadcast.apply(this, arguments);
+                };
+                sdkCustomEventBusTapState.broadcast = true;
+            }
+
+            if (sdkCustomEventBusTapState.dispatcher && sdkCustomEventBusTapState.broadcast) {
+                clearInterval(sdkCustomEventBusTapPollToken);
+            }
+        }
+        // Polled tightly because the SDK begins emitting during its own bootstrap, and any
+        // event fired before the wrappers land would otherwise be missed entirely.
+        const sdkCustomEventBusTapPollToken = setInterval(installNativeSdkCustomEventBusTap, 25);
 
         function executeGlobalNuclearApplicationReset() {
             localStorage.clear(); sessionStorage.clear();
@@ -421,10 +810,33 @@
             <a id="nav-page4" onclick="navigateTo('page4')">🌐 Page 4</a>
             <a id="nav-page5" onclick="navigateTo('page5')">🛡️ Page 5</a>
         </div>
-        <button class="global-purge-btn" onclick="executeGlobalNuclearApplicationReset()" style="height:32px; font-size:0.8rem; padding:0 12px;">🔄 Hard Purge & Reset</button>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span id="device-mode-indicator" class="device-chip device-chip-desktop">🖥️ Desktop</span>
+            <select id="device-mode-select" class="qa-select" onchange="handleDeviceModeSelection()" title="Preview the sandbox at handset size, or open an emulated tab that drives device targeting">
+                <option value="">🖥️ Desktop (this tab)</option>
+                <optgroup label="Preview UI in this page">
+                    <option value="preview:ios">📲 iPhone preview</option>
+                    <option value="preview:android">📲 Android preview</option>
+                    <option value="preview:tablet">📲 Tablet preview</option>
+                </optgroup>
+                <optgroup label="Emulated tab (targeting only)">
+                    <option value="tab:ios">📱 iPhone — new tab</option>
+                    <option value="tab:android">📱 Android — new tab</option>
+                    <option value="tab:tablet">📱 Tablet — new tab</option>
+                </optgroup>
+                <optgroup id="launch-optgroup" label="Mobile Chrome (real mobile submissions)">
+                    <option value="launch:ios">🚀 iPhone — launch Chrome</option>
+                    <option value="launch:android">🚀 Android — launch Chrome</option>
+                    <option value="launch:tablet">🚀 Tablet — launch Chrome</option>
+                </optgroup>
+            </select>
+            <button class="global-purge-btn" onclick="executeGlobalNuclearApplicationReset()" style="height:32px; font-size:0.8rem; padding:0 12px;">🔄 Hard Purge & Reset</button>
+        </div>
     </nav>
 
     <div id="master-canvas-wrapper" class="wrapper">
+        <div id="device-emulation-banner" class="device-emulation-banner"></div>
+        <div id="device-launch-notice" class="device-launch-notice"></div>
         <div id="dom-capture-alert" class="live-alert-banner"></div>
 
         <div id="lifecycle-timer-panel" class="lifecycle-timer-container">
@@ -657,21 +1069,135 @@
                 </div>
             </div>
 
-            <div class="diag-panel">
-                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:10px;">
-                    <h4 style="margin:0; border:none; padding:0;">📊 Analytics Event Tracker Data [<span id="analytics-counter-badge" style="color:var(--analytics-orange);">0</span>]</h4>
-                    <button onclick="downloadCapturedAnalyticsDataAsCSV()" style="height:26px; font-size:0.75rem; padding:0 10px; background:linear-gradient(135deg, #f97316 0%, #ea580c 100%);">📥 Export CSV</button>
-                </div>
-                <div id="analytics-events-stream-box" class="telemetry-scroll-box">
-                    <div style="color:#64748b; font-style:italic; font-size:0.8rem;" id="empty-analytics-notice">Standing by for background user action telemetry events...</div>
-                </div>
-            </div>
-
-            <div class="diag-panel">
-                <h4>📜 List of Enabled Provisions</h4>
+            <div class="diag-panel diag-panel-full-span">
+                <h4>📜 List of Enabled Provisions [<span id="provisions-counter-badge" style="color:var(--accent-green);">0</span>]</h4>
                 <div id="provisions-matrix-stream-box" class="telemetry-scroll-box">
                     <div style="color:#64748b; font-style:italic; font-size:0.8rem;" id="empty-provisions-notice">Awaiting onsite manifest metadata retrieval...</div>
                 </div>
+            </div>
+        </div>
+
+        <div class="lifecycle-state-panel">
+            <h3>🗓️ Onsite Lifecycle State &amp; Date Manager</h3>
+            <p class="lifecycle-panel-subtitle">
+                Live view of the storage keys the onsite SDK writes across the invitation and submission lifecycle.
+                Every value is rewritable, so throttling windows (&quot;do not re-invite for 30 days&quot;) can be
+                back-dated and re-evaluated without waiting for real calendar time to pass.
+            </p>
+            <div id="lifecycle-state-rows-container"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:18px;">
+                <button class="lifecycle-btn btn-purge" onclick="purgeEntireOnsiteLifecycleState()">🧹 Purge All Lifecycle Keys</button>
+                <button class="lifecycle-btn" onclick="copyOnsiteLifecycleStateToClipboard()">📋 Copy State As JSON</button>
+            </div>
+        </div>
+
+        <div class="diag-panel" id="device-preview-panel" style="margin-top:25px; display:none;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">📲 Live Device Preview — <span id="preview-device-label" style="color:#f472b6;"></span></h4>
+                <button class="lifecycle-btn" onclick="reloadDevicePreviewFrame()">🔄 Reload Frame</button>
+                <button class="lifecycle-btn btn-purge" onclick="hideDevicePreviewPanel()">✕ Close Preview</button>
+            </div>
+            <p style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                The sandbox runs inside a real device-sized viewport below, so the feedback form renders against genuine
+                handset dimensions — <code style="color:#a78bfa;">position:fixed</code> anchors, responsive breakpoints and
+                mobile invitation layout all resolve as they would on the device, surfacing true mobile UI issues.
+            </p>
+            <div class="device-stage" id="device-preview-stage"></div>
+        </div>
+
+        <div class="diag-panel" id="ua-scope-panel" style="margin-top:25px; display:none;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">🧾 Feedback Submission Scope</h4>
+            </div>
+            <p style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                Device emulation applied by this page reaches the SDK and its targeting, but a submitted feedback record is
+                attributed by the form itself — which runs in a cross-origin iframe this page cannot reach. This panel shows
+                exactly how far the emulation carries, so a submission is never mistaken for a genuine mobile one.
+            </p>
+            <div id="ua-scope-report" style="margin-top:14px;"></div>
+        </div>
+
+        <div class="diag-panel" style="margin-top:25px;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">🎨 Design &amp; Display Render Validator</h4>
+                <span id="design-validator-summary" class="status-pill pill-warn">Awaiting render</span>
+                <button class="lifecycle-btn" onclick="renderDesignAndDisplayValidator()">🔄 Re-validate Now</button>
+                <button class="lifecycle-btn" onclick="downloadDesignValidationReportAsCSV()">📥 Export CSV</button>
+            </div>
+            <p style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                Compares what targeting <strong>configured</strong> against what the SDK <strong>actually rendered</strong> into the DOM —
+                display mode (lightbox / animation / popup / embedded), feedback button shape, text and colours, and invitation
+                geometry. Colour values are normalised before comparison, so <code style="color:#a78bfa;">#5081ff</code> and
+                <code style="color:#a78bfa;">rgb(80, 129, 255)</code> count as a match.
+            </p>
+            <div id="design-validator-container" style="margin-top:14px;">
+                <div class="no-rules-notice">Inject a property embed and let a form render to begin design validation...</div>
+            </div>
+        </div>
+
+        <div class="diag-panel" style="margin-top:25px;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">🎯 Form Targeting Rules Matrix [<span id="targeting-counter-badge" style="color:#a78bfa;">0</span>]</h4>
+                <span id="targeting-sync-status" class="status-pill pill-warn">Awaiting SDK</span>
+                <button class="lifecycle-btn" onclick="toggleEveryTargetingFormCard()">⇕ Expand / Collapse All</button>
+                <button class="lifecycle-btn" onclick="downloadFormTargetingMatrixAsCSV()">📥 Export CSV</button>
+            </div>
+            <p style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                Every form the injected property exposes, with its configured targeting rules decoded into plain English and
+                <strong>evaluated live against the current storage state</strong>. Date-based quarantine rules read the same keys
+                the manager above edits — back-date <code style="color:#a78bfa;">DECLINED_DATE</code> and the matching rule flips
+                from blocked to eligible immediately.
+            </p>
+            <div class="event-toolbar-row" style="margin-top:12px;">
+                <input type="text" id="targeting-filter-input" class="event-filter-input" placeholder="Filter by form ID, trigger type or display type (e.g. 463112, invitation, lightbox)..." oninput="renderFormTargetingRulesMatrix()">
+                <select id="targeting-scope-select" class="qa-select" onchange="renderFormTargetingRulesMatrix()">
+                    <option value="rules">Only forms with targeting rules</option>
+                    <option value="active">Only live / shown forms</option>
+                    <option value="all">All published forms</option>
+                </select>
+            </div>
+            <div id="targeting-matrix-container" style="margin-top:12px;">
+                <div class="no-rules-notice">Inject a property embed to enumerate published forms and their targeting configuration...</div>
+            </div>
+        </div>
+
+        <div class="diag-panel" style="margin-top:25px;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:230px;">📊 Live Analytics Events Tracking [<span id="analytics-counter-badge" style="color:var(--analytics-orange);">0</span>]</h4>
+                <button class="lifecycle-btn" onclick="toggleEveryCapturedEventRecord()">⇕ Expand / Collapse All</button>
+                <button onclick="downloadCapturedAnalyticsDataAsCSV()" style="height:26px; font-size:0.75rem; padding:0 10px; background:linear-gradient(135deg, #f97316 0%, #ea580c 100%);">📥 Export CSV</button>
+                <button class="lifecycle-btn btn-purge" onclick="clearCapturedAnalyticsEventStream()">Clear</button>
+            </div>
+            <div class="event-toolbar-row">
+                <input type="text" id="event-filter-input" class="event-filter-input" placeholder="Filter by event name, form ID or trigger type (e.g. nebula_form_show, 463112, invitation)..." oninput="renderFilteredAnalyticsEventStream()">
+            </div>
+            <div class="event-toolbar-row" id="event-name-chip-row"></div>
+            <div id="analytics-events-stream-box" class="event-stream-box">
+                <div style="color:#64748b; font-style:italic; font-size:0.8rem;" id="empty-analytics-notice">Standing by for background user action telemetry events...</div>
+            </div>
+        </div>
+
+        <div class="diag-panel" style="margin-top:25px;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">🛰️ Native SDK Custom Event Bus [<span id="sdkbus-counter-badge" style="color:#38bdf8;">0</span>]</h4>
+                <span id="sdkbus-tap-status" class="status-pill pill-warn">Tap idle</span>
+                <button class="lifecycle-btn" onclick="toggleEveryCapturedSdkBusRecord()">⇕ Expand / Collapse All</button>
+                <button onclick="downloadCapturedSdkBusEventsAsCSV()" style="height:26px; font-size:0.75rem; padding:0 10px; background:linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);">📥 Export CSV</button>
+                <button class="lifecycle-btn btn-purge" onclick="clearCapturedSdkBusEventStream()">Clear</button>
+            </div>
+            <p style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                Captured straight off the SDK's own emitters — the internal
+                <code style="color:#38bdf8;">KAMPYLE_EVENT_DISPATCHER</code> bus and the
+                <code style="color:#f472b6;">window</code> CustomEvent rebroadcast — with no network sniffing involved.
+                These fire on the client the moment the SDK reaches each lifecycle stage, so they land ahead of the
+                batched analytics payloads above.
+            </p>
+            <div class="event-toolbar-row" style="margin-top:12px;">
+                <input type="text" id="sdkbus-filter-input" class="event-filter-input filter-sdkbus" placeholder="Filter by event name or source (e.g. neb_formShown, invitation, WINDOW)..." oninput="renderFilteredSdkBusEventStream()">
+            </div>
+            <div class="event-toolbar-row" id="sdkbus-chip-row"></div>
+            <div id="sdkbus-events-stream-box" class="event-stream-box">
+                <div style="color:#64748b; font-style:italic; font-size:0.8rem;">Awaiting native SDK lifecycle broadcasts. Inject a property embed to arm the bus tap...</div>
             </div>
         </div>
 
@@ -737,34 +1263,322 @@
         });
 
         // --- 3. LIVE ANALYTICS EVENT LOG ENGINE ---
-        window.addEventListener('qa_analytics_event', (e) => {
-            const notice = document.getElementById('empty-analytics-notice');
-            if (notice) notice.remove();
-            
-            const timestamp = new Date().toLocaleTimeString();
-            collectedAnalyticsEventsCacheList.push({ time: timestamp, eventName: e.detail.name, formId: e.detail.formId });
-            document.getElementById('analytics-counter-badge').innerText = collectedAnalyticsEventsCacheList.length;
+        let activeEventNameChipFilter = null;
 
-            const stream = document.getElementById('analytics-events-stream-box');
-            const entry = document.createElement('div');
-            entry.className = "analytics-event-entry";
-            entry.innerHTML = `<div><span class="badge badge-analytics">Event</span> <strong>${e.detail.name}</strong></div><div style="color:#94a3b8; font-size:0.75rem; text-align:right;">FormID: <span style="color:#fb923c; font-weight:bold;">${e.detail.formId}</span></div>`;
-            stream.appendChild(entry);
-            stream.scrollTop = stream.scrollHeight;
-            writeLog(`Analytics Telemetry Intercepted ➔ [eventName: "${e.detail.name}"] [formId: "${e.detail.formId}"]`, 'info');
+        // Telemetry values are rendered as markup, so anything arriving off the wire is escaped first.
+        function escapeMarkupForSafeRender(value) {
+            return String(value === null || value === undefined ? '' : value)
+                .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+        }
+
+        window.addEventListener('qa_analytics_event', (e) => {
+            collectedAnalyticsEventsCacheList.push({
+                time: new Date().toLocaleTimeString(),
+                eventName: e.detail.name,
+                formId: e.detail.formId,
+                trigger: e.detail.trigger,
+                transport: e.detail.transport,
+                mdData: e.detail.mdData || {},
+                payload: e.detail.payload || {},
+                expanded: false
+            });
+
+            renderEventNameFilterChipRow();
+            renderFilteredAnalyticsEventStream();
+
+            const triggerSuffix = e.detail.trigger ? ` [trigger: "${e.detail.trigger}"]` : '';
+            writeLog(`Analytics Telemetry Intercepted ➔ [eventName: "${e.detail.name}"] [formId: "${e.detail.formId}"]${triggerSuffix}`, 'info');
         });
+
+        function resolveTriggerTagClassName(trigger) {
+            if (trigger === 'embedded' || trigger === 'invitation' || trigger === 'button') return `trigger-${trigger}`;
+            return 'trigger-none';
+        }
+
+        function renderEventNameFilterChipRow() {
+            const chipRow = document.getElementById('event-name-chip-row');
+            if (!chipRow) return;
+
+            const tallyByEventName = {};
+            collectedAnalyticsEventsCacheList.forEach(item => {
+                tallyByEventName[item.eventName] = (tallyByEventName[item.eventName] || 0) + 1;
+            });
+
+            chipRow.innerHTML = "";
+            Object.keys(tallyByEventName).sort().forEach(eventName => {
+                const chip = document.createElement('span');
+                chip.className = "event-name-chip" + (activeEventNameChipFilter === eventName ? " chip-active" : "");
+                chip.innerText = `${eventName} (${tallyByEventName[eventName]})`;
+                chip.onclick = () => {
+                    activeEventNameChipFilter = (activeEventNameChipFilter === eventName) ? null : eventName;
+                    renderEventNameFilterChipRow();
+                    renderFilteredAnalyticsEventStream();
+                };
+                chipRow.appendChild(chip);
+            });
+        }
+
+        function renderFilteredAnalyticsEventStream() {
+            const stream = document.getElementById('analytics-events-stream-box');
+            if (!stream) return;
+
+            const filterInput = document.getElementById('event-filter-input');
+            const searchTerm = filterInput ? filterInput.value.trim().toLowerCase() : "";
+
+            const visibleRecords = collectedAnalyticsEventsCacheList.filter(item => {
+                if (activeEventNameChipFilter && item.eventName !== activeEventNameChipFilter) return false;
+                if (!searchTerm) return true;
+                return `${item.eventName} ${item.formId} ${item.trigger || ''}`.toLowerCase().includes(searchTerm);
+            });
+
+            document.getElementById('analytics-counter-badge').innerText =
+                visibleRecords.length === collectedAnalyticsEventsCacheList.length
+                    ? collectedAnalyticsEventsCacheList.length
+                    : `${visibleRecords.length}/${collectedAnalyticsEventsCacheList.length}`;
+
+            if (collectedAnalyticsEventsCacheList.length === 0) {
+                stream.innerHTML = `<div style="color:#64748b; font-style:italic; font-size:0.8rem;" id="empty-analytics-notice">Standing by for background user action telemetry events...</div>`;
+                return;
+            }
+            if (visibleRecords.length === 0) {
+                stream.innerHTML = `<div style="color:#64748b; font-style:italic; font-size:0.8rem;">No captured events match the active filter criteria.</div>`;
+                return;
+            }
+
+            const wasPinnedToBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 40;
+            stream.innerHTML = "";
+
+            visibleRecords.forEach(record => {
+                const row = document.createElement('div');
+                row.className = "event-record" + (record.expanded ? " record-expanded" : "");
+                row.innerHTML = `
+                    <div class="event-record-head">
+                        <span class="event-disclosure-caret">${record.expanded ? '▼' : '▶'}</span>
+                        <span class="badge badge-analytics">Event</span>
+                        <span class="event-record-name">${escapeMarkupForSafeRender(record.eventName)}</span>
+                        <span class="trigger-tag ${resolveTriggerTagClassName(record.trigger)}">${escapeMarkupForSafeRender(record.trigger || 'no trigger')}</span>
+                        <span style="color:#94a3b8; font-size:0.75rem;">form <span style="color:#fb923c; font-weight:bold;">${escapeMarkupForSafeRender(record.formId)}</span></span>
+                        <span class="event-record-time">${escapeMarkupForSafeRender(record.transport)} · ${escapeMarkupForSafeRender(record.time)}</span>
+                    </div>
+                    <div class="event-record-json">${escapeMarkupForSafeRender(JSON.stringify(record.payload, null, 2))}</div>
+                `;
+                row.querySelector('.event-record-head').onclick = () => {
+                    record.expanded = !record.expanded;
+                    renderFilteredAnalyticsEventStream();
+                };
+                stream.appendChild(row);
+            });
+
+            if (wasPinnedToBottom) stream.scrollTop = stream.scrollHeight;
+        }
+
+        function toggleEveryCapturedEventRecord() {
+            const shouldExpandAll = collectedAnalyticsEventsCacheList.some(item => !item.expanded);
+            collectedAnalyticsEventsCacheList.forEach(item => { item.expanded = shouldExpandAll; });
+            renderFilteredAnalyticsEventStream();
+        }
+
+        function clearCapturedAnalyticsEventStream() {
+            collectedAnalyticsEventsCacheList = [];
+            activeEventNameChipFilter = null;
+            const filterInput = document.getElementById('event-filter-input');
+            if (filterInput) filterInput.value = "";
+            renderEventNameFilterChipRow();
+            renderFilteredAnalyticsEventStream();
+            writeLog("Captured custom event telemetry buffer cleared.", "info");
+        }
 
         function downloadCapturedAnalyticsDataAsCSV() {
             if (collectedAnalyticsEventsCacheList.length === 0) { alert("Analytics Stream Monitor is empty. Trigger some form interactions first!"); return; }
-            let csvBodyContent = "Timestamp,Analytics Event Name,Form ID\n";
-            collectedAnalyticsEventsCacheList.forEach(item => { csvBodyContent += `"${item.time}","${item.eventName}","${item.formId}"\n`; });
+
+            const columns = [
+                ["Captured Time", r => r.time],
+                ["Event Name", r => r.eventName],
+                ["Form ID", r => r.formId],
+                ["Trigger Type", r => r.trigger || ""],
+                ["Transport", r => r.transport],
+                ["SDK Timestamp", r => r.payload.timestamp || ""],
+                ["Session ID", r => r.payload.sessionId || ""],
+                ["User ID", r => r.payload.userId || ""],
+                ["Submitted Date", r => r.mdData.submittedDate || ""],
+                ["Declined Date", r => r.mdData.declinedDate || ""],
+                ["Last Invitation View", r => r.mdData.lastInvitationView || ""],
+                ["User Percentile", r => r.mdData.mdUserPercentile || ""],
+                ["Invite Presented", r => r.mdData.mdInvitePresented || ""],
+                ["Form Version", r => r.payload.formVersion || ""],
+                ["Feedback Correlation UUID", r => r.payload.feedbackCorrelationUuid || ""],
+                ["SDK Version", r => r.payload.sdkVersion || ""],
+                ["Device Type", r => r.payload.deviceType || ""],
+                ["Page URL", r => r.payload.pageUrl || ""]
+            ];
+
+            const escapeCsvCell = value => `"${String(value === null || value === undefined ? '' : value).replace(/"/g, '""')}"`;
+            let csvBodyContent = columns.map(c => escapeCsvCell(c[0])).join(",") + "\n";
+            collectedAnalyticsEventsCacheList.forEach(record => {
+                csvBodyContent += columns.map(c => escapeCsvCell(c[1](record))).join(",") + "\n";
+            });
+
             const blobObject = new Blob([csvBodyContent], { type: 'text/csv;charset=utf-8;' });
             const temporaryAnchorLink = document.createElement("a");
             temporaryAnchorLink.href = URL.createObjectURL(blobObject);
             temporaryAnchorLink.setAttribute("download", `Medallia_Analytics_QA_Report_Total_${collectedAnalyticsEventsCacheList.length}_Events.csv`);
             document.body.appendChild(temporaryAnchorLink);
             temporaryAnchorLink.click(); document.body.removeChild(temporaryAnchorLink);
-            writeLog(`CSV Export Engine Complete: Downloaded structured analysis spreadsheet dataset.`, 'success');
+            URL.revokeObjectURL(temporaryAnchorLink.href);
+            writeLog(`CSV Export Engine Complete: Downloaded ${collectedAnalyticsEventsCacheList.length} events across ${columns.length} telemetry columns.`, 'success');
+        }
+
+        // --- 3b. NATIVE SDK CUSTOM EVENT BUS STREAM ---
+        // Rendered in its own panel, deliberately kept separate from the network analytics
+        // stream: these are client-side lifecycle broadcasts, not collector payloads, and
+        // conflating the two would hide which layer a given event actually came from.
+        let collectedSdkBusEventsCacheList = [];
+        let activeSdkBusChipFilter = null;
+
+        window.addEventListener('qa_sdk_custom_event', (e) => {
+            collectedSdkBusEventsCacheList.push({
+                time: new Date().toLocaleTimeString(),
+                eventName: e.detail.name,
+                source: e.detail.source,
+                data: e.detail.data,
+                formId: extractFormIdFromSdkBusPayload(e.detail.data),
+                expanded: false
+            });
+
+            const statusPill = document.getElementById('sdkbus-tap-status');
+            if (statusPill) {
+                statusPill.className = "status-pill pill-success";
+                statusPill.innerText = sdkCustomEventBusTapState.dispatcher && sdkCustomEventBusTapState.broadcast
+                    ? "Tap armed · both emitters" : "Tap armed";
+            }
+
+            renderSdkBusFilterChipRow();
+            renderFilteredSdkBusEventStream();
+            writeLog(`SDK Bus Broadcast Captured ➔ [${e.detail.source}] "${e.detail.name}"`, 'info');
+        });
+
+        function extractFormIdFromSdkBusPayload(data) {
+            if (!data || typeof data !== 'object') return null;
+            return data.formId || data.form_id || (data.form && data.form.formId) || null;
+        }
+
+        function renderSdkBusFilterChipRow() {
+            const chipRow = document.getElementById('sdkbus-chip-row');
+            if (!chipRow) return;
+
+            const tallyByEventName = {};
+            collectedSdkBusEventsCacheList.forEach(item => {
+                tallyByEventName[item.eventName] = (tallyByEventName[item.eventName] || 0) + 1;
+            });
+
+            chipRow.innerHTML = "";
+            Object.keys(tallyByEventName).sort().forEach(eventName => {
+                const chip = document.createElement('span');
+                chip.className = "event-name-chip chip-sdkbus" + (activeSdkBusChipFilter === eventName ? " chip-sdkbus-active" : "");
+                chip.innerText = `${eventName} (${tallyByEventName[eventName]})`;
+                chip.onclick = () => {
+                    activeSdkBusChipFilter = (activeSdkBusChipFilter === eventName) ? null : eventName;
+                    renderSdkBusFilterChipRow();
+                    renderFilteredSdkBusEventStream();
+                };
+                chipRow.appendChild(chip);
+            });
+        }
+
+        function renderFilteredSdkBusEventStream() {
+            const stream = document.getElementById('sdkbus-events-stream-box');
+            if (!stream) return;
+
+            const filterInput = document.getElementById('sdkbus-filter-input');
+            const searchTerm = filterInput ? filterInput.value.trim().toLowerCase() : "";
+
+            const visibleRecords = collectedSdkBusEventsCacheList.filter(item => {
+                if (activeSdkBusChipFilter && item.eventName !== activeSdkBusChipFilter) return false;
+                if (!searchTerm) return true;
+                return `${item.eventName} ${item.source} ${item.formId || ''}`.toLowerCase().includes(searchTerm);
+            });
+
+            document.getElementById('sdkbus-counter-badge').innerText =
+                visibleRecords.length === collectedSdkBusEventsCacheList.length
+                    ? collectedSdkBusEventsCacheList.length
+                    : `${visibleRecords.length}/${collectedSdkBusEventsCacheList.length}`;
+
+            if (collectedSdkBusEventsCacheList.length === 0) {
+                stream.innerHTML = `<div style="color:#64748b; font-style:italic; font-size:0.8rem;">Awaiting native SDK lifecycle broadcasts. Inject a property embed to arm the bus tap...</div>`;
+                return;
+            }
+            if (visibleRecords.length === 0) {
+                stream.innerHTML = `<div style="color:#64748b; font-style:italic; font-size:0.8rem;">No captured broadcasts match the active filter criteria.</div>`;
+                return;
+            }
+
+            const wasPinnedToBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 40;
+            stream.innerHTML = "";
+
+            visibleRecords.forEach(record => {
+                const row = document.createElement('div');
+                row.className = "event-record" + (record.expanded ? " record-expanded" : "");
+                const formIdMarkup = record.formId
+                    ? `<span style="color:#94a3b8; font-size:0.75rem;">form <span style="color:#38bdf8; font-weight:bold;">${escapeMarkupForSafeRender(record.formId)}</span></span>`
+                    : "";
+                row.innerHTML = `
+                    <div class="event-record-head">
+                        <span class="event-disclosure-caret">${record.expanded ? '▼' : '▶'}</span>
+                        <span class="badge badge-sdkbus">Bus</span>
+                        <span class="event-record-name name-sdkbus">${escapeMarkupForSafeRender(record.eventName)}</span>
+                        <span class="source-tag ${record.source === 'WINDOW' ? 'source-window' : 'source-dispatcher'}">${escapeMarkupForSafeRender(record.source)}</span>
+                        ${formIdMarkup}
+                        <span class="event-record-time">${escapeMarkupForSafeRender(record.time)}</span>
+                    </div>
+                    <div class="event-record-json">${escapeMarkupForSafeRender(JSON.stringify(record.data, null, 2))}</div>
+                `;
+                row.querySelector('.event-record-head').onclick = () => {
+                    record.expanded = !record.expanded;
+                    renderFilteredSdkBusEventStream();
+                };
+                stream.appendChild(row);
+            });
+
+            if (wasPinnedToBottom) stream.scrollTop = stream.scrollHeight;
+        }
+
+        function toggleEveryCapturedSdkBusRecord() {
+            const shouldExpandAll = collectedSdkBusEventsCacheList.some(item => !item.expanded);
+            collectedSdkBusEventsCacheList.forEach(item => { item.expanded = shouldExpandAll; });
+            renderFilteredSdkBusEventStream();
+        }
+
+        function clearCapturedSdkBusEventStream() {
+            collectedSdkBusEventsCacheList = [];
+            activeSdkBusChipFilter = null;
+            const filterInput = document.getElementById('sdkbus-filter-input');
+            if (filterInput) filterInput.value = "";
+            renderSdkBusFilterChipRow();
+            renderFilteredSdkBusEventStream();
+            writeLog("Captured native SDK bus broadcast buffer cleared.", "info");
+        }
+
+        function downloadCapturedSdkBusEventsAsCSV() {
+            if (collectedSdkBusEventsCacheList.length === 0) { alert("SDK Custom Event Bus is empty. Inject a property and interact with a form first!"); return; }
+
+            const escapeCsvCell = value => `"${String(value === null || value === undefined ? '' : value).replace(/"/g, '""')}"`;
+            let csvBodyContent = ["Captured Time", "Event Name", "Emitter Source", "Form ID", "Payload JSON"].map(escapeCsvCell).join(",") + "\n";
+            collectedSdkBusEventsCacheList.forEach(record => {
+                csvBodyContent += [
+                    record.time, record.eventName, record.source,
+                    record.formId || "", JSON.stringify(record.data)
+                ].map(escapeCsvCell).join(",") + "\n";
+            });
+
+            const blobObject = new Blob([csvBodyContent], { type: 'text/csv;charset=utf-8;' });
+            const temporaryAnchorLink = document.createElement("a");
+            temporaryAnchorLink.href = URL.createObjectURL(blobObject);
+            temporaryAnchorLink.setAttribute("download", `Medallia_SDK_CustomEventBus_Total_${collectedSdkBusEventsCacheList.length}_Events.csv`);
+            document.body.appendChild(temporaryAnchorLink);
+            temporaryAnchorLink.click(); document.body.removeChild(temporaryAnchorLink);
+            URL.revokeObjectURL(temporaryAnchorLink.href);
+            writeLog(`CSV Export Engine Complete: Downloaded ${collectedSdkBusEventsCacheList.length} native SDK bus broadcasts.`, 'success');
         }
 
         // --- 4. SDK PROVISIONS CONFIG MANIFEST MATRICES PARSER ---
@@ -785,11 +1599,46 @@
             enabledKeys.forEach(key => {
                 const entry = document.createElement('div');
                 entry.className = "provisions-entry-item";
-                entry.innerHTML = `<div><span class="badge badge-provisions">Enabled</span> <strong>${key}</strong></div><span style="color:#34d399; font-size:0.75rem;">✔ true</span>`;
+                entry.innerHTML = `<div><span class="badge badge-provisions">Enabled</span> <strong>${escapeMarkupForSafeRender(key)}</strong></div><span style="color:#34d399; font-size:0.75rem;">✔ true</span>`;
                 stream.appendChild(entry);
             });
-            writeLog(`Configuration Sync: Extracted ${enabledKeys.length} server production provisions flags from onsiteData JSON configuration block.`, 'success');
+
+            const counterBadge = document.getElementById('provisions-counter-badge');
+            if (counterBadge) counterBadge.innerText = `${enabledKeys.length} of ${Object.keys(provisions).length}`;
+            writeLog(`Configuration Sync: Extracted ${enabledKeys.length} enabled provisions out of ${Object.keys(provisions).length} total flags (source: ${e.detail.source || 'network manifest'}).`, 'success');
         });
+
+        // The provisions map is not always delivered as a standalone onsiteData request — on this
+        // property it ships inlined inside the generic bundle. Polling the SDK's own memory store
+        // is therefore the reliable extraction path, with the network listener kept as a fallback.
+        let onsiteProvisionsAlreadyRendered = false;
+        function attemptRuntimeProvisionsMemoryExtraction() {
+            if (onsiteProvisionsAlreadyRendered) return;
+            try {
+                let provisions = null;
+
+                if (window.KAMPYLE_DATA && typeof KAMPYLE_DATA.getMemoryData === 'function' &&
+                    window.KAMPYLE_CONSTANT && KAMPYLE_CONSTANT.MEMORY_DATA_FIELDS) {
+                    const dataJson = KAMPYLE_DATA.getMemoryData(KAMPYLE_CONSTANT.MEMORY_DATA_FIELDS.DATA_JSON);
+                    if (dataJson && dataJson.provisions) provisions = dataJson.provisions;
+                }
+                if (!provisions && typeof window.getOnsiteConfiguration === 'function') {
+                    const configuration = window.getOnsiteConfiguration();
+                    if (configuration && configuration.provisions) provisions = configuration.provisions;
+                }
+
+                if (provisions) {
+                    onsiteProvisionsAlreadyRendered = true;
+                    window.dispatchEvent(new CustomEvent('qa_provisions_loaded', {
+                        detail: { provisions, source: 'SDK runtime memory store' }
+                    }));
+                }
+            } catch (err) {
+                writeLog(`Provisions extraction probe failed: ${err.message}`, 'warn');
+                onsiteProvisionsAlreadyRendered = true;
+            }
+        }
+        setInterval(attemptRuntimeProvisionsMemoryExtraction, 1000);
 
         // --- 5. DOM STRUCTURAL & SDK STORAGE OBSERVERS ---
         function runLiveStorageAndDOMStructureAudit() {
@@ -837,7 +1686,19 @@
                 } else { element.innerText = "null"; }
             });
         }
-        setInterval(runLiveStorageAndDOMStructureAudit, 400);
+        setInterval(() => {
+            runLiveStorageAndDOMStructureAudit();
+            refreshOnsiteLifecycleStateValues();
+        }, 400);
+
+        // Refreshed on a slower cadence than the storage audit: the matrix rebuilds whole cards,
+        // so a tighter loop would fight with clicks landing on the card headers.
+        setInterval(renderFormTargetingRulesMatrix, 1500);
+        setInterval(() => {
+            renderDesignAndDisplayValidator();
+            renderDeviceEmulationBanner();
+            if (!IS_NESTED_PREVIEW_FRAME) renderUserAgentScopeReport();
+        }, 1800);
 
         // EXTRA HIGH-VALUE INLINE DECK WRITER ACTION METHOD WITH PERCENTILE ENFORCEMENT
         function executeManualStorageInjectedOverride(storageTargetKey, htmlInputFieldId) {
@@ -870,6 +1731,1260 @@
             if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
                 window.KAMPYLE_ONSITE_SDK.updatePageView();
             }
+        }
+
+        // --- 5b. ONSITE LIFECYCLE STATE & DATE MANAGER ---
+        // These are the storage keys the onsite SDK actually writes while an invitation is
+        // presented, declined or submitted. Targeting rules read them back as throttling
+        // windows, so being able to back-date them is what makes re-invite logic testable.
+        const ONSITE_LIFECYCLE_STORAGE_KEYS = [
+            { key: 'SUBMITTED_DATE', label: 'Submitted Date', kind: 'date',
+              hint: 'Epoch ms stamped when a feedback form is successfully submitted.' },
+            { key: 'DECLINED_DATE', label: 'Declined Date', kind: 'date',
+              hint: 'Epoch ms stamped when the user dismisses an invitation.' },
+            { key: 'LAST_INVITATION_VIEW', label: 'Last Invitation View', kind: 'date',
+              hint: 'Epoch ms stamped each time an invitation is presented on screen.' },
+            { key: 'kampyleUserSession', label: 'User Session Start', kind: 'date',
+              hint: 'Epoch anchor marking the beginning of the active SDK session window.' },
+            { key: 'kampyleInvitePresented', label: 'Invite Presented Flag', kind: 'flag',
+              hint: 'Set to true once an invitation has rendered for this user.' },
+            { key: 'md_isSurveySubmittedInSession', label: 'Submitted In Session', kind: 'flag',
+              hint: 'Set to true after a submission inside the current session only.' },
+            { key: 'kampyle_userid', label: 'Persistent User ID', kind: 'text',
+              hint: 'Respondent identifier carried on every outbound telemetry event.' }
+        ];
+
+        function convertEpochToDatetimeLocalValue(epochMilliseconds) {
+            const dateObject = new Date(epochMilliseconds);
+            const pad = num => String(num).padStart(2, '0');
+            return `${dateObject.getFullYear()}-${pad(dateObject.getMonth() + 1)}-${pad(dateObject.getDate())}` +
+                   `T${pad(dateObject.getHours())}:${pad(dateObject.getMinutes())}`;
+        }
+
+        function describeRelativeAgeFromNow(epochMilliseconds) {
+            const deltaMs = Date.now() - epochMilliseconds;
+            const isPast = deltaMs >= 0;
+            const absoluteMs = Math.abs(deltaMs);
+            const units = [['day', 86400000], ['hour', 3600000], ['minute', 60000], ['second', 1000]];
+
+            for (const [unitName, unitMs] of units) {
+                if (absoluteMs >= unitMs) {
+                    const count = Math.floor(absoluteMs / unitMs);
+                    return `${count} ${unitName}${count === 1 ? '' : 's'} ${isPast ? 'ago' : 'from now'}`;
+                }
+            }
+            return 'moments ago';
+        }
+
+        function buildOnsiteLifecycleStateRows() {
+            const container = document.getElementById('lifecycle-state-rows-container');
+            if (!container) return;
+            container.innerHTML = "";
+
+            ONSITE_LIFECYCLE_STORAGE_KEYS.forEach(definition => {
+                const row = document.createElement('div');
+                row.className = "lifecycle-key-row";
+
+                let controlsMarkup;
+                if (definition.kind === 'date') {
+                    controlsMarkup = `
+                        <input type="datetime-local" id="lifecycle-input-${definition.key}" class="lifecycle-date-input">
+                        <button class="lifecycle-btn btn-commit" onclick="commitLifecycleDateOverride('${definition.key}')">Set</button>
+                        <button class="lifecycle-btn" onclick="applyRelativeDayOffsetToLifecycleKey('${definition.key}', 0)">Now</button>
+                        <button class="lifecycle-btn" onclick="applyRelativeDayOffsetToLifecycleKey('${definition.key}', 1)">−1d</button>
+                        <button class="lifecycle-btn" onclick="applyRelativeDayOffsetToLifecycleKey('${definition.key}', 7)">−7d</button>
+                        <button class="lifecycle-btn" onclick="applyRelativeDayOffsetToLifecycleKey('${definition.key}', 30)">−30d</button>
+                        <button class="lifecycle-btn" onclick="applyRelativeDayOffsetToLifecycleKey('${definition.key}', 90)">−90d</button>
+                        <button class="lifecycle-btn btn-purge" onclick="clearSingleLifecycleStorageKey('${definition.key}')">Clear</button>`;
+                } else if (definition.kind === 'flag') {
+                    controlsMarkup = `
+                        <button class="lifecycle-btn btn-commit" onclick="toggleLifecycleBooleanFlag('${definition.key}')">Toggle true / false</button>
+                        <button class="lifecycle-btn btn-purge" onclick="clearSingleLifecycleStorageKey('${definition.key}')">Clear</button>`;
+                } else {
+                    controlsMarkup = `
+                        <input type="text" id="lifecycle-input-${definition.key}" class="lifecycle-text-input" placeholder="Override identifier value">
+                        <button class="lifecycle-btn btn-commit" onclick="commitLifecycleTextOverride('${definition.key}')">Set</button>
+                        <button class="lifecycle-btn btn-purge" onclick="clearSingleLifecycleStorageKey('${definition.key}')">Clear</button>`;
+                }
+
+                row.innerHTML = `
+                    <div>
+                        <div class="lifecycle-key-name">${definition.key}</div>
+                        <div class="lifecycle-key-hint">${definition.hint}</div>
+                    </div>
+                    <div>
+                        <div class="lifecycle-raw-value" id="lifecycle-raw-${definition.key}">null</div>
+                        <div class="lifecycle-human-value value-unset" id="lifecycle-human-${definition.key}">not set</div>
+                    </div>
+                    <div class="lifecycle-controls">${controlsMarkup}</div>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        function refreshOnsiteLifecycleStateValues() {
+            ONSITE_LIFECYCLE_STORAGE_KEYS.forEach(definition => {
+                const rawNode = document.getElementById(`lifecycle-raw-${definition.key}`);
+                const humanNode = document.getElementById(`lifecycle-human-${definition.key}`);
+                if (!rawNode || !humanNode) return;
+
+                const storedValue = localStorage.getItem(definition.key);
+                if (storedValue === null) {
+                    rawNode.innerText = "null";
+                    humanNode.innerText = "not set";
+                    humanNode.className = "lifecycle-human-value value-unset";
+                    return;
+                }
+
+                rawNode.innerText = storedValue;
+                humanNode.className = "lifecycle-human-value";
+
+                if (definition.kind === 'date') {
+                    const epochMilliseconds = Number(storedValue);
+                    humanNode.innerText = Number.isFinite(epochMilliseconds) && epochMilliseconds > 0
+                        ? `${new Date(epochMilliseconds).toLocaleString()} · ${describeRelativeAgeFromNow(epochMilliseconds)}`
+                        : "unparseable timestamp";
+                } else {
+                    humanNode.innerText = definition.kind === 'flag' ? `flag = ${storedValue}` : "active";
+                }
+            });
+        }
+
+        // Targeting is re-evaluated against the freshly written values so the effect of an
+        // override is observable immediately rather than only on the next page load.
+        function commitLifecycleStorageWrite(storageKey, storageValue, logMessage) {
+            localStorage.setItem(storageKey, storageValue);
+            refreshOnsiteLifecycleStateValues();
+            writeLog(logMessage, 'success');
+            if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
+                window.KAMPYLE_ONSITE_SDK.updatePageView();
+            }
+        }
+
+        function commitLifecycleDateOverride(storageKey) {
+            const inputNode = document.getElementById(`lifecycle-input-${storageKey}`);
+            if (!inputNode || !inputNode.value) {
+                alert("Pick a target date and time before committing the override.");
+                return;
+            }
+            const epochMilliseconds = new Date(inputNode.value).getTime();
+            if (!Number.isFinite(epochMilliseconds)) {
+                alert("The selected date-time could not be parsed into a valid timestamp.");
+                return;
+            }
+            commitLifecycleStorageWrite(storageKey, String(epochMilliseconds),
+                `Lifecycle Override: [${storageKey}] back-dated to ${new Date(epochMilliseconds).toLocaleString()} (${epochMilliseconds}).`);
+        }
+
+        function applyRelativeDayOffsetToLifecycleKey(storageKey, daysInPast) {
+            const epochMilliseconds = Date.now() - (daysInPast * 86400000);
+            const inputNode = document.getElementById(`lifecycle-input-${storageKey}`);
+            if (inputNode) inputNode.value = convertEpochToDatetimeLocalValue(epochMilliseconds);
+            commitLifecycleStorageWrite(storageKey, String(epochMilliseconds),
+                `Lifecycle Override: [${storageKey}] shifted to ${daysInPast === 0 ? 'the current moment' : `${daysInPast} day(s) in the past`} ➔ ${epochMilliseconds}.`);
+        }
+
+        function toggleLifecycleBooleanFlag(storageKey) {
+            const nextValue = localStorage.getItem(storageKey) === 'true' ? 'false' : 'true';
+            commitLifecycleStorageWrite(storageKey, nextValue, `Lifecycle Override: flag [${storageKey}] toggled to ➔ ${nextValue}.`);
+        }
+
+        function commitLifecycleTextOverride(storageKey) {
+            const inputNode = document.getElementById(`lifecycle-input-${storageKey}`);
+            const nextValue = inputNode ? inputNode.value.trim() : "";
+            if (!nextValue) {
+                alert("Override value cannot be empty.");
+                return;
+            }
+            commitLifecycleStorageWrite(storageKey, nextValue, `Lifecycle Override: [${storageKey}] rewritten to ➔ ${nextValue}.`);
+            inputNode.value = "";
+        }
+
+        function clearSingleLifecycleStorageKey(storageKey) {
+            localStorage.removeItem(storageKey);
+            refreshOnsiteLifecycleStateValues();
+            writeLog(`Lifecycle Purge: storage key [${storageKey}] removed. Targeting will treat this user as never having reached that state.`, 'warn');
+            if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
+                window.KAMPYLE_ONSITE_SDK.updatePageView();
+            }
+        }
+
+        function purgeEntireOnsiteLifecycleState() {
+            if (!confirm("Remove every onsite lifecycle key (submitted / declined / invitation / session / identity)?\n\nThe SDK will treat this browser as a brand new respondent.")) return;
+            ONSITE_LIFECYCLE_STORAGE_KEYS.forEach(definition => localStorage.removeItem(definition.key));
+            refreshOnsiteLifecycleStateValues();
+            writeLog("Lifecycle Purge: all onsite lifecycle storage keys flushed. Respondent reset to first-visit state.", 'warn');
+            if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
+                window.KAMPYLE_ONSITE_SDK.updatePageView();
+            }
+        }
+
+        function copyOnsiteLifecycleStateToClipboard() {
+            const snapshot = {};
+            ONSITE_LIFECYCLE_STORAGE_KEYS.forEach(definition => {
+                const storedValue = localStorage.getItem(definition.key);
+                snapshot[definition.key] = storedValue;
+                if (definition.kind === 'date' && storedValue !== null && Number.isFinite(Number(storedValue))) {
+                    snapshot[`${definition.key}__readable`] = new Date(Number(storedValue)).toISOString();
+                }
+            });
+
+            const serialized = JSON.stringify(snapshot, null, 2);
+            if (!navigator.clipboard) {
+                writeLog("Clipboard API unavailable in this browsing context. State snapshot written to the log instead.", 'warn');
+                writeLog(serialized, 'info');
+                return;
+            }
+            navigator.clipboard.writeText(serialized)
+                .then(() => writeLog("Lifecycle state snapshot copied to clipboard as JSON.", 'success'))
+                .catch(err => writeLog(`Clipboard write rejected: ${err.message}`, 'warn'));
+        }
+
+        // --- 5b2. DEVICE EMULATION CONTROLS ---
+        function buildSandboxEntryUrl() {
+            // Rebuilt from the captured entry path rather than location.href, which the router
+            // may have rewritten to a virtual route that only a rewrite-capable host can serve.
+            const url = new URL(window.location.origin + SANDBOX_DOCUMENT_ENTRY_PATH);
+            new URLSearchParams(window.location.search).forEach((value, key) => {
+                if (key !== 'qa_device') url.searchParams.set(key, value);
+            });
+            return url;
+        }
+
+        // One control drives both behaviours. They are genuinely different tools: an in-page
+        // preview shows handset LAYOUT without changing this tab's targeting, whereas an
+        // emulated tab changes the user agent and therefore what the SDK targets.
+        function handleDeviceModeSelection() {
+            const selection = document.getElementById('device-mode-select').value;
+
+            if (!selection) {
+                hideDevicePreviewPanel();
+                if (activeDeviceEmulationKey) exitDeviceEmulationMode();
+                return;
+            }
+
+            const [mode, deviceKey] = selection.split(':');
+            if (mode === 'preview') showDevicePreviewPanel(deviceKey);
+            else if (mode === 'tab') openDeviceEmulationTab(deviceKey);
+            else if (mode === 'launch') launchMobileChromeViaLocalHelper(deviceKey);
+        }
+
+        // A page cannot start a process, so the launch option depends on the bundled local
+        // helper (qa-server.py) serving this document. When the sandbox is served statically —
+        // including on Vercel — the option degrades to handing over the exact command instead,
+        // since no server-side process could open a window on the tester's own machine.
+        let localLauncherHelperAvailable = false;
+
+        async function detectLocalLauncherHelper() {
+            const launchGroup = document.getElementById('launch-optgroup');
+            try {
+                const response = await fetch('/api/health', { method: 'GET', cache: 'no-store' });
+                if (!response.ok) throw new Error(`helper responded ${response.status}`);
+                const health = await response.json();
+                localLauncherHelperAvailable = !!(health && health.ok && health.canLaunch);
+            } catch (err) {
+                localLauncherHelperAvailable = false;
+            }
+
+            if (launchGroup) {
+                launchGroup.label = localLauncherHelperAvailable
+                    ? 'Mobile Chrome (real mobile submissions)'
+                    : 'Mobile Chrome — needs qa-server.py';
+            }
+            if (localLauncherHelperAvailable) {
+                writeLog("Local launcher helper detected. Mobile Chrome can be started directly from this dashboard.", 'success');
+            }
+            renderUserAgentScopeReport();
+        }
+
+        function buildMobileLaunchCommand(deviceKey) {
+            const isLocalHost = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
+            const targetUrl = isLocalHost ? "" : ` ${window.location.origin}${SANDBOX_DOCUMENT_ENTRY_PATH}`;
+            return `./launch-mobile-qa.sh ${deviceKey}${targetUrl}`;
+        }
+
+        async function launchMobileChromeViaLocalHelper(deviceKey) {
+            const selector = document.getElementById('device-mode-select');
+            const resetSelection = () => {
+                if (selector) selector.value = activeDeviceEmulationKey ? `tab:${activeDeviceEmulationKey}` : "";
+            };
+
+            if (!localLauncherHelperAvailable) {
+                const command = buildMobileLaunchCommand(deviceKey);
+                showDeviceEmulationNotice(
+                    `Launching Chrome needs the local helper. Start it with <code>python3 qa-server.py</code> and reload this page, then this option works as a button. ` +
+                    `Meanwhile the command below has been copied to your clipboard:<br><code>${escapeMarkupForSafeRender(command)}</code>`, 'warn');
+                if (navigator.clipboard) navigator.clipboard.writeText(command).catch(() => {});
+                writeLog(`Launcher helper not available. Run manually: ${command}`, 'warn');
+                resetSelection();
+                return;
+            }
+
+            const profile = DEVICE_EMULATION_PROFILES[deviceKey];
+            showDeviceEmulationNotice(`Starting a mobile Chrome instance for ${escapeMarkupForSafeRender(profile ? profile.label : deviceKey)}…`, 'info');
+
+            try {
+                const response = await fetch('/api/launch-mobile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device: deviceKey })
+                });
+                const result = await response.json();
+
+                if (!response.ok || !result.ok) throw new Error(result.error || `helper responded ${response.status}`);
+
+                showDeviceEmulationNotice(
+                    `<strong>Mobile Chrome launched for ${escapeMarkupForSafeRender(profile ? profile.label : deviceKey)}.</strong> ` +
+                    `Inject your embed in that window, confirm the Feedback Submission Scope panel turns green, then submit — ` +
+                    `the record will be attributed to the device rather than to this desktop browser.`, 'success');
+                writeLog(`Mobile Chrome launched via local helper for [${deviceKey}] ➔ ${result.url}`, 'success');
+            } catch (err) {
+                showDeviceEmulationNotice(`Launch failed: ${escapeMarkupForSafeRender(err.message)}`, 'warn');
+                writeLog(`❌ Mobile Chrome launch failed: ${err.message}`, 'warn');
+            }
+            resetSelection();
+        }
+
+        function showDeviceEmulationNotice(markup, tone) {
+            const notice = document.getElementById('device-launch-notice');
+            if (!notice) return;
+            const palette = { success: '#10b981', warn: '#f59e0b', info: '#0ea5e9' };
+            notice.style.display = 'block';
+            notice.style.borderColor = palette[tone] || palette.info;
+            notice.innerHTML = markup;
+            notice.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function openDeviceEmulationTab(deviceKey) {
+            const targetUrl = buildSandboxEntryUrl();
+            targetUrl.searchParams.set('qa_device', deviceKey);
+            // A fresh tab is required: navigator overrides only take effect on a document that
+            // has not yet loaded the embed, so mutating the current tab in place would leave an
+            // already-initialised SDK holding the previous device classification.
+            window.open(targetUrl.toString(), '_blank');
+            document.getElementById('device-mode-select').value = activeDeviceEmulationKey ? `tab:${activeDeviceEmulationKey}` : "";
+            writeLog(`Device emulation tab opened for profile [${deviceKey}]. Inject the embed there to evaluate device targeting.`, 'info');
+        }
+
+        function toggleConstrainedViewportFrame() {
+            document.body.classList.toggle('viewport-constrained');
+            const isConstrained = document.body.classList.contains('viewport-constrained');
+            writeLog(`Emulated viewport frame ${isConstrained ? 'constrained to a handset width' : 'released to full width'}.`, 'info');
+        }
+
+        function renderDeviceEmulationBanner() {
+            const banner = document.getElementById('device-emulation-banner');
+            const indicator = document.getElementById('device-mode-indicator');
+            const selector = document.getElementById('device-mode-select');
+            if (!banner || !indicator) return;
+
+            if (!activeDeviceEmulationProfile) {
+                indicator.className = "device-chip device-chip-desktop";
+                indicator.innerText = "🖥️ Desktop";
+                return;
+            }
+
+            // Never clobber an open preview selection with the tab's own emulation key.
+            if (selector && !selector.value.startsWith('preview:')) selector.value = `tab:${activeDeviceEmulationKey}`;
+            indicator.className = "device-chip device-chip-emulated";
+            indicator.innerText = `📱 ${activeDeviceEmulationProfile.label}`;
+
+            // The SDK's own classification is the authoritative check that the spoof took hold.
+            let sdkResolvedDevice = null;
+            try { sdkResolvedDevice = KAMPYLE_DATA.getMemoryData('kampyleDevice'); } catch (err) { /* SDK not injected yet */ }
+
+            const expected = activeDeviceEmulationProfile.expectedDevice;
+            const verdictMarkup = sdkResolvedDevice
+                ? (String(sdkResolvedDevice) === expected
+                    ? `<span class="status-pill pill-success">SDK resolved: ${sdkResolvedDevice} ✓ matches profile</span>`
+                    : `<span class="status-pill pill-danger">SDK resolved: ${sdkResolvedDevice} ✕ expected ${expected}</span>`)
+                : `<span class="status-pill pill-warn">Inject the embed to confirm SDK classification</span>`;
+
+            banner.style.display = "block";
+            banner.innerHTML = `
+                <div><strong>📱 Device Emulation Active — ${escapeMarkupForSafeRender(activeDeviceEmulationProfile.label)}</strong> ${verdictMarkup}</div>
+                <div class="emulation-detail">
+                    navigator.userAgent → ${escapeMarkupForSafeRender(navigator.userAgent)}<br>
+                    navigator.userAgentData → ${escapeMarkupForSafeRender(JSON.stringify(activeDeviceEmulationProfile.userAgentData))} ·
+                    platform → ${escapeMarkupForSafeRender(navigator.platform)} · maxTouchPoints → ${escapeMarkupForSafeRender(navigator.maxTouchPoints)}
+                </div>
+                <div class="emulation-controls">
+                    <button class="lifecycle-btn" onclick="toggleConstrainedViewportFrame()">📐 Toggle Handset Viewport Width</button>
+                    <button class="lifecycle-btn btn-purge" onclick="exitDeviceEmulationMode()">✕ Exit Emulation</button>
+                </div>`;
+        }
+
+        function exitDeviceEmulationMode() {
+            window.location.href = buildSandboxEntryUrl().toString();
+        }
+
+        // --- 5b2b. LIVE DEVICE PREVIEW STAGE ---
+        // The sandbox is re-hosted inside a device-sized same-origin iframe. Because the SDK
+        // inside that frame measures the IFRAME's viewport, fixed-position buttons, responsive
+        // breakpoints and the mobile invitation layout all resolve at true handset dimensions —
+        // something a UA override alone cannot achieve.
+        const IS_NESTED_PREVIEW_FRAME = new URLSearchParams(window.location.search).get('qa_frame') === '1';
+
+        let activePreviewDeviceKey = null;
+
+        function showDevicePreviewPanel(deviceKey) {
+            if (!DEVICE_EMULATION_PROFILES[deviceKey]) return;
+            activePreviewDeviceKey = deviceKey;
+            const panel = document.getElementById('device-preview-panel');
+            panel.style.display = 'block';
+            renderDevicePreviewStage();
+            panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            writeLog(`Handset preview opened for ${DEVICE_EMULATION_PROFILES[deviceKey].label}. This previews layout only; it does not change targeting in this tab.`, 'info');
+        }
+
+        function hideDevicePreviewPanel() {
+            activePreviewDeviceKey = null;
+            const panel = document.getElementById('device-preview-panel');
+            if (panel) panel.style.display = 'none';
+            const stage = document.getElementById('device-preview-stage');
+            if (stage) stage.innerHTML = "";   // drops the iframe so it stops running
+            const selector = document.getElementById('device-mode-select');
+            if (selector && selector.value.startsWith('preview:')) {
+                selector.value = activeDeviceEmulationKey ? `tab:${activeDeviceEmulationKey}` : "";
+            }
+        }
+
+        function renderDevicePreviewStage() {
+            const stage = document.getElementById('device-preview-stage');
+            if (!stage || !activePreviewDeviceKey) return;
+
+            const profile = DEVICE_EMULATION_PROFILES[activePreviewDeviceKey];
+            if (!profile) return;
+
+            const label = document.getElementById('preview-device-label');
+            if (label) label.innerText = `${profile.label} · ${profile.screen.width} × ${profile.screen.height}`;
+
+            const frameUrl = buildSandboxEntryUrl();
+            frameUrl.searchParams.set('qa_device', activePreviewDeviceKey);
+            frameUrl.searchParams.set('qa_frame', '1');
+
+            const isTablet = profile.expectedDevice === 'tablet';
+            // Tall handsets are scaled down so the whole screen stays visible in the dashboard.
+            const scale = isTablet ? 0.55 : 0.78;
+
+            stage.innerHTML = `
+                <div>
+                    <div class="device-chassis ${isTablet ? 'chassis-tablet' : ''}"
+                         style="width:${Math.round(profile.screen.width * scale)}px; height:${Math.round(profile.screen.height * scale)}px;">
+                        <div class="device-notch"></div>
+                        <iframe id="device-preview-iframe" class="device-screen" src="${frameUrl.toString()}"
+                                style="width:${profile.screen.width}px; height:${profile.screen.height}px;
+                                       transform:scale(${scale}); transform-origin: top left;"></iframe>
+                        <div class="device-home-indicator"></div>
+                    </div>
+                    <div class="device-caption">${escapeMarkupForSafeRender(profile.label)} · ${profile.screen.width} × ${profile.screen.height} CSS px · rendered at ${Math.round(scale * 100)}%</div>
+                </div>`;
+
+            renderUserAgentScopeReport();
+        }
+
+        function reloadDevicePreviewFrame() {
+            const frame = document.getElementById('device-preview-iframe');
+            if (frame) {
+                frame.src = frame.src;
+                writeLog("Device preview frame reloaded.", 'info');
+            } else {
+                renderDevicePreviewStage();
+            }
+        }
+
+        // Makes the JS-override boundary explicit rather than letting a tester assume a mobile
+        // submission was captured when the form iframe actually reported the desktop browser.
+        function renderUserAgentScopeReport() {
+            const container = document.getElementById('ua-scope-report');
+            const panel = document.getElementById('ua-scope-panel');
+            if (!container || !panel) return;
+
+            // Only meaningful once a device is being emulated or previewed; on a plain desktop
+            // session it would just restate the obvious.
+            const isRelevant = !!activeDeviceEmulationProfile || !!activePreviewDeviceKey || IS_BROWSER_LEVEL_MOBILE_EMULATION;
+            panel.style.display = isRelevant ? 'block' : 'none';
+            if (!isRelevant) return;
+
+            const browserLevelActive = IS_BROWSER_LEVEL_MOBILE_EMULATION;
+            const emulationRequested = !!activeDeviceEmulationProfile;
+
+            const documentUserAgent = navigator.userAgent;
+            const documentReadsMobile = /iPhone|iPad|Android|Mobile/i.test(documentUserAgent);
+
+            let sdkDevice = null;
+            try { sdkDevice = String(KAMPYLE_DATA.getMemoryData('kampyleDevice')); } catch (err) { /* not injected */ }
+            const sdkReadsHandset = sdkDevice === 'mobile' || sdkDevice === 'tablet';
+
+            const scopes = [
+                {
+                    name: 'Sandbox document',
+                    value: documentUserAgent,
+                    verdict: documentReadsMobile ? 'pass' : 'info',
+                    label: documentReadsMobile ? '✓ mobile' : 'ⓘ desktop',
+                    note: emulationRequested
+                        ? 'Overridden by this page, which is what drives SDK device targeting.'
+                        : 'No emulation requested, so the genuine desktop user agent is in effect.'
+                },
+                {
+                    name: 'SDK device classification',
+                    value: sdkDevice || 'inject an embed to resolve',
+                    verdict: sdkReadsHandset ? 'pass' : 'info',
+                    label: sdkDevice ? (sdkReadsHandset ? `✓ ${sdkDevice}` : `ⓘ ${sdkDevice}`) : 'ⓘ pending',
+                    note: sdkReadsHandset
+                        ? 'Derived from the overridden user agent, so targeting rules evaluate against a handset.'
+                        : 'The SDK is classifying this session from the current user agent.'
+                },
+                {
+                    name: 'Feedback form iframe (cross-origin)',
+                    value: GENUINE_BROWSER_USER_AGENT,
+                    verdict: browserLevelActive ? 'pass' : (emulationRequested ? 'block' : 'info'),
+                    label: browserLevelActive ? '✓ mobile' : 'ⓘ desktop',
+                    note: browserLevelActive
+                        ? 'Browser-level emulation is active, so the form iframe and its submit request both carry the mobile user agent.'
+                        : 'A page-level JS override cannot reach a cross-origin iframe. The form renders on Medallia\'s origin, so its submit request reports this real browser user agent.'
+                }
+            ];
+
+            const bannerState = browserLevelActive
+                ? { cls: 'pill-success', text: 'Browser-level emulation active — submissions are genuinely mobile' }
+                : emulationRequested
+                    ? { cls: 'pill-danger', text: 'JS override only — targeting is mobile, but submissions still report desktop' }
+                    : { cls: 'pill-warn', text: 'Desktop session — no device emulation active' };
+
+            container.innerHTML = `
+                <div class="design-group">
+                    <div class="design-group-title">
+                        <span>User Agent Propagation Scope</span>
+                        <span class="status-pill ${bannerState.cls}">${bannerState.text}</span>
+                    </div>
+                    ${scopes.map(scope => `
+                        <div class="ua-scope-row">
+                            <div>
+                                <div class="ua-scope-name">${escapeMarkupForSafeRender(scope.name)}</div>
+                                <div class="design-note">${escapeMarkupForSafeRender(scope.note)}</div>
+                            </div>
+                            <div class="ua-scope-value">${escapeMarkupForSafeRender(scope.value)}</div>
+                            <span class="verdict-pill verdict-${scope.verdict}">${escapeMarkupForSafeRender(scope.label)}</span>
+                        </div>`).join('')}
+                    ${browserLevelActive ? '' : `
+                    <div class="guidance-callout">
+                        <h5>To make a submission genuinely register as mobile</h5>
+                        <ol>
+                            <li><strong>Chrome DevTools device toolbar</strong> — open DevTools (<code>⌥⌘I</code>), toggle the device toolbar (<code>⌘⇧M</code>), pick iPhone or Pixel, then reload. This emulates the user agent <em>and</em> User-Agent Client Hints, so every frame including the Medallia form reports mobile. Nothing else is needed.</li>
+                            <li><strong>${localLauncherHelperAvailable
+                                    ? 'One click from this dashboard'
+                                    : 'Bundled launcher script'}</strong> —
+                                ${localLauncherHelperAvailable
+                                    ? `pick <em>🚀 iPhone — launch Chrome</em> from the device menu in the nav bar.
+                                       <button class="lifecycle-btn btn-commit" style="margin-left:6px;" onclick="launchMobileChromeViaLocalHelper('ios')">🚀 Launch iPhone Chrome now</button>`
+                                    : `from the repo root run <code>./launch-mobile-qa.sh ios</code> (or <code>android</code> / <code>tablet</code>).
+                                       Serve the sandbox with <code>python3 qa-server.py</code> instead and this becomes a button in the nav menu.`}
+                                It drives Chrome through the DevTools protocol, so the UA string
+                                <em>and</em> User-Agent Client Hints are emulated together in every frame.
+                                <br><span style="color:#f87171;">Why that matters:</span> the feedback form reports its technical info from
+                                <code>navigator.userAgentData</code>, not from the UA string. Spoofing the string alone —
+                                for example with Chrome's <code>--user-agent</code> flag — still records
+                                <em>Mobile Device: No</em> with the real desktop OS and Chrome version in the Inbox.</li>
+                            <li><strong>A real phone</strong> — browse to the deployed URL. Nothing to emulate, and the only option that also covers native mobile app SDK properties.</li>
+                        </ol>
+                        <div style="margin-top:10px; font-size:0.78rem; color:#64748b;">
+                            Afterwards, confirm this panel turns green and check the <code>sessionDua</code> field in the
+                            Live Analytics Events Tracking panel.
+                        </div>
+                    </div>`}
+                </div>`;
+        }
+
+        // --- 5b3. DESIGN & DISPLAY RENDER VALIDATOR ---
+        // Configured design is compared against the genuinely rendered DOM. Note the deliberate
+        // boundary: the feedback button is rendered into THIS document so every property is
+        // verifiable, whereas invitation and form bodies live in cross-origin iframes whose
+        // internals are unreadable — for those, only externally observable geometry is asserted.
+        function normalizeColorValueForComparison(rawValue) {
+            if (!rawValue) return null;
+            const value = String(rawValue).trim().toLowerCase();
+
+            const hexMatch = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/);
+            if (hexMatch) {
+                let hex = hexMatch[1];
+                if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+                return `${parseInt(hex.slice(0, 2), 16)},${parseInt(hex.slice(2, 4), 16)},${parseInt(hex.slice(4, 6), 16)}`;
+            }
+            const rgbMatch = value.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+            if (rgbMatch) return `${rgbMatch[1]},${rgbMatch[2]},${rgbMatch[3]}`;
+            return value;
+        }
+
+        function findCssRuleDeclarationValue(selectorPattern, cssProperty) {
+            for (const sheet of Array.from(document.styleSheets)) {
+                let rules;
+                try { rules = sheet.cssRules; } catch (err) { continue; } // cross-origin sheet
+                if (!rules) continue;
+                for (const rule of Array.from(rules)) {
+                    if (rule.selectorText && selectorPattern.test(rule.selectorText)) {
+                        const declaredValue = rule.style && rule.style.getPropertyValue(cssProperty);
+                        if (declaredValue) return declaredValue.trim();
+                    }
+                }
+            }
+            return null;
+        }
+
+        function detectRenderedDisplayModeForForm(formId) {
+            // The iframe id varies by display mode — kampyleForm<id> for lightbox,
+            // kampyleFormAnimation<id> for animation, embeddedIframe<id> when embedded — so any
+            // iframe carrying this form id is accepted rather than guessing a single naming.
+            const iframe = document.getElementById(`kampyleForm${formId}`)
+                        || document.getElementById(`kampyleFormAnimation${formId}`)
+                        || document.getElementById(`embeddedIframe${formId}`)
+                        || Array.from(document.querySelectorAll('iframe'))
+                                .find(node => node.id && node.id.includes(String(formId)));
+            if (!iframe) return null;
+            let node = iframe.parentElement;
+            while (node && node !== document.body) {
+                if (node.id === 'MDigitalLightboxWrapper') return 'lightbox';
+                if (node.id === 'MDigitalAnimationWrapper') return 'animation';
+                if (node.id === 'MDigitalInvitationWrapper') return 'invitation-shell';
+                if (/^embedded_form/i.test(node.id) || node.classList.contains('form-target-div')) return 'embedded';
+                node = node.parentElement;
+            }
+            return 'unknown';
+        }
+
+        function buildDesignComparisonCheck(property, expected, actual, options) {
+            const settings = options || {};
+            const check = { property, expected, actual, isColor: !!settings.isColor };
+
+            if (settings.referenceOnly) {
+                check.verdict = 'info';
+                check.note = settings.note || 'Configuration reference — not independently assertable from this document.';
+                return check;
+            }
+            if (actual === null || actual === undefined || actual === "") {
+                check.verdict = 'info';
+                check.note = settings.note || 'Not rendered yet, so there is nothing to compare against.';
+                return check;
+            }
+
+            const normalize = value => settings.isColor
+                ? normalizeColorValueForComparison(value)
+                : String(value === null || value === undefined ? '' : value).trim().toLowerCase();
+
+            check.verdict = normalize(expected) === normalize(actual) ? 'pass' : 'block';
+            if (check.verdict === 'block' && settings.note) check.note = settings.note;
+            return check;
+        }
+
+        // Several button forms on a property routinely share an identical button design, and the
+        // SDK renders exactly one shared button element. Guessing an owner from the registry order
+        // would mislabel the report, so the owner is taken from captured runtime events instead.
+        function resolveActiveButtonFormId() {
+            for (let i = collectedAnalyticsEventsCacheList.length - 1; i >= 0; i--) {
+                const record = collectedAnalyticsEventsCacheList[i];
+                if (record.trigger === 'button' && record.formId && record.formId !== 'N/A') return String(record.formId);
+            }
+            for (let i = collectedSdkBusEventsCacheList.length - 1; i >= 0; i--) {
+                const record = collectedSdkBusEventsCacheList[i];
+                if (record.formId && /button/i.test(record.eventName)) return String(record.formId);
+            }
+            return null;
+        }
+
+        function validateFeedbackButtonDesign(form) {
+            const buttonData = form.buttonData;
+            if (!buttonData) return null;
+
+            const buttonNode = document.getElementById('nebula_div_btn');
+            if (!buttonNode) {
+                return {
+                    title: `Feedback Button Design · form ${form.formId}`,
+                    checks: Object.keys(buttonData)
+                        .filter(key => typeof buttonData[key] !== 'object')
+                        .map(key => buildDesignComparisonCheck(key, buttonData[key], null,
+                            { note: 'Button element is not present in the DOM yet.' }))
+                };
+            }
+
+            const className = buttonNode.className || "";
+            const triangleNode = buttonNode.querySelector('.kampyle_triangle');
+            const solidButtonNode = buttonNode.querySelector('.kampyle_button');
+            const textNode = buttonNode.querySelector('.kampyle_button-text');
+
+            // The SDK renders a different DOM shape per button type (BUTTON_FUNCTION_ENUM:
+            // vertical | triangular | custom), so the element carrying the styling differs too.
+            const renderedShape = /kampyle_vertical_button/.test(className) ? 'vertical'
+                               : (/kampyle_feedback-button/.test(className) && triangleNode) ? 'triangular'
+                               : /kampyle_feedback-button/.test(className) ? 'custom'
+                               : /kampyle_horizontal_button/.test(className) ? 'horizontal'
+                               : 'unknown';
+
+            const innerButton = solidButtonNode || buttonNode;
+            const innerStyles = window.getComputedStyle(innerButton);
+            const textStyles = textNode ? window.getComputedStyle(textNode) : innerStyles;
+            // Positioning and stacking are applied to the button element itself (position:fixed),
+            // not to its static wrapper span, so the wrapper would only ever report "auto".
+            const containerStyles = window.getComputedStyle(buttonNode);
+
+            // Config uses camelCase ("bottomLeft"); the DOM uses kebab ("kampyle_bottom-left").
+            const positionClassMatch = className.match(/kampyle_(top|bottom)-(left|right)/)
+                                    || className.match(/kampyle_(left|right|top|bottom)\b/);
+            let renderedPosition = 'unknown';
+            if (positionClassMatch) {
+                renderedPosition = positionClassMatch[2]
+                    ? positionClassMatch[1] + positionClassMatch[2].charAt(0).toUpperCase() + positionClassMatch[2].slice(1)
+                    : positionClassMatch[1];
+            }
+
+            // A triangular button is drawn with the CSS border triangle technique, so its fill
+            // colour lives on the triangle's border colour rather than on any background-color.
+            const isTransparent = value => !value || /rgba\(0,\s*0,\s*0,\s*0\)|transparent/.test(value);
+            let renderedBackground = null;
+            if (renderedShape === 'triangular' && triangleNode) {
+                const triangleStyles = window.getComputedStyle(triangleNode);
+                renderedBackground = [triangleStyles.borderBottomColor, triangleStyles.borderTopColor,
+                                      triangleStyles.borderLeftColor, triangleStyles.borderRightColor]
+                                     .find(color => !isTransparent(color)) || null;
+            }
+            if (isTransparent(renderedBackground)) renderedBackground = isTransparent(innerStyles.backgroundColor) ? null : innerStyles.backgroundColor;
+            if (!renderedBackground) {
+                const declared = findCssRuleDeclarationValue(/kampyle_feedback-button$/, 'background-color')
+                              || findCssRuleDeclarationValue(/nebula_div_btn\s+\.kampyle_triangle/, 'border-bottom-color');
+                if (!isTransparent(declared)) renderedBackground = declared;
+            }
+
+            // Hover styling is attached to the outer wrapper and restyles inner nodes, and the
+            // selector differs per button type — several shapes emit no hover rule at all.
+            const hoverBackground = findCssRuleDeclarationValue(/:hover\s+\.kampyle_button$/, 'background-color')
+                                 || findCssRuleDeclarationValue(/:hover\s+\.kampyle_button\b/, 'background-color')
+                                 || findCssRuleDeclarationValue(/:hover\s+\.kampyle_triangle/, 'border-bottom-color')
+                                 || findCssRuleDeclarationValue(/nebula_div_btn:hover/, 'background-color');
+            const hoverTextColor = findCssRuleDeclarationValue(/:hover\s+\.kampyle_button-text/, 'color')
+                                 || findCssRuleDeclarationValue(/:hover\s+\.kampyle_button\b/, 'color');
+
+            const checks = [
+                buildDesignComparisonCheck('Button Type (shape)', buttonData.type, renderedShape, {
+                    note: `Resolved from the rendered class list "${className.trim()}".` }),
+                buildDesignComparisonCheck('Button Text', buttonData.text, textNode ? textNode.innerText.trim() : null),
+                buildDesignComparisonCheck('Background Colour', buttonData.backgroundColor, renderedBackground, {
+                    isColor: true,
+                    note: renderedShape === 'triangular'
+                        ? 'Triangular buttons are drawn with the CSS border-triangle technique, so the fill is read from the triangle border colour.'
+                        : undefined }),
+                buildDesignComparisonCheck('Text Colour', buttonData.textColor, textStyles.color, { isColor: true }),
+                buildDesignComparisonCheck('Screen Position', buttonData.position, renderedPosition, {
+                    note: `Rendered position class normalised from "${className.trim()}".` }),
+                buildDesignComparisonCheck('Background Hover Colour', buttonData.backgroundHoverColor, hoverBackground, {
+                    isColor: true,
+                    referenceOnly: !hoverBackground,
+                    note: hoverBackground
+                        ? 'Read from the SDK stylesheet hover rule.'
+                        : `The SDK emits no hover rule for "${renderedShape}" buttons, so the configured value cannot be asserted.` }),
+                buildDesignComparisonCheck('Text Hover Colour', buttonData.textHoverColor, hoverTextColor, {
+                    isColor: true, referenceOnly: !hoverTextColor })
+            ];
+
+            const renderedZIndex = containerStyles.zIndex;
+            checks.push(buttonData.zIndex
+                ? buildDesignComparisonCheck('Z-Index', buttonData.zIndex, renderedZIndex)
+                : buildDesignComparisonCheck('Z-Index', '(not configured)', renderedZIndex, {
+                    referenceOnly: true, note: `No z-index configured in targeting; the SDK applied "${renderedZIndex}".` }));
+
+            const cornerOffset = renderedPosition === 'left' ? containerStyles.left : containerStyles.right;
+            checks.push(buildDesignComparisonCheck('Corner Margin', `${parseFloat(buttonData.cornerMargin)}`, cornerOffset, {
+                referenceOnly: true, note: `Configured ${buttonData.cornerMargin}; rendered offset resolves to ${cornerOffset}. Units differ by button orientation, so this is reported rather than asserted.` }));
+
+            if (buttonData.verticalOffset) {
+                checks.push(buildDesignComparisonCheck('Vertical Offset', buttonData.verticalOffset, containerStyles.top || containerStyles.bottom, { referenceOnly: true }));
+            }
+
+            const isVisible = !!(buttonNode.offsetWidth || buttonNode.offsetHeight);
+            checks.push(buildDesignComparisonCheck('Rendered & Visible', 'visible', isVisible ? 'visible' : 'hidden'));
+
+            return { title: `Feedback Button Design · ${form.ownerLabel || `form ${form.formId}`}`, checks };
+        }
+
+        function validateInvitationDesign(form) {
+            const manifest = capturedInvitationDesignManifests[form.formId];
+            if (!manifest) return null;
+
+            const isEmulatedHandset = activeDeviceEmulationProfile && activeDeviceEmulationProfile.expectedDevice === 'mobile';
+            const applicableDesignSet = isEmulatedHandset ? 'mobileDesign' : 'desktopDesign';
+            const design = manifest[applicableDesignSet] || {};
+
+            const inviteIframe = document.getElementById('kampyleInvite');
+            const inviteModal = document.getElementById('kampyleInviteModal');
+            const measuredNode = inviteModal || inviteIframe;
+
+            const checks = [
+                buildDesignComparisonCheck('Display Type', manifest.displayType, detectRenderedDisplayModeForForm(form.formId) === 'invitation-shell'
+                    ? manifest.displayType : (inviteIframe ? manifest.displayType : null), {
+                    note: inviteIframe ? 'Invitation shell rendered as configured.' : 'Invitation has not been presented yet.' }),
+                buildDesignComparisonCheck('Display Direction', manifest.displayDirection, manifest.displayDirection, {
+                    referenceOnly: true, note: 'Direction is applied inside the invitation shell; verify visually.' }),
+                buildDesignComparisonCheck('Active Design Set', applicableDesignSet, applicableDesignSet, {
+                    referenceOnly: true,
+                    note: isEmulatedHandset
+                        ? 'Handset emulation is active, so the SDK serves the mobileDesign variant.'
+                        : 'Desktop context, so the SDK serves the desktopDesign variant. Open a handset emulation tab to validate mobileDesign.' })
+            ];
+
+            // Geometry is only meaningful while the invitation is actually on screen. Once it is
+            // accepted or declined the shell collapses to zero, which would otherwise be reported
+            // as a design mismatch rather than the dismissal it really is.
+            if (measuredNode) {
+                const rect = measuredNode.getBoundingClientRect();
+                const isCurrentlyVisible = rect.width > 0 && rect.height > 0 &&
+                    window.getComputedStyle(measuredNode).visibility !== 'hidden';
+
+                if (isCurrentlyVisible) {
+                    checks.push(buildDesignComparisonCheck('Configured Width', `${manifest.horizontal}px`, `${Math.round(rect.width)}px`, {
+                        note: 'Rendered invitation shell width differs from the configured value.' }));
+                    checks.push(buildDesignComparisonCheck('Configured Height', `${manifest.vertical}px`, `${Math.round(rect.height)}px`, {
+                        note: 'Rendered invitation shell height differs from the configured value.' }));
+                } else {
+                    checks.push(buildDesignComparisonCheck('Configured Geometry', `${manifest.horizontal} × ${manifest.vertical}px`, 'invitation dismissed', {
+                        referenceOnly: true,
+                        note: 'The invitation is no longer on screen, so its rendered geometry cannot be measured. Re-present the invitation to assert this.' }));
+                }
+            }
+
+            // Everything below lives inside a cross-origin iframe: readable as configuration,
+            // not assertable from this document. Surfaced so the tester can eyeball it.
+            [
+                ['Headline', design.invitationHeadline], ['Body Text', design.invitationText],
+                ['Provide Button Text', design.provideButtonText], ['Decline Button Text', design.declineButtonText],
+                ['Background Colour', design.invitationBackgroundColor], ['Provide Button Colour', design.invitationProvideButtonColor],
+                ['Provide Button Text Colour', design.invitationProvideButtonTextColor],
+                ['Decline Button Colour', design.invitationDeclineButtonColor],
+                ['Decline Button Text Colour', design.invitationDeclineButtonTextColor]
+            ].forEach(([label, value]) => {
+                if (value === undefined || value === null || value === "") return;
+                checks.push(buildDesignComparisonCheck(label, value, 'cross-origin iframe', {
+                    referenceOnly: true, isColor: /colour/i.test(label),
+                    note: 'Rendered inside a cross-origin invitation iframe, so the value cannot be read back — compare visually against the configured value.'
+                }));
+            });
+
+            return { title: `Invitation Design · form ${form.formId} (${applicableDesignSet})`, checks };
+        }
+
+        function validateDisplayModeForForm(form) {
+            const renderedMode = detectRenderedDisplayModeForForm(form.formId);
+            if (!renderedMode) return null;
+            return {
+                title: `Display Mode · form ${form.formId}`,
+                checks: [
+                    buildDesignComparisonCheck('Configured Display Type', form.displayType, renderedMode, {
+                        note: `Targeting configured "${form.displayType}" but the SDK rendered the frame inside a "${renderedMode}" container.` }),
+                    buildDesignComparisonCheck('Display Direction', form.displayDirection || '(none)', form.displayDirection || '(none)', { referenceOnly: true })
+                ]
+            };
+        }
+
+        function buildDesignValidationReport() {
+            const registry = readPublishedFormRegistryFromSdk();
+            if (!registry) return null;
+
+            const groups = [];
+
+            // A single shared button element is rendered per property, so exactly one button
+            // group is produced, attributed to the form the SDK actually reported at runtime.
+            if (document.getElementById('nebula_div_btn')) {
+                const buttonForms = registry.filter(f => f.formType === 'button' && f.buttonData);
+                const activeButtonFormId = resolveActiveButtonFormId();
+                const ownerForm = buttonForms.find(f => f.formId === activeButtonFormId) || buttonForms[0];
+
+                if (ownerForm) {
+                    const identicallyConfigured = buttonForms.filter(f =>
+                        JSON.stringify(f.buttonData) === JSON.stringify(ownerForm.buttonData));
+                    const ownerLabel = activeButtonFormId
+                        ? `form ${activeButtonFormId} (confirmed by runtime event)`
+                        : `form ${ownerForm.formId}${identicallyConfigured.length > 1
+                            ? ` — ${identicallyConfigured.length} button forms share this identical design` : ''}`;
+
+                    const buttonGroup = validateFeedbackButtonDesign(Object.assign({}, ownerForm, { ownerLabel }));
+                    if (buttonGroup) groups.push(buttonGroup);
+                }
+            }
+
+            registry.forEach(form => {
+                if (form.formType === 'invitation') {
+                    const invitationGroup = validateInvitationDesign(form);
+                    if (invitationGroup) groups.push(invitationGroup);
+                }
+                const displayGroup = validateDisplayModeForForm(form);
+                if (displayGroup) groups.push(displayGroup);
+            });
+            return groups;
+        }
+
+        function renderDesignAndDisplayValidator() {
+            const container = document.getElementById('design-validator-container');
+            const summaryPill = document.getElementById('design-validator-summary');
+            if (!container) return;
+
+            const groups = buildDesignValidationReport();
+            if (!groups || groups.length === 0) {
+                if (summaryPill) { summaryPill.className = "status-pill pill-warn"; summaryPill.innerText = "Awaiting render"; }
+                container.innerHTML = `<div class="no-rules-notice">Inject a property embed and let a form render to begin design validation...</div>`;
+                return;
+            }
+
+            let passedCount = 0, failedCount = 0;
+            groups.forEach(group => group.checks.forEach(check => {
+                if (check.verdict === 'pass') passedCount++;
+                else if (check.verdict === 'block') failedCount++;
+            }));
+
+            if (summaryPill) {
+                summaryPill.className = "status-pill " + (failedCount ? "pill-danger" : "pill-success");
+                summaryPill.innerText = failedCount ? `${failedCount} mismatch(es) · ${passedCount} matched` : `All ${passedCount} checks matched`;
+            }
+
+            const renderValueCell = (value, isColor, extraClass) => {
+                const swatch = isColor && normalizeColorValueForComparison(value) && /^\d+,\d+,\d+$/.test(normalizeColorValueForComparison(value))
+                    ? `<span class="color-swatch" style="background: rgb(${normalizeColorValueForComparison(value)});"></span>` : '';
+                return `<div class="design-value ${extraClass || ''}">${swatch}<span>${escapeMarkupForSafeRender(value)}</span></div>`;
+            };
+
+            container.innerHTML = "";
+            groups.forEach(group => {
+                const groupFailures = group.checks.filter(c => c.verdict === 'block').length;
+                const groupNode = document.createElement('div');
+                groupNode.className = "design-group";
+                groupNode.innerHTML = `
+                    <div class="design-group-title">
+                        <span>${escapeMarkupForSafeRender(group.title)}</span>
+                        <span class="status-pill ${groupFailures ? 'pill-danger' : 'pill-success'}">${groupFailures ? `${groupFailures} mismatch(es)` : 'consistent'}</span>
+                    </div>
+                    <div class="design-check-row design-check-head">
+                        <div>Property</div><div>Expected (targeting)</div><div>Actual (rendered DOM)</div><div>Verdict</div>
+                    </div>
+                    ${group.checks.map(check => `
+                        <div class="design-check-row">
+                            <div>
+                                <div class="design-prop-name">${escapeMarkupForSafeRender(check.property)}</div>
+                                ${check.note ? `<div class="design-note">${escapeMarkupForSafeRender(check.note)}</div>` : ''}
+                            </div>
+                            ${renderValueCell(check.expected, check.isColor)}
+                            ${renderValueCell(check.actual, check.isColor, 'value-actual')}
+                            <span class="verdict-pill verdict-${check.verdict}">${check.verdict === 'pass' ? '✓ match' : check.verdict === 'block' ? '✕ mismatch' : 'ⓘ reference'}</span>
+                        </div>`).join('')}
+                `;
+                container.appendChild(groupNode);
+            });
+        }
+
+        function downloadDesignValidationReportAsCSV() {
+            const groups = buildDesignValidationReport();
+            if (!groups || groups.length === 0) { alert("Nothing to validate yet. Inject a property and let a form render first!"); return; }
+
+            const escapeCsvCell = value => `"${String(value === null || value === undefined ? '' : value).replace(/"/g, '""')}"`;
+            let csvBodyContent = ["Validation Group", "Property", "Expected (targeting)", "Actual (rendered)", "Verdict", "Note"].map(escapeCsvCell).join(",") + "\n";
+            groups.forEach(group => group.checks.forEach(check => {
+                csvBodyContent += [group.title, check.property, check.expected, check.actual, check.verdict, check.note || ""].map(escapeCsvCell).join(",") + "\n";
+            }));
+
+            const blobObject = new Blob([csvBodyContent], { type: 'text/csv;charset=utf-8;' });
+            const temporaryAnchorLink = document.createElement("a");
+            temporaryAnchorLink.href = URL.createObjectURL(blobObject);
+            temporaryAnchorLink.setAttribute("download", `Medallia_Design_Validation_Report.csv`);
+            document.body.appendChild(temporaryAnchorLink);
+            temporaryAnchorLink.click(); document.body.removeChild(temporaryAnchorLink);
+            URL.revokeObjectURL(temporaryAnchorLink.href);
+            writeLog("CSV Export Engine Complete: Downloaded design and display validation report.", 'success');
+        }
+
+        // --- 5c. FORM TARGETING RULES MATRIX ---
+        // Every published form is read straight from the SDK's own form registry, and its
+        // onSiteData block is decoded into readable rules. Where a rule depends on stored
+        // lifecycle state (quarantine windows, per-session caps, percentile bucketing) it is
+        // evaluated live, so the matrix explains WHY a form is or is not currently eligible.
+        const expandedTargetingFormCards = {};
+
+        function readPublishedFormRegistryFromSdk() {
+            if (!window.KAMPYLE_DATA || typeof KAMPYLE_DATA.getAllForms !== 'function') return null;
+            let registry;
+            try {
+                registry = KAMPYLE_DATA.getAllForms();
+            } catch (err) {
+                return null;
+            }
+            if (!registry) return null;
+
+            const formList = Array.isArray(registry) ? registry : Object.values(registry);
+            return formList.map(form => {
+                const safeCall = (fn, fallback) => { try { return fn(); } catch (err) { return fallback; } };
+                return {
+                    formId: String(form.formId),
+                    formType: form.formType || safeCall(() => KAMPYLE_DATA.getFormTriggerType(form.formId), null) || 'unknown',
+                    displayType: (form.formDisplay && form.formDisplay.displayType) || 'n/a',
+                    displayDirection: (form.formDisplay && form.formDisplay.displayDirection) || null,
+                    buttonText: (form.buttonData && form.buttonData.text) || null,
+                    buttonData: form.buttonData || null,
+                    designSettings: form.designSettings || null,
+                    languages: form.availableLanguages || null,
+                    onSiteData: form.onSiteData || {},
+                    urlRules: form.urlRules || null,
+                    state: safeCall(() => KAMPYLE_DATA.getFormState(form.formId), null)
+                };
+            });
+        }
+
+        function resolveActiveDeviceCategory() {
+            try {
+                const sdkDevice = KAMPYLE_DATA.getMemoryData('kampyleDevice');
+                if (sdkDevice) return String(sdkDevice).toLowerCase();
+            } catch (err) { /* fall through to a user-agent inference */ }
+            if (/iPad|Tablet/i.test(navigator.userAgent)) return 'tablet';
+            if (/Mobi|Android|iPhone/i.test(navigator.userAgent)) return 'mobile';
+            return 'desktop';
+        }
+
+        // Shared evaluator for the two date quarantine rules, which differ only in the storage
+        // key they consult: a form stays suppressed until the configured window has elapsed.
+        function evaluateDateQuarantineRule(storageKey, quarantineDays, actionLabel) {
+            const storedEpoch = Number(localStorage.getItem(storageKey));
+            if (!storedEpoch || !Number.isFinite(storedEpoch)) {
+                return { verdict: 'pass', explanation: `No ${storageKey} recorded, so the quarantine window has never started. Form remains eligible.` };
+            }
+            const daysElapsed = (Date.now() - storedEpoch) / 86400000;
+            if (daysElapsed < Number(quarantineDays)) {
+                const remaining = (Number(quarantineDays) - daysElapsed).toFixed(2);
+                return { verdict: 'block', explanation: `${actionLabel} ${daysElapsed.toFixed(2)} day(s) ago, inside the ${quarantineDays}-day window. Suppressed for another ${remaining} day(s).` };
+            }
+            return { verdict: 'pass', explanation: `${actionLabel} ${daysElapsed.toFixed(2)} day(s) ago, past the ${quarantineDays}-day window. Form is eligible again.` };
+        }
+
+        function decodeTargetingRulesForForm(form) {
+            const rules = [];
+            const onSiteData = form.onSiteData || {};
+            const push = (name, configured, verdict, explanation) => rules.push({ name, configured, verdict, explanation });
+
+            if (Array.isArray(onSiteData.devicetypes)) {
+                const activeDevice = resolveActiveDeviceCategory();
+                const isAllowed = onSiteData.devicetypes.map(d => String(d).toLowerCase()).includes(activeDevice);
+                push('DeviceTypes', onSiteData.devicetypes.join(', '), isAllowed ? 'pass' : 'block',
+                    `Current device resolves to "${activeDevice}", which is ${isAllowed ? 'included in' : 'excluded from'} the allowed device list.`);
+            }
+
+            if (onSiteData.declined && onSiteData.declined.days) {
+                const evaluation = evaluateDateQuarantineRule('DECLINED_DATE', onSiteData.declined.days, 'Invitation was declined');
+                push('DontInviteOnDeclined', `${onSiteData.declined.days} day(s) after decline`, evaluation.verdict, evaluation.explanation);
+            }
+
+            if (onSiteData.submitted && onSiteData.submitted.days) {
+                const evaluation = evaluateDateQuarantineRule('SUBMITTED_DATE', onSiteData.submitted.days, 'Feedback was submitted');
+                push('DontInviteOnSubmitted', `${onSiteData.submitted.days} day(s) after submit`, evaluation.verdict, evaluation.explanation);
+            }
+
+            if (onSiteData.kampyleInvitePerSession && typeof onSiteData.kampyleInvitePerSession.inviteOncePerSession !== 'undefined') {
+                const isCapped = String(onSiteData.kampyleInvitePerSession.inviteOncePerSession) === 'true';
+                const alreadyPresented = localStorage.getItem('kampyleInvitePresented') === 'true';
+                push('InvitePerSession', isCapped ? 'once per session' : 'unlimited per session',
+                    isCapped && alreadyPresented ? 'block' : 'pass',
+                    isCapped
+                        ? `Capped at one invitation per session and kampyleInvitePresented is currently ${alreadyPresented}.`
+                        : 'No per-session invitation cap configured, so repeat invitations are permitted.');
+            }
+
+            if (onSiteData.kampyleInvitePercentageUsers && onSiteData.kampyleInvitePercentageUsers.prec) {
+                const threshold = Number(onSiteData.kampyleInvitePercentageUsers.prec);
+                const userPercentile = Number(localStorage.getItem('kampyleUserPercentile'));
+                const isWithinBucket = Number.isFinite(userPercentile) && userPercentile <= threshold;
+                push('UsersPercentage', `${threshold}% of users`, isWithinBucket ? 'pass' : 'block',
+                    Number.isFinite(userPercentile)
+                        ? `This browser sits at percentile ${userPercentile.toFixed(2)}, ${isWithinBucket ? 'inside' : 'outside'} the sampled ${threshold}% bucket.`
+                        : 'No kampyleUserPercentile assigned yet, so bucket membership cannot be resolved.');
+            }
+
+            if (onSiteData.numberOfPagesViewed && onSiteData.numberOfPagesViewed.numberOfRepeats) {
+                const required = onSiteData.numberOfPagesViewed.numberOfRepeats;
+                const current = localStorage.getItem('kampyleSessionPageCounter') || '0';
+                push('NumberOfPagesViewed', `${required} page(s) in session`, 'info',
+                    `Session page counter currently reads ${current}. Navigate between the scenario pages to advance it.`);
+            }
+
+            if (onSiteData.numberOfVisits && onSiteData.numberOfVisits.numberOfRepeats) {
+                const current = localStorage.getItem('kampyleUserSessionsCount') || '0';
+                push('NumberOfVisits', `${onSiteData.numberOfVisits.numberOfRepeats} visit(s)`, 'info',
+                    `kampyleUserSessionsCount currently reads ${current}.`);
+            }
+
+            if (onSiteData.kampyleTimeOnPage && onSiteData.kampyleTimeOnPage.time) {
+                push('TimeOnPage', `${onSiteData.kampyleTimeOnPage.time} second(s)`, 'info',
+                    'Behavioural rule satisfied only after the dwell threshold elapses on the active page.');
+            }
+
+            if (onSiteData.kampyleTimeInSession && onSiteData.kampyleTimeInSession.time) {
+                push('TimeInSession', `${onSiteData.kampyleTimeInSession.time} second(s)`, 'info',
+                    'Behavioural rule satisfied only after the cumulative session duration threshold elapses.');
+            }
+
+            if (onSiteData.abandonment) {
+                push('UserAbandonment', JSON.stringify(onSiteData.abandonment), 'info',
+                    'Triggered by exit-intent style abandonment detection rather than a storage value.');
+            }
+
+            if (onSiteData.genericRule) {
+                push('GenericRule', JSON.stringify(onSiteData.genericRule), 'info',
+                    'Custom expression evaluated by the SDK against page variables and parameters.');
+            }
+
+            const inclusionRule = form.urlRules && form.urlRules.inclusionUrl && form.urlRules.inclusionUrl.rule;
+            if (inclusionRule) {
+                push('UrlInclude', JSON.stringify(inclusionRule), 'info',
+                    `Form only shows on matching URLs. Current location is ${window.location.pathname}${window.location.search}`);
+            }
+            const exclusionRule = form.urlRules && form.urlRules.exclusionUrl && form.urlRules.exclusionUrl.rule;
+            if (exclusionRule) {
+                push('UrlExclude', JSON.stringify(exclusionRule), 'info',
+                    `Form is suppressed on matching URLs. Current location is ${window.location.pathname}${window.location.search}`);
+            }
+
+            return rules;
+        }
+
+        function buildFormStatePillMarkup(state) {
+            if (!state) return `<span class="status-pill pill-warn">No live state yet</span>`;
+            const pills = [
+                { label: 'Loaded', active: !!state.loaded },
+                { label: 'Should Show', active: !!state.shouldBeShown },
+                { label: 'Shown', active: !!state.shown },
+                { label: 'Invite Shown', active: !!state.inviteShown },
+                { label: 'Submitted', active: !!state.isCurrentlySubmitted }
+            ];
+            let markup = pills.map(p =>
+                `<span class="status-pill ${p.active ? 'pill-success' : 'pill-warn'}">${p.label}: ${p.active ? 'yes' : 'no'}</span>`
+            ).join('');
+            if (state.jsonFailed) markup += `<span class="status-pill pill-danger">JSON failed</span>`;
+            if (state.applicationFailed) markup += `<span class="status-pill pill-danger">App failed</span>`;
+            return markup;
+        }
+
+        function renderFormTargetingRulesMatrix() {
+            const container = document.getElementById('targeting-matrix-container');
+            if (!container) return;
+
+            const registry = readPublishedFormRegistryFromSdk();
+            const statusPill = document.getElementById('targeting-sync-status');
+
+            if (!registry) {
+                if (statusPill) { statusPill.className = "status-pill pill-warn"; statusPill.innerText = "Awaiting SDK"; }
+                container.innerHTML = `<div class="no-rules-notice">Inject a property embed to enumerate published forms and their targeting configuration...</div>`;
+                document.getElementById('targeting-counter-badge').innerText = "0";
+                return;
+            }
+            if (statusPill) { statusPill.className = "status-pill pill-success"; statusPill.innerText = `Synced · ${registry.length} forms`; }
+
+            const decorated = registry.map(form => ({ form, rules: decodeTargetingRulesForForm(form) }));
+
+            const searchTerm = (document.getElementById('targeting-filter-input').value || "").trim().toLowerCase();
+            const scope = document.getElementById('targeting-scope-select').value;
+
+            const visible = decorated.filter(({ form, rules }) => {
+                if (scope === 'rules' && rules.length === 0) return false;
+                if (scope === 'active' && !(form.state && (form.state.shown || form.state.shouldBeShown || form.state.loaded))) return false;
+                if (!searchTerm) return true;
+                return `${form.formId} ${form.formType} ${form.displayType}`.toLowerCase().includes(searchTerm);
+            });
+
+            // Live and shown forms float to the top: those are what the tester is looking at.
+            visible.sort((a, b) => {
+                const weight = item => (item.form.state && item.form.state.shown ? 2 : 0) +
+                                       (item.form.state && item.form.state.shouldBeShown ? 1 : 0);
+                return weight(b) - weight(a) || b.rules.length - a.rules.length;
+            });
+
+            document.getElementById('targeting-counter-badge').innerText =
+                visible.length === decorated.length ? decorated.length : `${visible.length}/${decorated.length}`;
+
+            if (visible.length === 0) {
+                container.innerHTML = `<div class="no-rules-notice">No published forms match the active filter criteria.</div>`;
+                return;
+            }
+
+            container.innerHTML = "";
+            visible.forEach(({ form, rules }) => {
+                const isExpanded = !!expandedTargetingFormCards[form.formId];
+                const isShown = !!(form.state && form.state.shown);
+                const blockedCount = rules.filter(r => r.verdict === 'block').length;
+
+                const card = document.createElement('div');
+                card.className = "targeting-form-card" + (isExpanded ? " card-expanded" : "") + (isShown ? " card-is-shown" : "");
+
+                const rulesMarkup = rules.length === 0
+                    ? `<div class="no-rules-notice">No targeting rules configured on this form. It relies purely on its trigger type (${escapeMarkupForSafeRender(form.formType)}).</div>`
+                    : rules.map(rule => `
+                        <div class="targeting-rule-row">
+                            <div class="targeting-rule-name">${escapeMarkupForSafeRender(rule.name)}</div>
+                            <div>
+                                <div class="targeting-rule-config">${escapeMarkupForSafeRender(rule.configured)}</div>
+                                <div class="targeting-rule-explain">${escapeMarkupForSafeRender(rule.explanation)}</div>
+                            </div>
+                            <span class="verdict-pill verdict-${rule.verdict}">${rule.verdict === 'pass' ? '✓ eligible' : rule.verdict === 'block' ? '✕ blocked' : 'ⓘ runtime'}</span>
+                        </div>`).join('');
+
+                card.innerHTML = `
+                    <div class="targeting-form-head">
+                        <span class="event-disclosure-caret">${isExpanded ? '▼' : '▶'}</span>
+                        <span class="targeting-form-id">${escapeMarkupForSafeRender(form.formId)}</span>
+                        <span class="type-tag type-${escapeMarkupForSafeRender(form.formType)}">${escapeMarkupForSafeRender(form.formType)}</span>
+                        <span class="targeting-form-meta">${escapeMarkupForSafeRender(form.displayType)}${form.buttonText ? ' · "' + escapeMarkupForSafeRender(form.buttonText) + '"' : ''}</span>
+                        ${isShown ? '<span class="status-pill pill-success">LIVE ON PAGE</span>' : ''}
+                        <span class="targeting-rule-count">${rules.length} rule(s)${blockedCount ? ` · <span style="color:#f87171;">${blockedCount} blocking</span>` : ''}</span>
+                    </div>
+                    <div class="targeting-form-body">
+                        <div class="state-pill-row">${buildFormStatePillMarkup(form.state)}</div>
+                        ${rulesMarkup}
+                    </div>
+                `;
+                card.querySelector('.targeting-form-head').onclick = () => {
+                    expandedTargetingFormCards[form.formId] = !expandedTargetingFormCards[form.formId];
+                    renderFormTargetingRulesMatrix();
+                };
+                container.appendChild(card);
+            });
+        }
+
+        function toggleEveryTargetingFormCard() {
+            const registry = readPublishedFormRegistryFromSdk();
+            if (!registry) return;
+            const shouldExpandAll = registry.some(form => !expandedTargetingFormCards[form.formId]);
+            registry.forEach(form => { expandedTargetingFormCards[form.formId] = shouldExpandAll; });
+            renderFormTargetingRulesMatrix();
+        }
+
+        function downloadFormTargetingMatrixAsCSV() {
+            const registry = readPublishedFormRegistryFromSdk();
+            if (!registry) { alert("No form registry available yet. Inject a property embed first!"); return; }
+
+            const escapeCsvCell = value => `"${String(value === null || value === undefined ? '' : value).replace(/"/g, '""')}"`;
+            let csvBodyContent = ["Form ID", "Trigger Type", "Display Type", "Shown", "Should Be Shown",
+                                  "Rule Name", "Configured Value", "Live Verdict", "Explanation"].map(escapeCsvCell).join(",") + "\n";
+
+            registry.forEach(form => {
+                const rules = decodeTargetingRulesForForm(form);
+                const base = [form.formId, form.formType, form.displayType,
+                              form.state ? !!form.state.shown : "", form.state ? !!form.state.shouldBeShown : ""];
+                if (rules.length === 0) {
+                    csvBodyContent += base.concat(["(no targeting rules)", "", "", ""]).map(escapeCsvCell).join(",") + "\n";
+                } else {
+                    rules.forEach(rule => {
+                        csvBodyContent += base.concat([rule.name, rule.configured, rule.verdict, rule.explanation]).map(escapeCsvCell).join(",") + "\n";
+                    });
+                }
+            });
+
+            const blobObject = new Blob([csvBodyContent], { type: 'text/csv;charset=utf-8;' });
+            const temporaryAnchorLink = document.createElement("a");
+            temporaryAnchorLink.href = URL.createObjectURL(blobObject);
+            temporaryAnchorLink.setAttribute("download", `Medallia_Form_Targeting_Matrix_${registry.length}_Forms.csv`);
+            document.body.appendChild(temporaryAnchorLink);
+            temporaryAnchorLink.click(); document.body.removeChild(temporaryAnchorLink);
+            URL.revokeObjectURL(temporaryAnchorLink.href);
+            writeLog(`CSV Export Engine Complete: Downloaded targeting matrix for ${registry.length} published forms.`, 'success');
         }
 
         // --- 6. EXPANDED VIEWPORT SCALE ENGINE CONTROLLERS ---
@@ -1132,12 +3247,24 @@
 
         function updateActiveBrowserAddressBarQueryString(forceEvaluateSDK = false) {
             let activePage = allPages.find(p => document.getElementById(p).classList.contains('active')) || 'main-page';
-            let baseFileLink = activePage === 'main-page' ? '/' : '/' + activePage;
-            let queryBuild = "";
-            const keys = Object.keys(virtualQueriesObject);
-            if (keys.length > 0) {
-                queryBuild = "?" + keys.map(k => `${encodeURIComponent(k)}=${encodeURIComponent(virtualQueriesObject[k].val)}`).join('&');
-            }
+
+            // Virtual routes like "/page1" only resolve on a host that rewrites every path back to
+            // this document (Vercel). Served from a plain static file server the entry path must be
+            // preserved instead, otherwise a reload lands on a directory index rather than the app.
+            const servesVirtualRoutes = SANDBOX_DOCUMENT_ENTRY_PATH === '/';
+            let baseFileLink = servesVirtualRoutes
+                ? (activePage === 'main-page' ? '/' : '/' + activePage)
+                : SANDBOX_DOCUMENT_ENTRY_PATH;
+
+            const queryParams = new URLSearchParams();
+            // Emulation flags must survive the rewrite, or reloading a device-emulation tab or
+            // preview frame would silently drop back to the real desktop user agent.
+            if (activeDeviceEmulationKey) queryParams.set('qa_device', activeDeviceEmulationKey);
+            if (IS_NESTED_PREVIEW_FRAME) queryParams.set('qa_frame', '1');
+            if (!servesVirtualRoutes && activePage !== 'main-page') queryParams.set('qa_page', activePage);
+            Object.keys(virtualQueriesObject).forEach(k => queryParams.set(k, virtualQueriesObject[k].val));
+
+            const queryBuild = queryParams.toString() ? "?" + queryParams.toString() : "";
             history.replaceState({ page: activePage }, '', baseFileLink + queryBuild);
             if (forceEvaluateSDK && window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
                 window.KAMPYLE_ONSITE_SDK.updatePageView();
@@ -1225,6 +3352,12 @@
                 }
             });
             startInjectionChronometer();
+
+            // The preview frame reads the saved script from shared sessionStorage on load, so it
+            // is reloaded once here to pick up a property injected after the frame was mounted.
+            if (!IS_NESTED_PREVIEW_FRAME && document.getElementById('device-preview-iframe')) {
+                setTimeout(reloadDevicePreviewFrame, 400);
+            }
         }
 
         function injectProperty(pageId) {
@@ -1268,13 +3401,46 @@
         // --- 13. INITIALIZATION BOOTSTRAPPERS ---
         window.addEventListener('DOMContentLoaded', () => {
             writeLog("Sandbox execution hub online. Core proxy network intercepts active.", 'info');
-            
+
+            buildOnsiteLifecycleStateRows();
+            refreshOnsiteLifecycleStateValues();
+            renderDeviceEmulationBanner();
+
+            // The handset preview stays closed until explicitly requested: it duplicates the
+            // dashboard inside itself, so showing it unprompted is noise on a desktop session.
+            if (!IS_NESTED_PREVIEW_FRAME && activeDeviceEmulationKey) {
+                document.getElementById('device-mode-select').value = `tab:${activeDeviceEmulationKey}`;
+            }
+            if (!IS_NESTED_PREVIEW_FRAME) {
+                renderUserAgentScopeReport();
+                detectLocalLauncherHelper();
+            }
+
+            if (activeDeviceEmulationProfile) {
+                writeLog(`Device emulation profile active: ${activeDeviceEmulationProfile.label}. SDK should classify this session as "${activeDeviceEmulationProfile.expectedDevice}".`, 'warn');
+            }
+
             if (sessionStorage.getItem('qa_saved_url_obj')) virtualQueriesObject = JSON.parse(sessionStorage.getItem('qa_saved_url_obj'));
             if (sessionStorage.getItem('qa_saved_var_obj')) virtualGlobalVariables = JSON.parse(sessionStorage.getItem('qa_saved_var_obj'));
             if (sessionStorage.getItem('qa_saved_cookie_arr')) virtualSessionCookies = JSON.parse(sessionStorage.getItem('qa_saved_cookie_arr'));
             Object.keys(virtualGlobalVariables).forEach(k => { window[k] = virtualGlobalVariables[k].val; });
             
             renderActiveParametersDashboardList();
+
+            // Restores the active scenario page on a deep link or reload. The route arrives either
+            // as a rewritten path (/page3, on a host that rewrites) or as a query parameter
+            // (static file server). Without this a deep link always landed on the dashboard.
+            const routeFromPath = window.location.pathname.replace(/^\/|\/$/g, '');
+            const routeFromQueryParam = new URLSearchParams(window.location.search).get('qa_page');
+            const restoredRoute = [routeFromQueryParam, routeFromPath].find(candidate => allPages.includes(candidate));
+
+            if (restoredRoute) {
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                document.getElementById(restoredRoute).classList.add('active');
+                document.querySelectorAll('nav a').forEach(a => a.classList.remove('active-nav'));
+                const restoredLink = document.getElementById(`nav-${restoredRoute}`);
+                if (restoredLink) restoredLink.classList.add('active-nav');
+            }
 
             const hotReloadActiveRoute = sessionStorage.getItem('qa_hot_reload_active_route');
             if (hotReloadActiveRoute) {
