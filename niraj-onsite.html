@@ -1777,7 +1777,17 @@
             // Height chatter carries no diagnostic value and would drown the trace.
             if (action === 'iFrameHeightChanged') return;
 
-            let trace = capturedSubmissionTraces.find(item => item.formId === formId && !item.isComplete);
+            // Closing a completed form fires its own trailing messages (MDigital_ThankYou_Close,
+            // MDigital_Form_Close_Submitted, formClose) after formSubmitted. None of those are a
+            // genuine new journey, so only formLoaded/inviteLoaded may start a fresh trace — any
+            // other action attaches to the most recent trace for that form, completed or not.
+            // Without this, closing the form after submitting it spawned a second, empty "open"
+            // trace that buried the real submitted card at the top of the list.
+            const isJourneyStart = action === 'formLoaded' || action === 'inviteLoaded';
+            let trace = isJourneyStart
+                ? capturedSubmissionTraces.find(item => item.formId === formId && !item.isComplete)
+                : capturedSubmissionTraces.slice().reverse().find(item => item.formId === formId);
+
             if (!trace) {
                 trace = { formId, startedAt: Date.now(), steps: [], isComplete: false,
                           feedbackUUID: null, correlationUUID: null, formLanguage: null,
