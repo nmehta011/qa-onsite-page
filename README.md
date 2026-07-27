@@ -4,6 +4,9 @@ A high-performance, single-file testing sandbox engineered for client-side digit
 
 This workbench simulates standard production multi-page configurations (`/page1`, `/page2`) natively over **Vercel's Edge Server Infrastructure** without relying on a dynamic backend framework.
 
+📖 **[Feature Reference](FEATURES.md)** — every panel, what it proves, and where its limits are
+🧭 **[How-To Guide](GUIDE.md)** — step-by-step recipes for common validation tasks
+
 ---
 
 ## 🏗️ Project Architecture & Directory Structure
