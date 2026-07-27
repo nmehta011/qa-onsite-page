@@ -1248,7 +1248,7 @@
             <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
                 <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">🎨 Design &amp; Display Render Validator</h4>
                 <span id="design-validator-summary" class="status-pill pill-warn">Awaiting render</span>
-                <button class="lifecycle-btn btn-commit" onclick="runInvitationColourPixelProbe()" title="Samples the rendered invitation pixels via a one-time screen capture to verify its colours">🎨 Probe Invitation Colours</button>
+                <button class="lifecycle-btn btn-commit" id="colour-monitor-btn" onclick="toggleInvitationColourMonitoring()" title="Grant screen capture once; invitation colours are then sampled automatically every time an invitation appears">🎨 Auto-Capture Invitation Colours</button>
                 <button class="lifecycle-btn" onclick="renderDesignAndDisplayValidator()">🔄 Re-validate Now</button>
                 <button class="lifecycle-btn" onclick="downloadDesignValidationReportAsCSV()">📥 Export CSV</button>
             </div>
@@ -1834,7 +1834,8 @@
                     { label: 'Correlation UUID', value: trace.correlationUUID },
                     { label: 'Form language', value: trace.formLanguage },
                     { label: 'Pages displayed', value: trace.pagesShown || null },
-                    { label: 'Screen capture', value: trace.screenCaptureEnabled === null ? null : String(trace.screenCaptureEnabled) },
+                    { label: 'Screen capture capability', value: trace.screenCaptureEnabled === null ? null : String(trace.screenCaptureEnabled),
+                      hint: 'Reported by the SDK from the property-level screenCaptureEnabled provision — it does not indicate whether this form contains a screen capture component.' },
                     { label: 'Auto-submitted', value: trace.isAutoAction === null ? null : String(trace.isAutoAction) }
                 ].filter(row => row.value !== null && row.value !== undefined);
 
@@ -2872,6 +2873,9 @@
                         height: Math.round(rect.height),
                         wasVisible: true
                     };
+                    // This rising edge is the only moment the invitation is guaranteed on screen,
+                    // and it is precisely when a tester cannot click anything.
+                    if (isNewPresentation) scheduleInvitationColourSample(700);
                 } else if (previous) {
                     previous.wasVisible = false;
                 }
@@ -2990,33 +2994,47 @@
             return normalised.split(',').map(Number);
         }
 
-        async function runInvitationColourPixelProbe() {
-            const inviteNode = document.getElementById('kampyleInviteModal') || document.getElementById('kampyleInvite');
-            if (!inviteNode) {
-                showDeviceEmulationNotice('The invitation is not on screen. Present it first, then run the pixel probe.', 'warn');
-                return;
-            }
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-                showDeviceEmulationNotice('This browser does not expose getDisplayMedia, so pixels cannot be sampled.', 'warn');
-                return;
-            }
+        // getDisplayMedia requires a user gesture, so it can never be called at the moment an
+        // invitation appears. The permission is therefore taken once up front and the stream is
+        // held open, which lets frames be sampled automatically whenever the invitation renders —
+        // exactly when a tester cannot reach the dashboard to press anything.
+        let invitationColourMonitorStream = null;
+        let invitationColourMonitorVideo = null;
+        let pendingInvitationSampleToken = null;
 
+        function locateVisibleInvitationNode() {
+            const node = document.getElementById('kampyleInviteModal') || document.getElementById('kampyleInvite');
+            if (!node) return null;
+            const rect = node.getBoundingClientRect();
+            const isVisible = rect.width > 0 && rect.height > 0 &&
+                window.getComputedStyle(node).visibility !== 'hidden';
+            return isVisible ? rect : null;
+        }
+
+        function resolveActiveInvitationDesign() {
             const manifestFormId = Object.keys(capturedInvitationDesignManifests)[0];
             const manifest = manifestFormId ? capturedInvitationDesignManifests[manifestFormId] : null;
-            if (!manifest) {
-                showDeviceEmulationNotice('No invitation design manifest captured yet.', 'warn');
+            if (!manifest) return null;
+            const isHandset = activeDeviceEmulationProfile && activeDeviceEmulationProfile.expectedDevice === 'mobile';
+            return manifest[isHandset ? 'mobileDesign' : 'desktopDesign'] || null;
+        }
+
+        function updateInvitationColourMonitorButton() {
+            const button = document.getElementById('colour-monitor-btn');
+            if (!button) return;
+            const isActive = !!invitationColourMonitorStream;
+            button.innerText = isActive ? '⏹ Stop Colour Auto-Capture' : '🎨 Auto-Capture Invitation Colours';
+            button.classList.toggle('btn-commit', !isActive);
+            button.classList.toggle('btn-purge', isActive);
+        }
+
+        async function toggleInvitationColourMonitoring() {
+            if (invitationColourMonitorStream) { stopInvitationColourMonitoring('stopped by user'); return; }
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+                showDeviceEmulationNotice('This browser does not expose getDisplayMedia, so invitation colours cannot be sampled.', 'warn');
                 return;
             }
-
-            const isHandset = activeDeviceEmulationProfile && activeDeviceEmulationProfile.expectedDevice === 'mobile';
-            const design = manifest[isHandset ? 'mobileDesign' : 'desktopDesign'] || {};
-            const expectedColours = [
-                ['Background Colour', design.invitationBackgroundColor],
-                ['Provide Button Colour', design.invitationProvideButtonColor],
-                ['Provide Button Text Colour', design.invitationProvideButtonTextColor],
-                ['Decline Button Colour', design.invitationDeclineButtonColor],
-                ['Decline Button Text Colour', design.invitationDeclineButtonTextColor]
-            ].filter(([, value]) => !!value);
 
             let stream;
             try {
@@ -3024,60 +3042,103 @@
                     video: { displaySurface: 'browser' }, audio: false, preferCurrentTab: true
                 });
             } catch (err) {
-                showDeviceEmulationNotice(`Screen capture was not granted, so colours could not be sampled (${escapeMarkupForSafeRender(err.name || err.message)}).`, 'warn');
+                showDeviceEmulationNotice(`Screen capture was not granted, so colours cannot be sampled (${escapeMarkupForSafeRender(err.name || err.message)}).`, 'warn');
                 return;
             }
 
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.muted = true;
             try {
-                const rect = inviteNode.getBoundingClientRect();
-                const video = document.createElement('video');
-                video.srcObject = stream;
-                video.muted = true;
                 await video.play();
+            } catch (err) {
+                stream.getTracks().forEach(track => track.stop());
+                showDeviceEmulationNotice(`Capture stream could not start: ${escapeMarkupForSafeRender(err.message)}`, 'warn');
+                return;
+            }
 
-                // A painted frame must land before the canvas read. Two animation frames are not
-                // a reliable signal — the capture pipeline can still be empty, which samples pure
-                // black and would otherwise be reported as a colour mismatch rather than a
-                // failed capture. Wait for a real decoded frame where the browser can report one.
-                await new Promise(resolve => {
-                    let settled = false;
-                    const done = () => { if (!settled) { settled = true; resolve(); } };
-                    if (typeof video.requestVideoFrameCallback === 'function') {
-                        video.requestVideoFrameCallback(done);
-                        setTimeout(done, 2000);
-                    } else {
-                        setTimeout(done, 700);
-                    }
-                });
+            invitationColourMonitorStream = stream;
+            invitationColourMonitorVideo = video;
+            // The browser's own "stop sharing" control ends the track behind our back.
+            stream.getVideoTracks().forEach(track => track.addEventListener('ended', () => stopInvitationColourMonitoring('sharing ended in the browser')));
 
+            updateInvitationColourMonitorButton();
+            showDeviceEmulationNotice('Colour auto-capture armed. Invitation colours will be sampled automatically each time an invitation appears — no need to click anything while it is on screen.', 'success');
+            writeLog('Invitation colour auto-capture armed via screen capture stream.', 'success');
+
+            // Sample immediately if an invitation happens to be up already.
+            if (locateVisibleInvitationNode()) scheduleInvitationColourSample(300);
+        }
+
+        function stopInvitationColourMonitoring(reason) {
+            if (pendingInvitationSampleToken) { clearTimeout(pendingInvitationSampleToken); pendingInvitationSampleToken = null; }
+            if (invitationColourMonitorStream) {
+                invitationColourMonitorStream.getTracks().forEach(track => track.stop());
+            }
+            invitationColourMonitorStream = null;
+            invitationColourMonitorVideo = null;
+            updateInvitationColourMonitorButton();
+            writeLog(`Invitation colour auto-capture disarmed (${reason}). Previously sampled results are retained.`, 'info');
+        }
+
+        function scheduleInvitationColourSample(delayMilliseconds) {
+            if (!invitationColourMonitorStream) return;
+            if (pendingInvitationSampleToken) clearTimeout(pendingInvitationSampleToken);
+            // A short delay lets the invitation finish painting before the frame is read.
+            pendingInvitationSampleToken = setTimeout(() => {
+                pendingInvitationSampleToken = null;
+                sampleInvitationColoursFromLiveStream();
+            }, delayMilliseconds);
+        }
+
+        function sampleInvitationColoursFromLiveStream() {
+            const video = invitationColourMonitorVideo;
+            const rect = locateVisibleInvitationNode();
+            if (!video || !rect) return;
+
+            const design = resolveActiveInvitationDesign();
+            if (!design) return;
+
+            const expectedColours = [
+                ['Background Colour', design.invitationBackgroundColor],
+                ['Provide Button Colour', design.invitationProvideButtonColor],
+                ['Provide Button Text Colour', design.invitationProvideButtonTextColor],
+                ['Decline Button Colour', design.invitationDeclineButtonColor],
+                ['Decline Button Text Colour', design.invitationDeclineButtonTextColor]
+            ].filter(([, value]) => !!value);
+            if (expectedColours.length === 0) return;
+
+            try {
                 const scaleX = video.videoWidth / window.innerWidth;
                 const scaleY = video.videoHeight / window.innerHeight;
+                if (!Number.isFinite(scaleX) || scaleX <= 0) return;
+
                 const cropWidth = Math.max(1, Math.round(rect.width * scaleX));
                 const cropHeight = Math.max(1, Math.round(rect.height * scaleY));
 
                 const canvas = document.createElement('canvas');
                 canvas.width = cropWidth; canvas.height = cropHeight;
-                canvas.getContext('2d').drawImage(video,
+                const context = canvas.getContext('2d');
+                context.drawImage(video,
                     Math.round(rect.left * scaleX), Math.round(rect.top * scaleY), cropWidth, cropHeight,
                     0, 0, cropWidth, cropHeight);
 
-                const pixels = canvas.getContext('2d').getImageData(0, 0, cropWidth, cropHeight).data;
+                const pixels = context.getImageData(0, 0, cropWidth, cropHeight).data;
                 const totalPixels = cropWidth * cropHeight;
 
                 // An empty capture pipeline yields a near-black rectangle. Reporting that as a
-                // colour mismatch would be a false negative, so it is surfaced as a failed
-                // capture and the previous results are left untouched.
+                // colour mismatch would be a false negative, so the sample is discarded and
+                // retried instead of overwriting good results with a lie.
                 let nearBlackPixels = 0;
                 for (let i = 0; i < pixels.length; i += 4) {
                     if (pixels[i] < 8 && pixels[i + 1] < 8 && pixels[i + 2] < 8) nearBlackPixels++;
                 }
                 if (nearBlackPixels / totalPixels > 0.9) {
-                    showDeviceEmulationNotice('The screen capture returned an empty frame, so no colour conclusion can be drawn. Keep the invitation visible and run the probe again.', 'warn');
-                    writeLog("Invitation pixel probe aborted: capture returned an empty frame.", 'warn');
+                    scheduleInvitationColourSample(800);
                     return;
                 }
 
-                invitationPixelProbeResults = {};
+                const sampled = {};
                 expectedColours.forEach(([label, configuredValue]) => {
                     const target = parseColourToRgbTriplet(configuredValue);
                     if (!target) return;
@@ -3094,28 +3155,27 @@
                     const coverage = matchCount / totalPixels;
                     const isRendered = matchCount >= PIXEL_ABSOLUTE_MATCH_FLOOR || coverage >= PIXEL_COVERAGE_THRESHOLD;
                     const isInconclusive = !isRendered && matchCount > 0;
+                    const capturedAt = new Date().toLocaleTimeString();
 
-                    invitationPixelProbeResults[label] = {
+                    sampled[label] = {
                         verdict: isRendered ? 'pass' : (isInconclusive ? 'info' : 'block'),
                         actual: isRendered
                             ? `rendered (${matchCount} px, ${(coverage * 100).toFixed(3)}% of region)`
                             : (isInconclusive ? `only ${matchCount} px matched` : 'not found in region'),
                         detail: isRendered
-                            ? `Sampled from the rendered invitation: ${matchCount} of ${totalPixels} pixels match the configured colour within tolerance.`
+                            ? `Auto-captured from the rendered invitation at ${capturedAt}: ${matchCount} of ${totalPixels} pixels match the configured colour within tolerance.`
                             : (isInconclusive
-                                ? `Too few matching pixels to conclude either way — this happens with very small or heavily anti-aliased elements. Confirm visually.`
-                                : `No pixels within tolerance of the configured colour were found in the invitation region, so the rendered colour appears to differ from configuration.`)
+                                ? `Auto-captured at ${capturedAt}, but too few matching pixels to conclude either way — this happens with very small or heavily anti-aliased elements. Confirm visually.`
+                                : `Auto-captured at ${capturedAt}: no pixels within tolerance of the configured colour were found, so the rendered colour appears to differ from configuration.`)
                     };
                 });
 
-                writeLog(`Invitation pixel probe complete: ${Object.values(invitationPixelProbeResults).filter(r => r.found).length}/${Object.keys(invitationPixelProbeResults).length} configured colours found in the rendered region.`, 'success');
-                showDeviceEmulationNotice('Invitation colours sampled from the rendered pixels. Results are merged into the Design &amp; Display Render Validator.', 'success');
+                invitationPixelProbeResults = sampled;
+                const passCount = Object.values(sampled).filter(r => r.verdict === 'pass').length;
+                writeLog(`Invitation colours auto-captured: ${passCount}/${Object.keys(sampled).length} configured colours confirmed in the rendered region.`, 'success');
                 renderDesignAndDisplayValidator();
             } catch (err) {
-                showDeviceEmulationNotice(`Pixel sampling failed: ${escapeMarkupForSafeRender(err.message)}`, 'warn');
-                writeLog(`❌ Invitation pixel probe failed: ${err.message}`, 'warn');
-            } finally {
-                stream.getTracks().forEach(track => track.stop());
+                writeLog(`❌ Invitation colour auto-capture failed: ${err.message}`, 'warn');
             }
         }
 
