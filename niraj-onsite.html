@@ -812,8 +812,22 @@
         // It does however report lifecycle back to the parent over postMessage, and those
         // messages carry the identifiers that matter — including feedbackUUID, which is the
         // record id needed to find this exact submission in the Inbox.
+        // Origin cannot be allow-listed by hostname: every tenant is served from its own host
+        // (resources.<tenant>.com) and the SDK additionally supports fully custom domains, so
+        // matching on "medallia" silently discarded every message from other properties.
+        // Trust is established structurally instead — the message must originate from a window
+        // this page actually embedded, which no unrelated site can satisfy.
+        function isMessageFromEmbeddedFrame(sourceWindow) {
+            if (!sourceWindow) return false;
+            const frames = document.getElementsByTagName('iframe');
+            for (let i = 0; i < frames.length; i++) {
+                if (frames[i].contentWindow === sourceWindow) return true;
+            }
+            return false;
+        }
+
         window.addEventListener('message', function captureOnsiteFormLifecycleMessage(event) {
-            if (!/medallia|kampyle|nebula/i.test(event.origin || '')) return;
+            if (!isMessageFromEmbeddedFrame(event.source)) return;
 
             let payload = event.data;
             if (typeof payload === 'string') {
@@ -1234,6 +1248,7 @@
             <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
                 <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">🎨 Design &amp; Display Render Validator</h4>
                 <span id="design-validator-summary" class="status-pill pill-warn">Awaiting render</span>
+                <button class="lifecycle-btn btn-commit" onclick="runInvitationColourPixelProbe()" title="Samples the rendered invitation pixels via a one-time screen capture to verify its colours">🎨 Probe Invitation Colours</button>
                 <button class="lifecycle-btn" onclick="renderDesignAndDisplayValidator()">🔄 Re-validate Now</button>
                 <button class="lifecycle-btn" onclick="downloadDesignValidationReportAsCSV()">📥 Export CSV</button>
             </div>
@@ -2866,24 +2881,193 @@
                 }
             }
 
-            // Everything below lives inside a cross-origin iframe: readable as configuration,
-            // not assertable from this document. Surfaced so the tester can eyeball it.
+            // The invitation body renders in a cross-origin iframe, so its DOM is unreadable.
+            // Colours can still be verified by sampling the rendered pixels via screen capture,
+            // which is user-granted media rather than DOM access; those results are merged in
+            // here when a probe has been run. Text remains visual-only.
             [
                 ['Headline', design.invitationHeadline], ['Body Text', design.invitationText],
-                ['Provide Button Text', design.provideButtonText], ['Decline Button Text', design.declineButtonText],
-                ['Background Colour', design.invitationBackgroundColor], ['Provide Button Colour', design.invitationProvideButtonColor],
+                ['Provide Button Text', design.provideButtonText], ['Decline Button Text', design.declineButtonText]
+            ].forEach(([label, value]) => {
+                if (!value) return;
+                checks.push(buildDesignComparisonCheck(label, value, 'visual check', {
+                    referenceOnly: true,
+                    note: 'Text rendered inside the cross-origin invitation iframe. Compare on screen against the configured value.'
+                }));
+            });
+
+            [
+                ['Background Colour', design.invitationBackgroundColor],
+                ['Provide Button Colour', design.invitationProvideButtonColor],
                 ['Provide Button Text Colour', design.invitationProvideButtonTextColor],
                 ['Decline Button Colour', design.invitationDeclineButtonColor],
                 ['Decline Button Text Colour', design.invitationDeclineButtonTextColor]
             ].forEach(([label, value]) => {
-                if (value === undefined || value === null || value === "") return;
-                checks.push(buildDesignComparisonCheck(label, value, 'cross-origin iframe', {
-                    referenceOnly: true, isColor: /colour/i.test(label),
-                    note: 'Rendered inside a cross-origin invitation iframe, so the value cannot be read back — compare visually against the configured value.'
-                }));
+                if (!value) return;
+                const probed = invitationPixelProbeResults[label];
+                if (probed) {
+                    checks.push({
+                        property: label, expected: value, actual: probed.actual, isColor: true,
+                        verdict: probed.verdict, note: probed.detail
+                    });
+                } else {
+                    checks.push(buildDesignComparisonCheck(label, value, 'not yet sampled', {
+                        referenceOnly: true, isColor: true,
+                        note: 'Run the pixel probe while the invitation is on screen to verify this colour actually rendered.'
+                    }));
+                }
             });
 
             return { title: `Invitation Design · form ${form.formId} (${applicableDesignSet})`, checks };
+        }
+
+        // --- INVITATION PIXEL COLOUR PROBE ---
+        // The invitation iframe's DOM is unreadable across origins, but its rendered pixels can
+        // be sampled through a user-granted tab capture. This proves a configured colour is
+        // genuinely present in the rendered region — it cannot say which element carries it,
+        // so it complements the visual check rather than replacing it.
+        let invitationPixelProbeResults = {};
+        const PIXEL_COLOUR_MATCH_TOLERANCE = 16;      // per-channel Euclidean distance
+        const PIXEL_COVERAGE_THRESHOLD = 0.0004;      // fill colours cover a share of the region
+        // Small anti-aliased text can never reach a percentage threshold no matter how correct
+        // it is — the decline label matches only ~90 pixels — so an absolute floor is applied
+        // alongside coverage, and anything below both is reported as inconclusive, never as a
+        // mismatch.
+        const PIXEL_ABSOLUTE_MATCH_FLOOR = 25;
+
+        function parseColourToRgbTriplet(value) {
+            const normalised = normalizeColorValueForComparison(value);
+            if (!normalised || !/^\d+,\d+,\d+$/.test(normalised)) return null;
+            return normalised.split(',').map(Number);
+        }
+
+        async function runInvitationColourPixelProbe() {
+            const inviteNode = document.getElementById('kampyleInviteModal') || document.getElementById('kampyleInvite');
+            if (!inviteNode) {
+                showDeviceEmulationNotice('The invitation is not on screen. Present it first, then run the pixel probe.', 'warn');
+                return;
+            }
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+                showDeviceEmulationNotice('This browser does not expose getDisplayMedia, so pixels cannot be sampled.', 'warn');
+                return;
+            }
+
+            const manifestFormId = Object.keys(capturedInvitationDesignManifests)[0];
+            const manifest = manifestFormId ? capturedInvitationDesignManifests[manifestFormId] : null;
+            if (!manifest) {
+                showDeviceEmulationNotice('No invitation design manifest captured yet.', 'warn');
+                return;
+            }
+
+            const isHandset = activeDeviceEmulationProfile && activeDeviceEmulationProfile.expectedDevice === 'mobile';
+            const design = manifest[isHandset ? 'mobileDesign' : 'desktopDesign'] || {};
+            const expectedColours = [
+                ['Background Colour', design.invitationBackgroundColor],
+                ['Provide Button Colour', design.invitationProvideButtonColor],
+                ['Provide Button Text Colour', design.invitationProvideButtonTextColor],
+                ['Decline Button Colour', design.invitationDeclineButtonColor],
+                ['Decline Button Text Colour', design.invitationDeclineButtonTextColor]
+            ].filter(([, value]) => !!value);
+
+            let stream;
+            try {
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { displaySurface: 'browser' }, audio: false, preferCurrentTab: true
+                });
+            } catch (err) {
+                showDeviceEmulationNotice(`Screen capture was not granted, so colours could not be sampled (${escapeMarkupForSafeRender(err.name || err.message)}).`, 'warn');
+                return;
+            }
+
+            try {
+                const rect = inviteNode.getBoundingClientRect();
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.muted = true;
+                await video.play();
+
+                // A painted frame must land before the canvas read. Two animation frames are not
+                // a reliable signal — the capture pipeline can still be empty, which samples pure
+                // black and would otherwise be reported as a colour mismatch rather than a
+                // failed capture. Wait for a real decoded frame where the browser can report one.
+                await new Promise(resolve => {
+                    let settled = false;
+                    const done = () => { if (!settled) { settled = true; resolve(); } };
+                    if (typeof video.requestVideoFrameCallback === 'function') {
+                        video.requestVideoFrameCallback(done);
+                        setTimeout(done, 2000);
+                    } else {
+                        setTimeout(done, 700);
+                    }
+                });
+
+                const scaleX = video.videoWidth / window.innerWidth;
+                const scaleY = video.videoHeight / window.innerHeight;
+                const cropWidth = Math.max(1, Math.round(rect.width * scaleX));
+                const cropHeight = Math.max(1, Math.round(rect.height * scaleY));
+
+                const canvas = document.createElement('canvas');
+                canvas.width = cropWidth; canvas.height = cropHeight;
+                canvas.getContext('2d').drawImage(video,
+                    Math.round(rect.left * scaleX), Math.round(rect.top * scaleY), cropWidth, cropHeight,
+                    0, 0, cropWidth, cropHeight);
+
+                const pixels = canvas.getContext('2d').getImageData(0, 0, cropWidth, cropHeight).data;
+                const totalPixels = cropWidth * cropHeight;
+
+                // An empty capture pipeline yields a near-black rectangle. Reporting that as a
+                // colour mismatch would be a false negative, so it is surfaced as a failed
+                // capture and the previous results are left untouched.
+                let nearBlackPixels = 0;
+                for (let i = 0; i < pixels.length; i += 4) {
+                    if (pixels[i] < 8 && pixels[i + 1] < 8 && pixels[i + 2] < 8) nearBlackPixels++;
+                }
+                if (nearBlackPixels / totalPixels > 0.9) {
+                    showDeviceEmulationNotice('The screen capture returned an empty frame, so no colour conclusion can be drawn. Keep the invitation visible and run the probe again.', 'warn');
+                    writeLog("Invitation pixel probe aborted: capture returned an empty frame.", 'warn');
+                    return;
+                }
+
+                invitationPixelProbeResults = {};
+                expectedColours.forEach(([label, configuredValue]) => {
+                    const target = parseColourToRgbTriplet(configuredValue);
+                    if (!target) return;
+
+                    let matchCount = 0;
+                    for (let i = 0; i < pixels.length; i += 4) {
+                        const distance = Math.sqrt(
+                            Math.pow(pixels[i] - target[0], 2) +
+                            Math.pow(pixels[i + 1] - target[1], 2) +
+                            Math.pow(pixels[i + 2] - target[2], 2));
+                        if (distance <= PIXEL_COLOUR_MATCH_TOLERANCE) matchCount++;
+                    }
+
+                    const coverage = matchCount / totalPixels;
+                    const isRendered = matchCount >= PIXEL_ABSOLUTE_MATCH_FLOOR || coverage >= PIXEL_COVERAGE_THRESHOLD;
+                    const isInconclusive = !isRendered && matchCount > 0;
+
+                    invitationPixelProbeResults[label] = {
+                        verdict: isRendered ? 'pass' : (isInconclusive ? 'info' : 'block'),
+                        actual: isRendered
+                            ? `rendered (${matchCount} px, ${(coverage * 100).toFixed(3)}% of region)`
+                            : (isInconclusive ? `only ${matchCount} px matched` : 'not found in region'),
+                        detail: isRendered
+                            ? `Sampled from the rendered invitation: ${matchCount} of ${totalPixels} pixels match the configured colour within tolerance.`
+                            : (isInconclusive
+                                ? `Too few matching pixels to conclude either way — this happens with very small or heavily anti-aliased elements. Confirm visually.`
+                                : `No pixels within tolerance of the configured colour were found in the invitation region, so the rendered colour appears to differ from configuration.`)
+                    };
+                });
+
+                writeLog(`Invitation pixel probe complete: ${Object.values(invitationPixelProbeResults).filter(r => r.found).length}/${Object.keys(invitationPixelProbeResults).length} configured colours found in the rendered region.`, 'success');
+                showDeviceEmulationNotice('Invitation colours sampled from the rendered pixels. Results are merged into the Design &amp; Display Render Validator.', 'success');
+                renderDesignAndDisplayValidator();
+            } catch (err) {
+                showDeviceEmulationNotice(`Pixel sampling failed: ${escapeMarkupForSafeRender(err.message)}`, 'warn');
+                writeLog(`❌ Invitation pixel probe failed: ${err.message}`, 'warn');
+            } finally {
+                stream.getTracks().forEach(track => track.stop());
+            }
         }
 
         function validateDisplayModeForForm(form) {
