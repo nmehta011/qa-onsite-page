@@ -2021,6 +2021,10 @@
         setInterval(() => {
             runLiveStorageAndDOMStructureAudit();
             refreshOnsiteLifecycleStateValues();
+            // Latched on the fast loop as well as the validator's own cadence: an invitation
+            // dismissed quickly could otherwise close between two slower samples and never be
+            // recorded at all.
+            latchTransientDesignObservations();
         }, 400);
 
         // Refreshed on a slower cadence than the storage audit: the matrix rebuilds whole cards,
@@ -2704,7 +2708,11 @@
                 : String(value === null || value === undefined ? '' : value).trim().toLowerCase();
 
             check.verdict = normalize(expected) === normalize(actual) ? 'pass' : 'block';
-            if (check.verdict === 'block' && settings.note) check.note = settings.note;
+            // `note` explains a failure and is only worth showing on one. `alwaysNote` records
+            // provenance — where a value came from — which matters just as much when the check
+            // passes, since a latched value must never be mistaken for a live measurement.
+            if (settings.alwaysNote) check.note = settings.alwaysNote;
+            else if (check.verdict === 'block' && settings.note) check.note = settings.note;
             return check;
         }
 
@@ -2836,6 +2844,40 @@
             return { title: `Feedback Button Design · ${form.ownerLabel || `form ${form.formId}`}`, checks };
         }
 
+        // Modal surfaces are only measurable while they are on screen, and while they are on
+        // screen they cover the dashboard — so a tester can never read the result at the moment
+        // it exists. Observations are therefore latched automatically the instant a surface is
+        // visible, and the report falls back to the latched values once it closes.
+        const latchedDesignObservations = { invitation: null, button: null };
+
+        function describeObservationAge(observedAt) {
+            return `${new Date(observedAt).toLocaleTimeString()} (${describeRelativeAgeFromNow(observedAt)})`;
+        }
+
+        function latchTransientDesignObservations() {
+            const inviteNode = document.getElementById('kampyleInviteModal') || document.getElementById('kampyleInvite');
+            if (inviteNode) {
+                const rect = inviteNode.getBoundingClientRect();
+                const isVisible = rect.width > 0 && rect.height > 0 &&
+                    window.getComputedStyle(inviteNode).visibility !== 'hidden';
+                const previous = latchedDesignObservations.invitation;
+                if (isVisible) {
+                    // Counted on the rising edge only. Incrementing per sample would report the
+                    // polling rate as the number of times the invitation was presented.
+                    const isNewPresentation = !previous || !previous.wasVisible;
+                    latchedDesignObservations.invitation = {
+                        observedAt: Date.now(),
+                        observationCount: (previous ? previous.observationCount : 0) + (isNewPresentation ? 1 : 0),
+                        width: Math.round(rect.width),
+                        height: Math.round(rect.height),
+                        wasVisible: true
+                    };
+                } else if (previous) {
+                    previous.wasVisible = false;
+                }
+            }
+        }
+
         function validateInvitationDesign(form) {
             const manifest = capturedInvitationDesignManifests[form.formId];
             if (!manifest) return null;
@@ -2861,24 +2903,31 @@
                         : 'Desktop context, so the SDK serves the desktopDesign variant. Open a handset emulation tab to validate mobileDesign.' })
             ];
 
-            // Geometry is only meaningful while the invitation is actually on screen. Once it is
-            // accepted or declined the shell collapses to zero, which would otherwise be reported
-            // as a design mismatch rather than the dismissal it really is.
-            if (measuredNode) {
-                const rect = measuredNode.getBoundingClientRect();
-                const isCurrentlyVisible = rect.width > 0 && rect.height > 0 &&
-                    window.getComputedStyle(measuredNode).visibility !== 'hidden';
+            // Geometry comes from the live element when the invitation is up, and otherwise from
+            // the latch recorded while it last was. Measuring a dismissed shell would read 0×0
+            // and report a mismatch that is really just a dismissal.
+            const rect = measuredNode ? measuredNode.getBoundingClientRect() : null;
+            const isCurrentlyVisible = !!(rect && rect.width > 0 && rect.height > 0 &&
+                window.getComputedStyle(measuredNode).visibility !== 'hidden');
+            const latchedInvitation = latchedDesignObservations.invitation;
 
-                if (isCurrentlyVisible) {
-                    checks.push(buildDesignComparisonCheck('Configured Width', `${manifest.horizontal}px`, `${Math.round(rect.width)}px`, {
-                        note: 'Rendered invitation shell width differs from the configured value.' }));
-                    checks.push(buildDesignComparisonCheck('Configured Height', `${manifest.vertical}px`, `${Math.round(rect.height)}px`, {
-                        note: 'Rendered invitation shell height differs from the configured value.' }));
-                } else {
-                    checks.push(buildDesignComparisonCheck('Configured Geometry', `${manifest.horizontal} × ${manifest.vertical}px`, 'invitation dismissed', {
-                        referenceOnly: true,
-                        note: 'The invitation is no longer on screen, so its rendered geometry cannot be measured. Re-present the invitation to assert this.' }));
-                }
+            if (isCurrentlyVisible || latchedInvitation) {
+                const measuredWidth = isCurrentlyVisible ? Math.round(rect.width) : latchedInvitation.width;
+                const measuredHeight = isCurrentlyVisible ? Math.round(rect.height) : latchedInvitation.height;
+                const provenanceNote = isCurrentlyVisible
+                    ? null
+                    : `Latched while the invitation was last on screen at ${describeObservationAge(latchedInvitation.observedAt)}; it has been presented ${latchedInvitation.observationCount} time(s) this session.`;
+
+                checks.push(buildDesignComparisonCheck('Configured Width', `${manifest.horizontal}px`, `${measuredWidth}px`, {
+                    alwaysNote: provenanceNote,
+                    note: 'Rendered invitation shell width differs from the configured value.' }));
+                checks.push(buildDesignComparisonCheck('Configured Height', `${manifest.vertical}px`, `${measuredHeight}px`, {
+                    alwaysNote: provenanceNote,
+                    note: 'Rendered invitation shell height differs from the configured value.' }));
+            } else {
+                checks.push(buildDesignComparisonCheck('Configured Geometry', `${manifest.horizontal} × ${manifest.vertical}px`, 'never observed', {
+                    referenceOnly: true,
+                    note: 'The invitation has not been presented yet this session, so there is nothing to measure. It will be captured automatically the moment it appears.' }));
             }
 
             // The invitation body renders in a cross-origin iframe, so its DOM is unreadable.
@@ -3084,6 +3133,10 @@
         }
 
         function buildDesignValidationReport() {
+            // Latch first: a modal is measurable only while it is covering the dashboard, so the
+            // capture must happen on the polling loop rather than on a tester's interaction.
+            latchTransientDesignObservations();
+
             const registry = readPublishedFormRegistryFromSdk();
             if (!registry) return null;
 
@@ -3091,6 +3144,20 @@
 
             // A single shared button element is rendered per property, so exactly one button
             // group is produced, attributed to the form the SDK actually reported at runtime.
+            // Targeting can withdraw the button after a submission, so the last good result is
+            // latched and replayed rather than the group silently disappearing from the report.
+            if (!document.getElementById('nebula_div_btn') && latchedDesignObservations.button) {
+                const latchedButton = latchedDesignObservations.button;
+                groups.push({
+                    title: `${latchedButton.title} · latched`,
+                    checks: latchedButton.checks.concat([{
+                        property: 'Observation source', expected: 'live element', actual: 'latched snapshot',
+                        verdict: 'info',
+                        note: `The feedback button is no longer in the DOM. These values were captured while it was rendered at ${describeObservationAge(latchedButton.observedAt)}.`
+                    }])
+                });
+            }
+
             if (document.getElementById('nebula_div_btn')) {
                 const buttonForms = registry.filter(f => f.formType === 'button' && f.buttonData);
                 const activeButtonFormId = resolveActiveButtonFormId();
@@ -3105,7 +3172,12 @@
                             ? ` — ${identicallyConfigured.length} button forms share this identical design` : ''}`;
 
                     const buttonGroup = validateFeedbackButtonDesign(Object.assign({}, ownerForm, { ownerLabel }));
-                    if (buttonGroup) groups.push(buttonGroup);
+                    if (buttonGroup) {
+                        groups.push(buttonGroup);
+                        latchedDesignObservations.button = {
+                            observedAt: Date.now(), title: buttonGroup.title, checks: buttonGroup.checks
+                        };
+                    }
                 }
             }
 
