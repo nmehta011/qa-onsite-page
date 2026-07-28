@@ -489,6 +489,39 @@
 
         .status-spacer { flex: 1; }
 
+        /* --- WORKSPACE NAVIGATION --- */
+        /* Groups panels by what the tester is trying to find out, rather than by feature.
+           Its main job is reuniting the lifecycle dates with the targeting matrix: they are one
+           workflow that previously sat five screens apart. */
+        .workspace-bar {
+            position: sticky; top: 104px; z-index: 880;
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+            padding: 9px 30px;
+            background: rgba(9, 13, 22, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--panel-border);
+        }
+        @media (max-width: 900px) { .workspace-bar { position: static; padding: 9px 16px; } }
+
+        .workspace-tab {
+            display: inline-flex; align-items: center; gap: 7px;
+            background: transparent; border: 1px solid transparent; color: #94a3b8;
+            font-family: inherit; font-size: 0.82rem; font-weight: 600;
+            padding: 7px 14px; border-radius: 7px; cursor: pointer;
+            height: auto; box-shadow: none; white-space: nowrap;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .workspace-tab:hover { background: #131c2f; color: #e2e8f0; }
+        .workspace-tab.tab-active { background: rgba(14,165,233,0.14); border-color: rgba(14,165,233,0.5); color: #38bdf8; }
+        .workspace-tab .tab-count {
+            font-family: monospace; font-size: 0.7rem; color: #64748b;
+            background: #0b0f19; border-radius: 10px; padding: 1px 7px;
+        }
+        .workspace-tab.tab-active .tab-count { color: #38bdf8; background: rgba(14,165,233,0.12); }
+        .workspace-tab .tab-alert { color: #f87171; font-family: monospace; font-size: 0.72rem; font-weight: 700; }
+
+        .workspace-hidden { display: none !important; }
+
         /* --- COLLAPSIBLE PANELS --- */
         .panel-collapse-btn {
             display: inline-flex; align-items: center; gap: 6px;
@@ -1001,6 +1034,7 @@
     </nav>
 
     <div class="global-status-bar" id="global-status-bar"></div>
+    <div class="workspace-bar" id="workspace-bar"></div>
 
     <div id="master-canvas-wrapper" class="wrapper">
         <div id="device-emulation-banner" class="device-emulation-banner"></div>
@@ -2109,6 +2143,7 @@
             if (!IS_NESTED_PREVIEW_FRAME) {
                 renderUserAgentScopeReport();
                 renderGlobalStatusBar();
+                renderWorkspaceBar();
                 refreshCollapsedPanelSummaries();
             }
         }, 1800);
@@ -3696,6 +3731,120 @@
             writeLog(`CSV Export Engine Complete: Downloaded targeting matrix for ${registry.length} published forms.`, 'success');
         }
 
+        // --- 5c1. WORKSPACE NAVIGATION ---
+        // Panels are grouped by the question a tester is asking, not by feature family. The
+        // grouping is applied in JavaScript rather than by restructuring the markup, so every
+        // existing id, selector and panel-local behaviour keeps working untouched.
+        const WORKSPACE_DEFINITIONS = [
+            { key: 'targeting',  label: '🎯 Targeting',  hint: 'Why a form does or does not show' },
+            { key: 'appearance', label: '🎨 Appearance', hint: 'Whether it renders as designed' },
+            { key: 'activity',   label: '📊 Activity',   hint: 'What the SDK reported and submitted' },
+            { key: 'config',     label: '🧭 Setup',      hint: 'Property config, parameters and drift' },
+            { key: 'all',        label: '▦ All',        hint: 'Every panel at once — the original layout' }
+        ];
+
+        // Matched on visible headings: they are the same labels a tester reads on screen, so the
+        // mapping stays obvious and survives markup edits that ids would not.
+        const WORKSPACE_BY_PANEL_HEADING = {
+            'Live Custom Parameter Builder': 'config',
+            'Container DOM & Storage Inspector': 'activity',
+            'Onsite Lifecycle State': 'targeting',
+            'Live Device Preview': 'appearance',
+            'Feedback Submission Scope': 'appearance',
+            'Feedback Submission Inspector': 'activity',
+            'Design & Display Render Validator': 'appearance',
+            'Form Targeting Rules Matrix': 'targeting',
+            'Config Drift Baseline': 'config',
+            'Journey Automation': 'targeting',
+            'Live Analytics Events Tracking': 'activity',
+            'Native SDK Custom Event Bus': 'activity',
+            'Real-Time QA Execution Timeline Log': 'activity'
+        };
+
+        let activeWorkspaceKey = 'targeting';
+
+        function assignPanelsToWorkspaces() {
+            const wrapper = document.getElementById('master-canvas-wrapper');
+            if (!wrapper) return;
+
+            Array.from(wrapper.children).forEach(child => {
+                // Banners, the simulated scenario pages, the dropzones the SDK renders into and
+                // the footer stay visible in every workspace — they are the page under test,
+                // not a diagnostic view of it.
+                if (child.tagName === 'FOOTER' ||
+                    child.classList.contains('page') ||
+                    child.classList.contains('qa-dropzones-wrapper') ||
+                    child.classList.contains('live-alert-banner') ||
+                    child.classList.contains('device-emulation-banner') ||
+                    child.classList.contains('device-launch-notice') ||
+                    child.classList.contains('lifecycle-timer-container')) {
+                    child.setAttribute('data-workspace', 'always');
+                    return;
+                }
+
+                const heading = child.querySelector('h3, h4');
+                const headingText = heading ? heading.innerText.trim() : '';
+                const match = Object.keys(WORKSPACE_BY_PANEL_HEADING)
+                    .find(fragment => headingText.includes(fragment));
+                child.setAttribute('data-workspace', match ? WORKSPACE_BY_PANEL_HEADING[match] : 'always');
+            });
+        }
+
+        function countPanelsInWorkspace(workspaceKey) {
+            return document.querySelectorAll(`#master-canvas-wrapper > [data-workspace="${workspaceKey}"]`).length;
+        }
+
+        function setActiveWorkspace(workspaceKey, options) {
+            const settings = options || {};
+            if (!WORKSPACE_DEFINITIONS.some(w => w.key === workspaceKey)) workspaceKey = 'targeting';
+            activeWorkspaceKey = workspaceKey;
+
+            document.querySelectorAll('#master-canvas-wrapper > [data-workspace]').forEach(panel => {
+                const panelWorkspace = panel.getAttribute('data-workspace');
+                const shouldShow = panelWorkspace === 'always' ||
+                                   workspaceKey === 'all' ||
+                                   panelWorkspace === workspaceKey;
+                panel.classList.toggle('workspace-hidden', !shouldShow);
+            });
+
+            renderWorkspaceBar();
+            if (!settings.skipUrlUpdate) updateActiveBrowserAddressBarQueryString(false);
+            if (!settings.skipScroll) window.scrollTo({ top: 0, behavior: 'smooth' });
+            writeLog(`Workspace switched to [${workspaceKey}].`, 'info');
+        }
+
+        function renderWorkspaceBar() {
+            const bar = document.getElementById('workspace-bar');
+            if (!bar || IS_NESTED_PREVIEW_FRAME) return;
+
+            // Surfaced per tab so a problem in a workspace the tester is not looking at still
+            // announces itself, rather than waiting to be discovered.
+            const snapshot = window.KAMPYLE_ONSITE_SDK ? buildGlobalStatusSnapshot() : null;
+            const alertsByWorkspace = {
+                targeting: snapshot ? snapshot.blockedForms : 0,
+                appearance: snapshot ? snapshot.designMismatches : 0,
+                activity: snapshot ? snapshot.networkErrors : 0,
+                config: 0, all: 0
+            };
+
+            bar.innerHTML = WORKSPACE_DEFINITIONS.map(w => {
+                const count = w.key === 'all'
+                    ? document.querySelectorAll('#master-canvas-wrapper > [data-workspace]:not([data-workspace="always"])').length
+                    : countPanelsInWorkspace(w.key);
+                const alerts = alertsByWorkspace[w.key] || 0;
+                return `<button class="workspace-tab ${w.key === activeWorkspaceKey ? 'tab-active' : ''}"
+                                data-workspace-key="${w.key}" title="${escapeMarkupForSafeRender(w.hint)}">
+                            ${escapeMarkupForSafeRender(w.label)}
+                            <span class="tab-count">${count}</span>
+                            ${alerts ? `<span class="tab-alert" title="${alerts} need(s) attention">●&nbsp;${alerts}</span>` : ''}
+                        </button>`;
+            }).join('');
+
+            bar.querySelectorAll('[data-workspace-key]').forEach(tab => {
+                tab.onclick = () => setActiveWorkspace(tab.getAttribute('data-workspace-key'));
+            });
+        }
+
         // --- 5c2. GLOBAL STATUS BAR ---
         // Summarises session state above the fold. Counts are derived from the same functions
         // the panels themselves use, so the bar can never disagree with the detail below it.
@@ -3777,12 +3926,23 @@
         function jumpToPanelTarget(selector) {
             const target = document.querySelector(selector);
             if (!target) return;
+
+            // The destination may be in a workspace that is not on screen, or collapsed, or
+            // both. Reveal it at every level before scrolling, otherwise the chip appears to
+            // do nothing.
+            const owner = target.closest('#master-canvas-wrapper > [data-workspace]');
+            if (owner) {
+                const ownerWorkspace = owner.getAttribute('data-workspace');
+                if (ownerWorkspace !== 'always' && ownerWorkspace !== activeWorkspaceKey && activeWorkspaceKey !== 'all') {
+                    setActiveWorkspace(ownerWorkspace, { skipScroll: true });
+                }
+            }
             if (target.classList.contains('panel-body-collapsed')) {
                 const panel = target.closest('.diag-panel');
                 if (panel) setPanelCollapsed(panel.getAttribute('data-panel-key'), false);
             }
             const panel = target.closest('.diag-panel') || target;
-            panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            requestAnimationFrame(() => panel.scrollIntoView({ behavior: 'smooth', block: 'start' }));
         }
 
         // --- 5c3. COLLAPSIBLE PANELS ---
@@ -4440,6 +4600,8 @@
             // preview frame would silently drop back to the real desktop user agent.
             if (activeDeviceEmulationKey) queryParams.set('qa_device', activeDeviceEmulationKey);
             if (IS_NESTED_PREVIEW_FRAME) queryParams.set('qa_frame', '1');
+            // Carried so a reload, a deep link or an emulated tab reopens the same workspace.
+            if (activeWorkspaceKey && activeWorkspaceKey !== 'targeting') queryParams.set('qa_view', activeWorkspaceKey);
             if (!servesVirtualRoutes && activePage !== 'main-page') queryParams.set('qa_page', activePage);
             Object.keys(virtualQueriesObject).forEach(k => queryParams.set(k, virtualQueriesObject[k].val));
 
@@ -4599,6 +4761,10 @@
                 setPanelCollapsed('design', true);
                 setPanelCollapsed('targeting', true);
                 renderGlobalStatusBar();
+
+                assignPanelsToWorkspaces();
+                const requestedWorkspace = new URLSearchParams(window.location.search).get('qa_view');
+                setActiveWorkspace(requestedWorkspace || 'targeting', { skipUrlUpdate: true, skipScroll: true });
             }
 
             if (activeDeviceEmulationProfile) {
