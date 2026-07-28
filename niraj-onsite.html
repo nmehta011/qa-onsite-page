@@ -454,6 +454,62 @@
         .state-pill-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 14px 0; }
         .no-rules-notice { color: #64748b; font-style: italic; font-size: 0.8rem; padding: 10px 4px; }
 
+        /* --- GLOBAL STATUS BAR --- */
+        /* Sits directly under the nav so session state and anything needing attention are
+           readable without scrolling. Previously a blocked rule or a failed check could only
+           be discovered by scrolling nine screens down to go looking for it. */
+        .global-status-bar {
+            position: sticky; top: 62px; z-index: 900;
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+            padding: 10px 30px;
+            background: rgba(13, 21, 39, 0.94);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--panel-border);
+            font-family: monospace; font-size: 0.76rem;
+        }
+        @media (max-width: 900px) { .global-status-bar { position: static; padding: 10px 16px; } }
+
+        .status-chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 4px 11px; border-radius: 20px;
+            border: 1px solid #1e293b; background: #0b0f19; color: #94a3b8;
+            white-space: nowrap;
+        }
+        .status-chip[data-jump] { cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+        .status-chip[data-jump]:hover { border-color: #475569; color: #e2e8f0; }
+        .status-chip .chip-value { font-weight: bold; color: #e2e8f0; }
+        .status-chip.chip-live { border-color: rgba(16,185,129,0.5); color: #34d399; }
+        .status-chip.chip-live .chip-value { color: #34d399; }
+        .status-chip.chip-idle { border-color: #334155; color: #64748b; }
+        .status-chip.chip-alert { border-color: rgba(239,68,68,0.55); background: rgba(239,68,68,0.08); color: #f87171; }
+        .status-chip.chip-alert .chip-value { color: #f87171; }
+        .status-chip.chip-watch { border-color: rgba(245,158,11,0.5); background: rgba(245,158,11,0.07); color: #fbbf24; }
+        .status-chip.chip-watch .chip-value { color: #fbbf24; }
+        .status-chip .chip-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+        .status-spacer { flex: 1; }
+
+        /* --- COLLAPSIBLE PANELS --- */
+        .panel-collapse-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: transparent; border: 1px solid #334155; color: #94a3b8;
+            height: 26px; padding: 0 10px; border-radius: 5px;
+            font-size: 0.72rem; font-weight: 600; cursor: pointer; white-space: nowrap;
+        }
+        .panel-collapse-btn:hover { border-color: #64748b; color: #fff; }
+        .diag-panel button.panel-collapse-btn {
+            background: transparent; border: 1px solid #334155; color: #94a3b8;
+            height: 26px; padding: 0 10px; box-shadow: none; font-size: 0.72rem; border-radius: 5px;
+        }
+        .diag-panel button.panel-collapse-btn:hover { background: #1b2438; border-color: #64748b; color: #fff; transform: none; }
+
+        .panel-body-collapsed { display: none !important; }
+        .collapsed-summary {
+            font-family: monospace; font-size: 0.78rem; color: #64748b;
+            padding: 12px 2px 2px 2px;
+        }
+        .collapsed-summary strong { color: #cbd5e1; }
+
         /* --- CONFIG DRIFT BASELINE --- */
         .baseline-meta-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; font-family: monospace; font-size: 0.76rem; color: #64748b; margin-top: 12px; }
         .drift-row { display: grid; grid-template-columns: 150px 220px 1fr 1fr; gap: 12px; align-items: start; padding: 8px 4px; border-bottom: 1px solid #111827; font-size: 0.78rem; }
@@ -944,6 +1000,8 @@
         </div>
     </nav>
 
+    <div class="global-status-bar" id="global-status-bar"></div>
+
     <div id="master-canvas-wrapper" class="wrapper">
         <div id="device-emulation-banner" class="device-emulation-banner"></div>
         <div id="device-launch-notice" class="device-launch-notice"></div>
@@ -1244,39 +1302,43 @@
             </div>
         </div>
 
-        <div class="diag-panel" style="margin-top:25px;">
+        <div class="diag-panel" data-panel-key="design" style="margin-top:25px;">
             <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
                 <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">🎨 Design &amp; Display Render Validator</h4>
                 <span id="design-validator-summary" class="status-pill pill-warn">Awaiting render</span>
+                <button class="lifecycle-btn panel-collapse-btn" onclick="togglePanelCollapsed('design')">▾ Collapse</button>
                 <button class="lifecycle-btn btn-commit" id="colour-monitor-btn" onclick="toggleInvitationColourMonitoring()" title="Grant screen capture once; invitation colours are then sampled automatically every time an invitation appears">🎨 Auto-Capture Invitation Colours</button>
                 <button class="lifecycle-btn" onclick="renderDesignAndDisplayValidator()">🔄 Re-validate Now</button>
                 <button class="lifecycle-btn" onclick="downloadDesignValidationReportAsCSV()">📥 Export CSV</button>
             </div>
-            <p style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+            <div class="collapsed-summary" data-panel-summary style="display:none;"></div>
+            <p data-panel-body style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
                 Compares what targeting <strong>configured</strong> against what the SDK <strong>actually rendered</strong> into the DOM —
                 display mode (lightbox / animation / popup / embedded), feedback button shape, text and colours, and invitation
                 geometry. Colour values are normalised before comparison, so <code style="color:#a78bfa;">#5081ff</code> and
                 <code style="color:#a78bfa;">rgb(80, 129, 255)</code> count as a match.
             </p>
-            <div id="design-validator-container" style="margin-top:14px;">
+            <div id="design-validator-container" data-panel-body style="margin-top:14px;">
                 <div class="no-rules-notice">Inject a property embed and let a form render to begin design validation...</div>
             </div>
         </div>
 
-        <div class="diag-panel" style="margin-top:25px;">
+        <div class="diag-panel" data-panel-key="targeting" style="margin-top:25px;">
             <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
                 <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">🎯 Form Targeting Rules Matrix [<span id="targeting-counter-badge" style="color:#a78bfa;">0</span>]</h4>
                 <span id="targeting-sync-status" class="status-pill pill-warn">Awaiting SDK</span>
+                <button class="lifecycle-btn panel-collapse-btn" onclick="togglePanelCollapsed('targeting')">▾ Collapse</button>
                 <button class="lifecycle-btn" onclick="toggleEveryTargetingFormCard()">⇕ Expand / Collapse All</button>
                 <button class="lifecycle-btn" onclick="downloadFormTargetingMatrixAsCSV()">📥 Export CSV</button>
             </div>
-            <p style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+            <div class="collapsed-summary" data-panel-summary style="display:none;"></div>
+            <p data-panel-body style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
                 Every form the injected property exposes, with its configured targeting rules decoded into plain English and
                 <strong>evaluated live against the current storage state</strong>. Date-based quarantine rules read the same keys
                 the manager above edits — back-date <code style="color:#a78bfa;">DECLINED_DATE</code> and the matching rule flips
                 from blocked to eligible immediately.
             </p>
-            <div class="event-toolbar-row" style="margin-top:12px;">
+            <div class="event-toolbar-row" data-panel-body style="margin-top:12px;">
                 <input type="text" id="targeting-filter-input" class="event-filter-input" placeholder="Filter by form ID, trigger type or display type (e.g. 463112, invitation, lightbox)..." oninput="renderFormTargetingRulesMatrix()">
                 <select id="targeting-scope-select" class="qa-select" onchange="renderFormTargetingRulesMatrix()">
                     <option value="rules">Only forms with targeting rules</option>
@@ -1284,7 +1346,7 @@
                     <option value="all">All published forms</option>
                 </select>
             </div>
-            <div id="targeting-matrix-container" style="margin-top:12px;">
+            <div id="targeting-matrix-container" data-panel-body style="margin-top:12px;">
                 <div class="no-rules-notice">Inject a property embed to enumerate published forms and their targeting configuration...</div>
             </div>
         </div>
@@ -2044,7 +2106,11 @@
         setInterval(() => {
             renderDesignAndDisplayValidator();
             renderDeviceEmulationBanner();
-            if (!IS_NESTED_PREVIEW_FRAME) renderUserAgentScopeReport();
+            if (!IS_NESTED_PREVIEW_FRAME) {
+                renderUserAgentScopeReport();
+                renderGlobalStatusBar();
+                refreshCollapsedPanelSummaries();
+            }
         }, 1800);
 
         // EXTRA HIGH-VALUE INLINE DECK WRITER ACTION METHOD WITH PERCENTILE ENFORCEMENT
@@ -3630,6 +3696,155 @@
             writeLog(`CSV Export Engine Complete: Downloaded targeting matrix for ${registry.length} published forms.`, 'success');
         }
 
+        // --- 5c2. GLOBAL STATUS BAR ---
+        // Summarises session state above the fold. Counts are derived from the same functions
+        // the panels themselves use, so the bar can never disagree with the detail below it.
+        function buildGlobalStatusSnapshot() {
+            const snapshot = {
+                injected: !!window.KAMPYLE_ONSITE_SDK,
+                propertyId: null, formCount: 0, blockedForms: 0, shownForms: 0,
+                networkErrors: document.querySelectorAll('#network-error-stream-box .network-err-entry').length,
+                submissions: capturedSubmissionTraces.filter(t => t.isComplete).length,
+                designMismatches: 0, designChecked: 0
+            };
+
+            try { snapshot.propertyId = String(KAMPYLE_DATA.getPropertyId()); } catch (err) { /* not injected */ }
+
+            const registry = readPublishedFormRegistryFromSdk();
+            if (registry) {
+                snapshot.formCount = registry.length;
+                registry.forEach(form => {
+                    if (form.state && form.state.shown) snapshot.shownForms++;
+                    if (decodeTargetingRulesForForm(form).some(rule => rule.verdict === 'block')) snapshot.blockedForms++;
+                });
+            }
+
+            const designGroups = buildDesignValidationReport();
+            if (designGroups) {
+                designGroups.forEach(group => group.checks.forEach(check => {
+                    if (check.verdict === 'pass') snapshot.designChecked++;
+                    else if (check.verdict === 'block') { snapshot.designMismatches++; snapshot.designChecked++; }
+                }));
+            }
+            return snapshot;
+        }
+
+        function renderGlobalStatusBar() {
+            const bar = document.getElementById('global-status-bar');
+            if (!bar || IS_NESTED_PREVIEW_FRAME) return;
+
+            const s = buildGlobalStatusSnapshot();
+            const chip = (cls, label, value, jumpTarget) =>
+                `<span class="status-chip ${cls}"${jumpTarget ? ` data-jump="${jumpTarget}" role="button" tabindex="0"` : ''}>` +
+                `<span class="chip-dot"></span>${escapeMarkupForSafeRender(label)}` +
+                (value !== null && value !== undefined ? ` <span class="chip-value">${escapeMarkupForSafeRender(value)}</span>` : '') +
+                `</span>`;
+
+            const chips = [];
+            chips.push(s.injected
+                ? chip('chip-live', 'Property', s.propertyId || 'active')
+                : chip('chip-idle', 'No property injected', null));
+
+            if (s.injected) {
+                chips.push(chip('chip-idle', 'Forms', s.formCount, '#targeting-matrix-container'));
+                if (s.shownForms) chips.push(chip('chip-live', 'Live on page', s.shownForms, '#targeting-matrix-container'));
+                chips.push(s.blockedForms
+                    ? chip('chip-watch', 'Blocked', s.blockedForms, '#targeting-matrix-container')
+                    : chip('chip-live', 'None blocked', null, '#targeting-matrix-container'));
+
+                if (s.designChecked) {
+                    chips.push(s.designMismatches
+                        ? chip('chip-alert', 'Design mismatches', s.designMismatches, '#design-validator-container')
+                        : chip('chip-live', 'Design consistent', null, '#design-validator-container'));
+                }
+                if (s.submissions) chips.push(chip('chip-live', 'Submitted', s.submissions, '#submission-inspector-container'));
+            }
+
+            if (s.networkErrors) chips.push(chip('chip-alert', 'Errors', s.networkErrors, '#network-error-stream-box'));
+
+            bar.innerHTML = chips.join('') + '<span class="status-spacer"></span>' +
+                `<span class="status-chip chip-idle" data-jump="#log-stream-box" role="button" tabindex="0">Activity log</span>`;
+
+            bar.querySelectorAll('[data-jump]').forEach(node => {
+                const activate = () => jumpToPanelTarget(node.getAttribute('data-jump'));
+                node.onclick = activate;
+                node.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } };
+            });
+        }
+
+        // A chip is only useful if it lands on something readable, so a collapsed destination
+        // is expanded before scrolling rather than scrolling to a hidden element.
+        function jumpToPanelTarget(selector) {
+            const target = document.querySelector(selector);
+            if (!target) return;
+            if (target.classList.contains('panel-body-collapsed')) {
+                const panel = target.closest('.diag-panel');
+                if (panel) setPanelCollapsed(panel.getAttribute('data-panel-key'), false);
+            }
+            const panel = target.closest('.diag-panel') || target;
+            panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // --- 5c3. COLLAPSIBLE PANELS ---
+        // The two largest panels account for over a third of the page. They start collapsed to
+        // a one-line summary so the page opens at a readable length; the summary still reports
+        // the outcome, so collapsing never hides whether something needs attention.
+        const collapsedPanelState = {};
+
+        function setPanelCollapsed(panelKey, shouldCollapse) {
+            const panel = document.querySelector(`[data-panel-key="${panelKey}"]`);
+            if (!panel) return;
+            collapsedPanelState[panelKey] = shouldCollapse;
+
+            panel.querySelectorAll('[data-panel-body]').forEach(node =>
+                node.classList.toggle('panel-body-collapsed', shouldCollapse));
+
+            const summary = panel.querySelector('[data-panel-summary]');
+            if (summary) summary.style.display = shouldCollapse ? 'block' : 'none';
+
+            const button = panel.querySelector('.panel-collapse-btn');
+            if (button) button.innerText = shouldCollapse ? '▸ Expand' : '▾ Collapse';
+            if (shouldCollapse) refreshCollapsedPanelSummaries();
+        }
+
+        function togglePanelCollapsed(panelKey) {
+            setPanelCollapsed(panelKey, !collapsedPanelState[panelKey]);
+        }
+
+        function refreshCollapsedPanelSummaries() {
+            const targetingSummary = document.querySelector('[data-panel-key="targeting"] [data-panel-summary]');
+            if (targetingSummary && collapsedPanelState.targeting) {
+                const registry = readPublishedFormRegistryFromSdk();
+                if (!registry) {
+                    targetingSummary.innerHTML = `No property injected yet.`;
+                } else {
+                    let blocked = 0;
+                    registry.forEach(form => {
+                        if (decodeTargetingRulesForForm(form).some(r => r.verdict === 'block')) blocked++;
+                    });
+                    targetingSummary.innerHTML = blocked
+                        ? `<strong>${registry.length}</strong> forms · <strong style="color:#fbbf24;">${blocked}</strong> with a blocking rule — expand to see why.`
+                        : `<strong>${registry.length}</strong> forms · no blocking rules.`;
+                }
+            }
+
+            const designSummary = document.querySelector('[data-panel-key="design"] [data-panel-summary]');
+            if (designSummary && collapsedPanelState.design) {
+                const groups = buildDesignValidationReport();
+                if (!groups || groups.length === 0) {
+                    designSummary.innerHTML = `Nothing rendered yet to validate.`;
+                } else {
+                    let pass = 0, fail = 0;
+                    groups.forEach(g => g.checks.forEach(c => {
+                        if (c.verdict === 'pass') pass++; else if (c.verdict === 'block') fail++;
+                    }));
+                    designSummary.innerHTML = fail
+                        ? `<strong style="color:#f87171;">${fail}</strong> mismatch(es) across ${groups.length} group(s) — expand to review.`
+                        : `<strong style="color:#34d399;">${pass}</strong> checks matched across ${groups.length} group(s).`;
+                }
+            }
+        }
+
         // --- 5d. CONFIG DRIFT BASELINE ---
         // Snapshots capture CONFIGURED values only. Live verdicts depend on stored lifecycle
         // dates and wall-clock time, so including them would report drift on every comparison
@@ -4379,6 +4594,11 @@
             if (!IS_NESTED_PREVIEW_FRAME) {
                 renderUserAgentScopeReport();
                 detectLocalLauncherHelper();
+                // The two largest panels open collapsed: together they are over a third of the
+                // page, and their summaries still report whether anything needs attention.
+                setPanelCollapsed('design', true);
+                setPanelCollapsed('targeting', true);
+                renderGlobalStatusBar();
             }
 
             if (activeDeviceEmulationProfile) {
