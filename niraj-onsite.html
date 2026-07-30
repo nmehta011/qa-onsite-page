@@ -493,16 +493,23 @@
         /* A rule verdict and the stored value that produced it live in two different panels.
            These affordances draw the connection instead of leaving the tester to hold it in
            their head, which is the single thing this tool exists to explain. */
+        /* Scoped under .diag-panel because the panel-wide `.diag-panel button` gradient rule is
+           more specific than a bare class and would otherwise render this as a full-size primary
+           button, which overflowed its grid column and covered the explanation text beside it. */
+        .diag-panel button.rule-source-link,
         .rule-source-link {
             display: inline-flex; align-items: center; gap: 5px;
-            margin-left: 8px; padding: 1px 8px; border-radius: 20px;
-            border: 1px dashed #334155; background: transparent;
-            color: #64748b; font-family: monospace; font-size: 0.68rem;
+            margin: 5px 0 0 0; padding: 1px 8px; height: auto; border-radius: 20px;
+            border: 1px dashed #334155; background: transparent; background-image: none;
+            box-shadow: none; font-weight: 400; max-width: 100%;
+            color: #64748b; font-family: monospace; font-size: 0.68rem; line-height: 1.5;
             cursor: pointer; transition: color 0.15s, border-color 0.15s, background 0.15s;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
-        .rule-source-link:hover, .rule-source-link:focus-visible {
-            color: #a78bfa; border-color: var(--sdk-purple);
-            background: rgba(139, 92, 246, 0.1); border-style: solid;
+        .diag-panel button.rule-source-link:hover, .rule-source-link:hover,
+        .diag-panel button.rule-source-link:focus-visible, .rule-source-link:focus-visible {
+            color: #a78bfa; border-color: var(--sdk-purple); border-style: solid;
+            background: rgba(139, 92, 246, 0.1); background-image: none; transform: none;
         }
         .rule-source-link::before { content: "↳"; opacity: 0.8; }
 
@@ -3548,7 +3555,11 @@
         function decodeTargetingRulesForForm(form) {
             const rules = [];
             const onSiteData = form.onSiteData || {};
-            const push = (name, configured, verdict, explanation) => rules.push({ name, configured, verdict, explanation });
+            // sourceKey names the stored value this verdict was actually computed from. It is
+            // declared at the point of use and left out when a value is read but does not
+            // influence the outcome, so a trace link never claims a dependency that isn't real.
+            const push = (name, configured, verdict, explanation, sourceKey) =>
+                rules.push({ name, configured, verdict, explanation, sourceKey: sourceKey || null });
 
             if (Array.isArray(onSiteData.devicetypes)) {
                 const activeDevice = resolveActiveDeviceCategory();
@@ -3559,12 +3570,12 @@
 
             if (onSiteData.declined && onSiteData.declined.days) {
                 const evaluation = evaluateDateQuarantineRule('DECLINED_DATE', onSiteData.declined.days, 'Invitation was declined');
-                push('DontInviteOnDeclined', `${onSiteData.declined.days} day(s) after decline`, evaluation.verdict, evaluation.explanation);
+                push('DontInviteOnDeclined', `${onSiteData.declined.days} day(s) after decline`, evaluation.verdict, evaluation.explanation, 'DECLINED_DATE');
             }
 
             if (onSiteData.submitted && onSiteData.submitted.days) {
                 const evaluation = evaluateDateQuarantineRule('SUBMITTED_DATE', onSiteData.submitted.days, 'Feedback was submitted');
-                push('DontInviteOnSubmitted', `${onSiteData.submitted.days} day(s) after submit`, evaluation.verdict, evaluation.explanation);
+                push('DontInviteOnSubmitted', `${onSiteData.submitted.days} day(s) after submit`, evaluation.verdict, evaluation.explanation, 'SUBMITTED_DATE');
             }
 
             if (onSiteData.kampyleInvitePerSession && typeof onSiteData.kampyleInvitePerSession.inviteOncePerSession !== 'undefined') {
@@ -3574,7 +3585,8 @@
                     isCapped && alreadyPresented ? 'block' : 'pass',
                     isCapped
                         ? `Capped at one invitation per session and kampyleInvitePresented is currently ${alreadyPresented}.`
-                        : 'No per-session invitation cap configured, so repeat invitations are permitted.');
+                        : 'No per-session invitation cap configured, so repeat invitations are permitted.',
+                    isCapped ? 'kampyleInvitePresented' : null);
             }
 
             if (onSiteData.kampyleInvitePercentageUsers && onSiteData.kampyleInvitePercentageUsers.prec) {
@@ -3584,20 +3596,23 @@
                 push('UsersPercentage', `${threshold}% of users`, isWithinBucket ? 'pass' : 'block',
                     Number.isFinite(userPercentile)
                         ? `This browser sits at percentile ${userPercentile.toFixed(2)}, ${isWithinBucket ? 'inside' : 'outside'} the sampled ${threshold}% bucket.`
-                        : 'No kampyleUserPercentile assigned yet, so bucket membership cannot be resolved.');
+                        : 'No kampyleUserPercentile assigned yet, so bucket membership cannot be resolved.',
+                    'kampyleUserPercentile');
             }
 
             if (onSiteData.numberOfPagesViewed && onSiteData.numberOfPagesViewed.numberOfRepeats) {
                 const required = onSiteData.numberOfPagesViewed.numberOfRepeats;
                 const current = localStorage.getItem('kampyleSessionPageCounter') || '0';
                 push('NumberOfPagesViewed', `${required} page(s) in session`, 'info',
-                    `Session page counter currently reads ${current}. Navigate between the scenario pages to advance it.`);
+                    `Session page counter currently reads ${current}. Navigate between the scenario pages to advance it.`,
+                    'kampyleSessionPageCounter');
             }
 
             if (onSiteData.numberOfVisits && onSiteData.numberOfVisits.numberOfRepeats) {
                 const current = localStorage.getItem('kampyleUserSessionsCount') || '0';
                 push('NumberOfVisits', `${onSiteData.numberOfVisits.numberOfRepeats} visit(s)`, 'info',
-                    `kampyleUserSessionsCount currently reads ${current}.`);
+                    `kampyleUserSessionsCount currently reads ${current}.`,
+                    'kampyleUserSessionsCount');
             }
 
             if (onSiteData.kampyleTimeOnPage && onSiteData.kampyleTimeOnPage.time) {
@@ -3705,11 +3720,12 @@
                 const rulesMarkup = rules.length === 0
                     ? `<div class="no-rules-notice">No targeting rules configured on this form. It relies purely on its trigger type (${escapeMarkupForSafeRender(form.formType)}).</div>`
                     : rules.map(rule => `
-                        <div class="targeting-rule-row" data-rule-name="${escapeMarkupForSafeRender(rule.name)}">
+                        <div class="targeting-rule-row" data-rule-name="${escapeMarkupForSafeRender(rule.name)}"${
+                                rule.sourceKey ? ` data-source-key="${escapeMarkupForSafeRender(rule.sourceKey)}"` : ''}>
                             <div class="targeting-rule-name">${escapeMarkupForSafeRender(rule.name)}${
-                                RULE_STORAGE_DEPENDENCIES[rule.name]
-                                    ? `<button class="rule-source-link" data-trace-key="${escapeMarkupForSafeRender(RULE_STORAGE_DEPENDENCIES[rule.name])}"
-                                               title="This verdict is computed from ${escapeMarkupForSafeRender(RULE_STORAGE_DEPENDENCIES[rule.name])} — click to jump to it">${escapeMarkupForSafeRender(RULE_STORAGE_DEPENDENCIES[rule.name])}</button>`
+                                rule.sourceKey
+                                    ? `<button class="rule-source-link" data-trace-key="${escapeMarkupForSafeRender(rule.sourceKey)}"
+                                               title="This verdict is computed from ${escapeMarkupForSafeRender(rule.sourceKey)} — click to jump to it">${escapeMarkupForSafeRender(rule.sourceKey)}</button>`
                                     : ''}</div>
                             <div>
                                 <div class="targeting-rule-config">${escapeMarkupForSafeRender(rule.configured)}</div>
@@ -3787,9 +3803,10 @@
         }
 
         // --- 5c0. CAUSE-AND-EFFECT LINKING ---
-        // Which stored value each decoded rule actually reads. Kept beside the decoder it
-        // mirrors, so a rule gaining a new dependency is an obvious one-line change here rather
-        // than a silent inconsistency between what a rule reads and what the UI claims it reads.
+        // The stored values that can ever drive a verdict. Each rule declares its own actual
+        // dependency at the point of use (rule.sourceKey); this list only says which values are
+        // worth decorating with a dependent count, so the two can never disagree about a
+        // specific rule.
         const RULE_STORAGE_DEPENDENCIES = {
             'DontInviteOnDeclined': 'DECLINED_DATE',
             'DontInviteOnSubmitted': 'SUBMITTED_DATE',
@@ -3845,15 +3862,11 @@
         function highlightRulesDependingOnKey(storageKey) {
             const container = document.getElementById('targeting-matrix-container');
             if (!container) return;
-            const dependentRuleNames = Object.keys(RULE_STORAGE_DEPENDENCIES)
-                .filter(ruleName => RULE_STORAGE_DEPENDENCIES[ruleName] === storageKey);
-
             container.classList.add('dependents-dimmed');
             container.querySelectorAll('.targeting-rule-row').forEach(row => {
-                // Matched on the data attribute, not innerText: the row's visible name also
-                // contains the trace-link label, so text matching silently found nothing.
-                const isDependent = dependentRuleNames.includes(row.getAttribute('data-rule-name'));
-                row.classList.toggle('rule-depends-active', isDependent);
+                // Matched on the dependency each rendered rule declared for itself, so a rule
+                // that merely reads a value without acting on it is correctly left out.
+                row.classList.toggle('rule-depends-active', row.getAttribute('data-source-key') === storageKey);
             });
         }
 
@@ -3867,12 +3880,10 @@
         function countRulesDependingOnKey(storageKey) {
             const registry = readPublishedFormRegistryFromSdk();
             if (!registry) return 0;
-            const dependentRuleNames = Object.keys(RULE_STORAGE_DEPENDENCIES)
-                .filter(name => RULE_STORAGE_DEPENDENCIES[name] === storageKey);
             let count = 0;
             registry.forEach(form => {
                 decodeTargetingRulesForForm(form).forEach(rule => {
-                    if (dependentRuleNames.includes(rule.name)) count++;
+                    if (rule.sourceKey === storageKey) count++;
                 });
             });
             return count;
