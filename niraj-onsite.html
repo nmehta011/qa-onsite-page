@@ -489,6 +489,49 @@
 
         .status-spacer { flex: 1; }
 
+        /* --- CAUSE-AND-EFFECT LINKING --- */
+        /* A rule verdict and the stored value that produced it live in two different panels.
+           These affordances draw the connection instead of leaving the tester to hold it in
+           their head, which is the single thing this tool exists to explain. */
+        .rule-source-link {
+            display: inline-flex; align-items: center; gap: 5px;
+            margin-left: 8px; padding: 1px 8px; border-radius: 20px;
+            border: 1px dashed #334155; background: transparent;
+            color: #64748b; font-family: monospace; font-size: 0.68rem;
+            cursor: pointer; transition: color 0.15s, border-color 0.15s, background 0.15s;
+        }
+        .rule-source-link:hover, .rule-source-link:focus-visible {
+            color: #a78bfa; border-color: var(--sdk-purple);
+            background: rgba(139, 92, 246, 0.1); border-style: solid;
+        }
+        .rule-source-link::before { content: "↳"; opacity: 0.8; }
+
+        @keyframes causeHighlightPulse {
+            0%   { background: rgba(139, 92, 246, 0.30); box-shadow: 0 0 0 3px rgba(139,92,246,0.28); }
+            100% { background: transparent; box-shadow: 0 0 0 3px rgba(139,92,246,0); }
+        }
+        .cause-highlight { animation: causeHighlightPulse 2.1s ease-out 1; border-radius: 8px; }
+        @media (prefers-reduced-motion: reduce) {
+            .cause-highlight { animation: none; outline: 2px solid var(--sdk-purple); outline-offset: 3px; border-radius: 8px; }
+        }
+
+        /* Reverse direction: hovering a storage key dims the rules that do NOT depend on it,
+           so the ones that do stand out without needing a colour nobody has learned yet. */
+        .dependents-dimmed .targeting-rule-row:not(.rule-depends-active) { opacity: 0.28; transition: opacity 0.18s; }
+        .targeting-rule-row.rule-depends-active {
+            background: rgba(139, 92, 246, 0.08);
+            box-shadow: inset 3px 0 0 var(--sdk-purple);
+            transition: background 0.18s;
+        }
+        .lifecycle-key-row.key-linked-hover { background: rgba(139, 92, 246, 0.07); border-radius: 6px; }
+        .lifecycle-key-name.key-has-dependents { cursor: help; border-bottom: 1px dotted #475569; }
+
+        .dependent-count-badge {
+            display: inline-block; margin-left: 7px; padding: 0 6px;
+            border-radius: 10px; background: rgba(139,92,246,0.16); color: #a78bfa;
+            font-family: monospace; font-size: 0.66rem; font-weight: 700;
+        }
+
         /* --- WORKSPACE NAVIGATION --- */
         /* Groups panels by what the tester is trying to find out, rather than by feature.
            Its main job is reuniting the lifecycle dates with the targeting matrix: they are one
@@ -2145,6 +2188,7 @@
                 renderGlobalStatusBar();
                 renderWorkspaceBar();
                 refreshCollapsedPanelSummaries();
+                decorateLifecycleKeysWithDependents();
             }
         }, 1800);
 
@@ -3661,8 +3705,12 @@
                 const rulesMarkup = rules.length === 0
                     ? `<div class="no-rules-notice">No targeting rules configured on this form. It relies purely on its trigger type (${escapeMarkupForSafeRender(form.formType)}).</div>`
                     : rules.map(rule => `
-                        <div class="targeting-rule-row">
-                            <div class="targeting-rule-name">${escapeMarkupForSafeRender(rule.name)}</div>
+                        <div class="targeting-rule-row" data-rule-name="${escapeMarkupForSafeRender(rule.name)}">
+                            <div class="targeting-rule-name">${escapeMarkupForSafeRender(rule.name)}${
+                                RULE_STORAGE_DEPENDENCIES[rule.name]
+                                    ? `<button class="rule-source-link" data-trace-key="${escapeMarkupForSafeRender(RULE_STORAGE_DEPENDENCIES[rule.name])}"
+                                               title="This verdict is computed from ${escapeMarkupForSafeRender(RULE_STORAGE_DEPENDENCIES[rule.name])} — click to jump to it">${escapeMarkupForSafeRender(RULE_STORAGE_DEPENDENCIES[rule.name])}</button>`
+                                    : ''}</div>
                             <div>
                                 <div class="targeting-rule-config">${escapeMarkupForSafeRender(rule.configured)}</div>
                                 <div class="targeting-rule-explain">${escapeMarkupForSafeRender(rule.explanation)}</div>
@@ -3688,6 +3736,13 @@
                     expandedTargetingFormCards[form.formId] = !expandedTargetingFormCards[form.formId];
                     renderFormTargetingRulesMatrix();
                 };
+                // Tracing a verdict to its source must not also collapse the card it sits in.
+                card.querySelectorAll('[data-trace-key]').forEach(link => {
+                    link.onclick = event => {
+                        event.stopPropagation();
+                        revealStorageKeyBehindRule(link.getAttribute('data-trace-key'));
+                    };
+                });
                 container.appendChild(card);
             });
         }
@@ -3729,6 +3784,139 @@
             temporaryAnchorLink.click(); document.body.removeChild(temporaryAnchorLink);
             URL.revokeObjectURL(temporaryAnchorLink.href);
             writeLog(`CSV Export Engine Complete: Downloaded targeting matrix for ${registry.length} published forms.`, 'success');
+        }
+
+        // --- 5c0. CAUSE-AND-EFFECT LINKING ---
+        // Which stored value each decoded rule actually reads. Kept beside the decoder it
+        // mirrors, so a rule gaining a new dependency is an obvious one-line change here rather
+        // than a silent inconsistency between what a rule reads and what the UI claims it reads.
+        const RULE_STORAGE_DEPENDENCIES = {
+            'DontInviteOnDeclined': 'DECLINED_DATE',
+            'DontInviteOnSubmitted': 'SUBMITTED_DATE',
+            'InvitePerSession': 'kampyleInvitePresented',
+            'UsersPercentage': 'kampyleUserPercentile',
+            'NumberOfPagesViewed': 'kampyleSessionPageCounter',
+            'NumberOfVisits': 'kampyleUserSessionsCount'
+        };
+
+        // Three of the values rules depend on are surfaced by the DOM & Storage Inspector rather
+        // than the Date Manager. Tracing has to find them there too, otherwise those links would
+        // point at nothing and silently do nothing when clicked.
+        const STORAGE_KEY_INSPECTOR_ELEMENTS = {
+            'kampyleUserPercentile': 'sdk-meta-percentile',
+            'kampyleSessionPageCounter': 'sdk-meta-pagecounter',
+            'kampyleUserSessionsCount': 'sdk-meta-sessioncount'
+        };
+
+        function findLifecycleRowForKey(storageKey) {
+            const lifecycleValue = document.getElementById(`lifecycle-raw-${storageKey}`);
+            if (lifecycleValue) return lifecycleValue.closest('.lifecycle-key-row');
+
+            const inspectorId = STORAGE_KEY_INSPECTOR_ELEMENTS[storageKey];
+            const inspectorValue = inspectorId ? document.getElementById(inspectorId) : null;
+            return inspectorValue ? inspectorValue.closest('.audit-row') : null;
+        }
+
+        // Clicking a rule reveals the value that produced its verdict — across workspaces and
+        // through a collapsed panel if necessary, then pulses so the eye lands on it.
+        function revealStorageKeyBehindRule(storageKey) {
+            const row = findLifecycleRowForKey(storageKey);
+            if (!row) return;
+
+            const owner = row.closest('#master-canvas-wrapper > [data-workspace]');
+            if (owner) {
+                const ownerWorkspace = owner.getAttribute('data-workspace');
+                if (ownerWorkspace !== 'always' && ownerWorkspace !== activeWorkspaceKey && activeWorkspaceKey !== 'all') {
+                    setActiveWorkspace(ownerWorkspace, { skipScroll: true });
+                }
+            }
+
+            requestAnimationFrame(() => {
+                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                row.classList.remove('cause-highlight');
+                void row.offsetWidth;   // restart the animation if it is already applied
+                row.classList.add('cause-highlight');
+                setTimeout(() => row.classList.remove('cause-highlight'), 2400);
+            });
+            writeLog(`Traced rule back to its source value: [${storageKey}].`, 'info');
+        }
+
+        // Reverse direction: highlight every rule that reads a given key, and dim the rest.
+        function highlightRulesDependingOnKey(storageKey) {
+            const container = document.getElementById('targeting-matrix-container');
+            if (!container) return;
+            const dependentRuleNames = Object.keys(RULE_STORAGE_DEPENDENCIES)
+                .filter(ruleName => RULE_STORAGE_DEPENDENCIES[ruleName] === storageKey);
+
+            container.classList.add('dependents-dimmed');
+            container.querySelectorAll('.targeting-rule-row').forEach(row => {
+                // Matched on the data attribute, not innerText: the row's visible name also
+                // contains the trace-link label, so text matching silently found nothing.
+                const isDependent = dependentRuleNames.includes(row.getAttribute('data-rule-name'));
+                row.classList.toggle('rule-depends-active', isDependent);
+            });
+        }
+
+        function clearRuleDependencyHighlight() {
+            const container = document.getElementById('targeting-matrix-container');
+            if (!container) return;
+            container.classList.remove('dependents-dimmed');
+            container.querySelectorAll('.rule-depends-active').forEach(row => row.classList.remove('rule-depends-active'));
+        }
+
+        function countRulesDependingOnKey(storageKey) {
+            const registry = readPublishedFormRegistryFromSdk();
+            if (!registry) return 0;
+            const dependentRuleNames = Object.keys(RULE_STORAGE_DEPENDENCIES)
+                .filter(name => RULE_STORAGE_DEPENDENCIES[name] === storageKey);
+            let count = 0;
+            registry.forEach(form => {
+                decodeTargetingRulesForForm(form).forEach(rule => {
+                    if (dependentRuleNames.includes(rule.name)) count++;
+                });
+            });
+            return count;
+        }
+
+        // Annotates each lifecycle key with how many live rules read it, and wires the hover
+        // that highlights them. Re-run on the polling loop because both panels re-render.
+        function decorateLifecycleKeysWithDependents() {
+            if (!readPublishedFormRegistryFromSdk()) return;
+            Object.values(RULE_STORAGE_DEPENDENCIES).forEach(storageKey => {
+                const row = findLifecycleRowForKey(storageKey);
+                if (!row) return;
+                const nameNode = row.querySelector('.lifecycle-key-name');
+                if (!nameNode) return;
+
+                const count = countRulesDependingOnKey(storageKey);
+                let badge = nameNode.querySelector('.dependent-count-badge');
+                if (count > 0) {
+                    if (!badge) {
+                        badge = document.createElement('span');
+                        badge.className = 'dependent-count-badge';
+                        nameNode.appendChild(badge);
+                        nameNode.classList.add('key-has-dependents');
+                    }
+                    badge.innerText = `${count} rule${count === 1 ? '' : 's'}`;
+                    badge.title = `${count} live targeting rule(s) read this value — hover to highlight them`;
+                } else if (badge) {
+                    badge.remove();
+                    nameNode.classList.remove('key-has-dependents');
+                }
+
+                if (!row.dataset.dependencyWired) {
+                    row.dataset.dependencyWired = '1';
+                    row.addEventListener('mouseenter', () => {
+                        if (countRulesDependingOnKey(storageKey) === 0) return;
+                        row.classList.add('key-linked-hover');
+                        highlightRulesDependingOnKey(storageKey);
+                    });
+                    row.addEventListener('mouseleave', () => {
+                        row.classList.remove('key-linked-hover');
+                        clearRuleDependencyHighlight();
+                    });
+                }
+            });
         }
 
         // --- 5c1. WORKSPACE NAVIGATION ---
