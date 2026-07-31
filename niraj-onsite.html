@@ -388,6 +388,9 @@
         .submission-card { background: #090d16; border: 1px solid var(--panel-border); border-left: 3px solid #334155; border-radius: 10px; padding: 15px 17px; margin-bottom: 13px; }
         .submission-card.card-submitted { border-left-color: var(--accent-green); box-shadow: 0 0 16px rgba(16,185,129,0.1); }
         .submission-card.card-abandoned { border-left-color: #f59e0b; }
+        .submission-card.card-open { border-left-color: #38bdf8; }
+        .badge-open { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+        .badge-abandoned { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
         .submission-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 11px; }
         .submission-form-id { font-family: monospace; font-weight: bold; color: #e2e8f0; font-size: 0.9rem; }
         .submission-elapsed { margin-left: auto; font-family: monospace; font-size: 0.75rem; color: #94a3b8; white-space: nowrap; }
@@ -488,6 +491,38 @@
         .status-chip .chip-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 
         .status-spacer { flex: 1; }
+
+        /* --- TOASTS --- */
+        /* Non-blocking replacement for alert(): validation guards and confirmations used to
+           freeze the tab behind a native dialog, which is also invisible in screenshots and
+           screen recordings. */
+        .toast-stack {
+            position: fixed; top: 74px; right: 20px; z-index: 2000;
+            display: flex; flex-direction: column; gap: 8px;
+            max-width: 360px; pointer-events: none;
+        }
+        @media (max-width: 900px) {
+            .toast-stack { left: 16px; right: 16px; max-width: none; top: auto; bottom: 16px; }
+        }
+        .toast-item {
+            pointer-events: auto; cursor: pointer;
+            padding: 10px 14px; border-radius: 8px;
+            font-family: monospace; font-size: 0.78rem; line-height: 1.4;
+            background: rgba(13, 21, 39, 0.97); backdrop-filter: blur(10px);
+            border: 1px solid #334155; color: #e2e8f0;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+            animation: toastIn 0.2s ease-out;
+        }
+        .toast-item.toast-leaving { animation: toastOut 0.18s ease-in forwards; }
+        .toast-item.toast-warn { border-color: rgba(245,158,11,0.55); background: rgba(120,53,15,0.22); color: #fbbf24; }
+        .toast-item.toast-success { border-color: rgba(16,185,129,0.5); background: rgba(6,78,59,0.22); color: #34d399; }
+        .toast-item.toast-info { border-color: rgba(14,165,233,0.5); background: rgba(12,74,110,0.22); color: #7dd3fc; }
+        @keyframes toastIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes toastOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(16px); } }
+        @media (prefers-reduced-motion: reduce) {
+            .toast-item { animation: none; }
+            .toast-item.toast-leaving { animation: none; }
+        }
 
         /* --- CAUSE-AND-EFFECT LINKING --- */
         /* A rule verdict and the stored value that produced it live in two different panels.
@@ -848,6 +883,10 @@
                     const clone = response.clone();
                     clone.text().then(txt => captureInvitationDesignManifest(txt));
                 }
+                if (/formData.*\.json/i.test(requestUrl)) {
+                    const clone = response.clone();
+                    clone.text().then(txt => captureFormDesignManifest(txt));
+                }
                 return response;
             } catch (err) {
                 triggerNetworkErrorLog('FAILED', 'FETCH', requestUrl);
@@ -872,6 +911,7 @@
                 if (this.status >= 400) triggerNetworkErrorLog(this.status, 'XHR', url);
                 if (/onsiteData.*\.json/i.test(url)) triggerProvisionsManifestEvaluation(this.responseText);
                 if (/invitationData.*\.json/i.test(url)) captureInvitationDesignManifest(this.responseText);
+                if (/formData.*\.json/i.test(url)) captureFormDesignManifest(this.responseText);
             });
             this.addEventListener('error', function() { triggerNetworkErrorLog('FAILED', 'XHR', url); });
             return originalXcounter.apply(this, [method, url, ...args]);
@@ -933,6 +973,20 @@
                     capturedInvitationDesignManifests[String(parsed.formId)] = parsed;
                 }
             } catch (err) { /* non-JSON responses are not invitation manifests */ }
+        }
+
+        // The main survey form's own settings (background/text/submit/close/next/back button
+        // colours, labels, thank-you page) live in a per-form formDataV2 manifest fetched from
+        // this document's own context — confirmed by network capture, not assumed — so they can
+        // be harvested exactly like the invitation manifest above.
+        const capturedFormDesignManifests = {};
+        function captureFormDesignManifest(responseText) {
+            try {
+                const parsed = JSON.parse(responseText);
+                if (parsed && parsed.id && parsed.settings) {
+                    capturedFormDesignManifests[String(parsed.id)] = parsed;
+                }
+            } catch (err) { /* non-JSON responses are not form manifests */ }
         }
 
         function triggerProvisionsManifestEvaluation(responseText) {
@@ -1085,6 +1139,7 @@
 
     <div class="global-status-bar" id="global-status-bar"></div>
     <div class="workspace-bar" id="workspace-bar"></div>
+    <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
     <div id="master-canvas-wrapper" class="wrapper">
         <div id="device-emulation-banner" class="device-emulation-banner"></div>
@@ -1209,6 +1264,15 @@
                     <div id="telemetry-network-profile" style="font-size: 0.75rem; color: var(--accent-green); font-weight: 600;">⚡ Instant Asset Initialization</div>
                     <input type="range" id="latency-slider" min="0" max="3000" step="250" value="0" style="width:100%; margin-top:5px;" oninput="processLatencyTelemetryChange()">
                 </div>
+
+                <div class="input-group" style="margin-top: 15px; background: #070a12; padding: 10px; border-radius: 6px; border: 1px solid #111827;">
+                    <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 0.78rem; color: #cbd5e1;">
+                        <input type="checkbox" class="arm-capture-toggle-input" onchange="persistArmCaptureBeforeInjectPreference(this)" style="margin-top: 2px;">
+                        <span>🎨 Arm colour capture before injecting
+                            <span style="display:block; font-size: 0.68rem; color: var(--text-muted); font-weight: normal; margin-top: 2px;">Prompts for screen-share on "Inject Property" so an invitation with no blocking targeting is never missed. Injection proceeds either way if you decline.</span>
+                        </span>
+                    </label>
+                </div>
             </div>
         </div>
 
@@ -1225,6 +1289,10 @@
                 <textarea id="input-main-page" placeholder="Paste structural script tags (<script src='...'></script>) or immediate execution JavaScript here..."></textarea>
                 <div class="action-bar">
                     <button id="btn-main-page" onclick="injectProperty('main-page')">Inject Property</button>
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.76rem; color: #94a3b8; cursor: pointer; white-space: nowrap;" title="Prompts for screen-share on Inject Property so an invitation with no blocking targeting is never missed.">
+                        <input type="checkbox" class="arm-capture-toggle-input" onchange="persistArmCaptureBeforeInjectPreference(this)">
+                        🎨 Arm colour capture first
+                    </label>
                     <div id="msg-main-page" class="message"></div>
                 </div>
             </div>
@@ -1391,7 +1459,7 @@
                 <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">🎨 Design &amp; Display Render Validator</h4>
                 <span id="design-validator-summary" class="status-pill pill-warn">Awaiting render</span>
                 <button class="lifecycle-btn panel-collapse-btn" onclick="togglePanelCollapsed('design')">▾ Collapse</button>
-                <button class="lifecycle-btn btn-commit" id="colour-monitor-btn" onclick="toggleInvitationColourMonitoring()" title="Grant screen capture once; invitation colours are then sampled automatically every time an invitation appears">🎨 Auto-Capture Invitation Colours</button>
+                <button class="lifecycle-btn btn-commit" id="colour-monitor-btn" onclick="toggleInvitationColourMonitoring()" title="Grant screen capture once; invitation and main-form colours are then sampled automatically every time either appears">🎨 Auto-Capture Rendered Colours</button>
                 <button class="lifecycle-btn" onclick="renderDesignAndDisplayValidator()">🔄 Re-validate Now</button>
                 <button class="lifecycle-btn" onclick="downloadDesignValidationReportAsCSV()">📥 Export CSV</button>
             </div>
@@ -1564,6 +1632,29 @@
             writeLog("Execution stream trace cleared.", "info");
         }
 
+        // Replaces alert() for validation guards and confirmations: a native dialog blocks the
+        // tab (and doesn't show up in screenshots/recordings), a toast doesn't.
+        function toast(message, tone = 'warn') {
+            const stack = document.getElementById('toast-stack');
+            if (!stack) return;
+            const el = document.createElement('div');
+            el.className = `toast-item toast-${tone}`;
+            el.textContent = message;
+            el.addEventListener('click', () => dismissToast(el));
+            stack.appendChild(el);
+            el._toastTimer = setTimeout(() => dismissToast(el), 5000);
+        }
+
+        function dismissToast(el) {
+            if (!el || !el.isConnected) return;
+            clearTimeout(el._toastTimer);
+            el.classList.add('toast-leaving');
+            // animationend never fires under prefers-reduced-motion (animation: none), so a
+            // fallback timer guarantees removal either way.
+            el.addEventListener('animationend', () => el.remove(), { once: true });
+            setTimeout(() => el.remove(), 250);
+        }
+
       // --- 2. HTTP SERVER & CONSOLE ERROR TRAFFIC DETECTOR LISTENER ---
         window.addEventListener('qa_network_error', (e) => {
             const notice = document.getElementById('empty-network-notice');
@@ -1711,7 +1802,7 @@
         }
 
         function downloadCapturedAnalyticsDataAsCSV() {
-            if (collectedAnalyticsEventsCacheList.length === 0) { alert("Analytics Stream Monitor is empty. Trigger some form interactions first!"); return; }
+            if (collectedAnalyticsEventsCacheList.length === 0) { toast("Analytics Stream Monitor is empty. Trigger some form interactions first!"); return; }
 
             const columns = [
                 ["Captured Time", r => r.time],
@@ -1881,7 +1972,7 @@
         }
 
         function downloadCapturedSdkBusEventsAsCSV() {
-            if (collectedSdkBusEventsCacheList.length === 0) { alert("SDK Custom Event Bus is empty. Inject a property and interact with a form first!"); return; }
+            if (collectedSdkBusEventsCacheList.length === 0) { toast("SDK Custom Event Bus is empty. Inject a property and interact with a form first!"); return; }
 
             const escapeCsvCell = value => `"${String(value === null || value === undefined ? '' : value).replace(/"/g, '""')}"`;
             let csvBodyContent = ["Captured Time", "Event Name", "Emitter Source", "Form ID", "Payload JSON"].map(escapeCsvCell).join(",") + "\n";
@@ -1935,7 +2026,7 @@
                 : capturedSubmissionTraces.slice().reverse().find(item => item.formId === formId);
 
             if (!trace) {
-                trace = { formId, startedAt: Date.now(), steps: [], isComplete: false,
+                trace = { formId, startedAt: Date.now(), steps: [], isComplete: false, isAbandoned: false,
                           feedbackUUID: null, correlationUUID: null, formLanguage: null,
                           isAutoAction: null, pagesShown: 0, screenCaptureEnabled: null };
                 capturedSubmissionTraces.push(trace);
@@ -1947,12 +2038,35 @@
             if (payload.formLanguage) trace.formLanguage = payload.formLanguage;
             if (typeof payload.isAutoAction === 'boolean') trace.isAutoAction = payload.isAutoAction;
             if (typeof payload.isScreenCaptureEnabled === 'boolean') trace.screenCaptureEnabled = payload.isScreenCaptureEnabled;
-            if (action === 'formPageShown') trace.pagesShown = Math.max(trace.pagesShown, (payload.pageNumber || 0) + 1);
+            if (action === 'formPageShown') {
+                trace.pagesShown = Math.max(trace.pagesShown, (payload.pageNumber || 0) + 1);
+                // Multi-page forms only show a subset of Submit/Next/Back on any given page
+                // (e.g. "Next" on page 1, "Submit" only on the last page) — a single sample at
+                // initial load would report every button not on THAT page as a false "not
+                // found", so colours are re-sampled on every page transition instead.
+                scheduleFormColourSample(formId, 700);
+            }
 
             if (action === 'formSubmitted') {
                 trace.isComplete = true;
                 trace.submittedAt = Date.now();
                 writeLog(`✅ Feedback submitted ➔ form ${formId} · feedbackUUID ${payload.feedbackUUID || 'n/a'}`, 'success');
+            }
+
+            // The thank-you page is the only moment its own colours are on screen, so — same
+            // rationale as the invitation/form colour probes — sampling has to be scheduled off
+            // this event rather than left for a tester to trigger manually after the fact.
+            if (action === 'MDigital_ThankYou_Displayed') {
+                scheduleThankYouColourSample(formId, 700);
+            }
+
+            // A close without a prior submit is the respondent dismissing the form outright —
+            // that's abandonment, not an in-progress journey, and the inspector should say so
+            // instead of leaving the trace looking permanently "Open".
+            if (action === 'formClose' && !trace.isComplete && !trace.isAbandoned) {
+                trace.isAbandoned = true;
+                trace.abandonedAt = Date.now();
+                writeLog(`⚠️ Feedback abandoned ➔ form ${formId} closed without submitting`, 'warn');
             }
 
             renderSubmissionInspector();
@@ -1969,7 +2083,15 @@
 
             const counter = document.getElementById('submission-counter-badge');
             const submittedCount = capturedSubmissionTraces.filter(t => t.isComplete).length;
-            if (counter) counter.innerText = submittedCount ? `${submittedCount} submitted` : `${capturedSubmissionTraces.length} in progress`;
+            const abandonedCount = capturedSubmissionTraces.filter(t => !t.isComplete && t.isAbandoned).length;
+            const openCount = capturedSubmissionTraces.length - submittedCount - abandonedCount;
+            if (counter) {
+                const parts = [];
+                if (submittedCount) parts.push(`${submittedCount} submitted`);
+                if (abandonedCount) parts.push(`${abandonedCount} abandoned`);
+                if (openCount) parts.push(`${openCount} in progress`);
+                counter.innerText = parts.join(' · ') || '0 in progress';
+            }
 
             if (capturedSubmissionTraces.length === 0) {
                 container.innerHTML = `<div class="no-rules-notice">Awaiting form activity. Open a form and submit feedback to capture a submission trace...</div>`;
@@ -1982,7 +2104,9 @@
                 const shownAt = findFirstStepTimestamp(trace, 'formPageShown') || trace.startedAt;
                 const elapsedLabel = trace.isComplete && trace.submittedAt
                     ? `${((trace.submittedAt - shownAt) / 1000).toFixed(1)}s from first page to submit`
-                    : 'in progress';
+                    : trace.isAbandoned
+                        ? `closed without submitting after ${((trace.abandonedAt - shownAt) / 1000).toFixed(1)}s`
+                        : 'in progress';
 
                 const identityRows = [
                     { label: 'Feedback UUID', value: trace.feedbackUUID, primary: true,
@@ -1995,11 +2119,13 @@
                     { label: 'Auto-submitted', value: trace.isAutoAction === null ? null : String(trace.isAutoAction) }
                 ].filter(row => row.value !== null && row.value !== undefined);
 
+                const cardState = trace.isComplete ? "submitted" : trace.isAbandoned ? "abandoned" : "open";
+                const cardStateLabel = trace.isComplete ? "Submitted" : trace.isAbandoned ? "Abandoned" : "Open";
                 const card = document.createElement('div');
-                card.className = "submission-card " + (trace.isComplete ? "card-submitted" : "card-abandoned");
+                card.className = `submission-card card-${cardState}`;
                 card.innerHTML = `
                     <div class="submission-head">
-                        <span class="badge ${trace.isComplete ? 'badge-provisions' : 'badge-analytics'}">${trace.isComplete ? 'Submitted' : 'Open'}</span>
+                        <span class="badge badge-${cardState}">${cardStateLabel}</span>
                         <span class="submission-form-id">form ${escapeMarkupForSafeRender(trace.formId)}</span>
                         <span class="submission-elapsed">${escapeMarkupForSafeRender(elapsedLabel)}</span>
                     </div>
@@ -2040,7 +2166,7 @@
         }
 
         function downloadSubmissionReportAsCSV() {
-            if (capturedSubmissionTraces.length === 0) { alert("No submission traces captured yet. Submit some feedback first!"); return; }
+            if (capturedSubmissionTraces.length === 0) { toast("No submission traces captured yet. Submit some feedback first!"); return; }
 
             const escapeCsvCell = value => `"${String(value === null || value === undefined ? '' : value).replace(/"/g, '""')}"`;
             let csv = ["Form ID", "Status", "Feedback UUID", "Correlation UUID", "Language",
@@ -2050,7 +2176,7 @@
                 const shownAt = findFirstStepTimestamp(trace, 'formPageShown') || trace.startedAt;
                 csv += [
                     trace.formId,
-                    trace.isComplete ? "submitted" : "not submitted",
+                    trace.isComplete ? "submitted" : trace.isAbandoned ? "abandoned" : "open",
                     trace.feedbackUUID || "",
                     trace.correlationUUID || "",
                     trace.formLanguage || "",
@@ -2206,7 +2332,7 @@
 
             let targetValue = inputNode.value.trim();
             if (targetValue === "") {
-                alert("Validation Exception: Override value configuration string cannot be empty.");
+                toast("Validation Exception: Override value configuration string cannot be empty.");
                 return;
             }
 
@@ -2214,7 +2340,7 @@
 
             if (storageTargetKey === 'kampyleUserPercentile') {
                 if (isNaN(numericValue) || numericValue < 0 || numericValue > 100) {
-                    alert("⚠️ Boundary Violation: kampyleUserPercentile requires a percentage constraint integer value mapped strictly between 0 and 100.");
+                    toast("⚠️ Boundary Violation: kampyleUserPercentile requires a percentage constraint integer value mapped strictly between 0 and 100.");
                     writeLog("Validation Guard: Rejected percentile overwrite parameter out-of-bounds mapping.", "warn");
                     inputNode.value = "";
                     return;
@@ -2363,12 +2489,12 @@
         function commitLifecycleDateOverride(storageKey) {
             const inputNode = document.getElementById(`lifecycle-input-${storageKey}`);
             if (!inputNode || !inputNode.value) {
-                alert("Pick a target date and time before committing the override.");
+                toast("Pick a target date and time before committing the override.");
                 return;
             }
             const epochMilliseconds = new Date(inputNode.value).getTime();
             if (!Number.isFinite(epochMilliseconds)) {
-                alert("The selected date-time could not be parsed into a valid timestamp.");
+                toast("The selected date-time could not be parsed into a valid timestamp.");
                 return;
             }
             commitLifecycleStorageWrite(storageKey, String(epochMilliseconds),
@@ -2392,7 +2518,7 @@
             const inputNode = document.getElementById(`lifecycle-input-${storageKey}`);
             const nextValue = inputNode ? inputNode.value.trim() : "";
             if (!nextValue) {
-                alert("Override value cannot be empty.");
+                toast("Override value cannot be empty.");
                 return;
             }
             commitLifecycleStorageWrite(storageKey, nextValue, `Lifecycle Override: [${storageKey}] rewritten to ➔ ${nextValue}.`);
@@ -2830,15 +2956,19 @@
             return null;
         }
 
+        // The iframe id varies by display mode — kampyleForm<id> for lightbox,
+        // kampyleFormAnimation<id> for animation, embeddedIframe<id> when embedded — so any
+        // iframe carrying this form id is accepted rather than guessing a single naming.
+        function locateFormRenderIframe(formId) {
+            return document.getElementById(`kampyleForm${formId}`)
+                || document.getElementById(`kampyleFormAnimation${formId}`)
+                || document.getElementById(`embeddedIframe${formId}`)
+                || Array.from(document.querySelectorAll('iframe'))
+                        .find(node => node.id && node.id.includes(String(formId)));
+        }
+
         function detectRenderedDisplayModeForForm(formId) {
-            // The iframe id varies by display mode — kampyleForm<id> for lightbox,
-            // kampyleFormAnimation<id> for animation, embeddedIframe<id> when embedded — so any
-            // iframe carrying this form id is accepted rather than guessing a single naming.
-            const iframe = document.getElementById(`kampyleForm${formId}`)
-                        || document.getElementById(`kampyleFormAnimation${formId}`)
-                        || document.getElementById(`embeddedIframe${formId}`)
-                        || Array.from(document.querySelectorAll('iframe'))
-                                .find(node => node.id && node.id.includes(String(formId)));
+            const iframe = locateFormRenderIframe(formId);
             if (!iframe) return null;
             let node = iframe.parentElement;
             while (node && node !== document.body) {
@@ -3011,7 +3141,7 @@
         // screen they cover the dashboard — so a tester can never read the result at the moment
         // it exists. Observations are therefore latched automatically the instant a surface is
         // visible, and the report falls back to the latched values once it closes.
-        const latchedDesignObservations = { invitation: null, button: null };
+        const latchedDesignObservations = { invitation: null, button: null, forms: {} };
 
         function describeObservationAge(observedAt) {
             return `${new Date(observedAt).toLocaleTimeString()} (${describeRelativeAgeFromNow(observedAt)})`;
@@ -3042,6 +3172,31 @@
                     previous.wasVisible = false;
                 }
             }
+
+            // Same rationale, per form: the main survey form is only measurable while it covers
+            // the dashboard, and only forms with a captured formDataV2 manifest have anything to
+            // compare against.
+            Object.keys(capturedFormDesignManifests).forEach(formId => {
+                const iframe = locateFormRenderIframe(formId);
+                if (!iframe) return;
+                const rect = iframe.getBoundingClientRect();
+                const isVisible = rect.width > 0 && rect.height > 0 &&
+                    window.getComputedStyle(iframe).visibility !== 'hidden';
+                const previous = latchedDesignObservations.forms[formId];
+                if (isVisible) {
+                    const isNewPresentation = !previous || !previous.wasVisible;
+                    latchedDesignObservations.forms[formId] = {
+                        observedAt: Date.now(),
+                        observationCount: (previous ? previous.observationCount : 0) + (isNewPresentation ? 1 : 0),
+                        width: Math.round(rect.width),
+                        height: Math.round(rect.height),
+                        wasVisible: true
+                    };
+                    if (isNewPresentation) scheduleFormColourSample(formId, 700);
+                } else if (previous) {
+                    previous.wasVisible = false;
+                }
+            });
         }
 
         function validateInvitationDesign(form) {
@@ -3185,7 +3340,7 @@
             const button = document.getElementById('colour-monitor-btn');
             if (!button) return;
             const isActive = !!invitationColourMonitorStream;
-            button.innerText = isActive ? '⏹ Stop Colour Auto-Capture' : '🎨 Auto-Capture Invitation Colours';
+            button.innerText = isActive ? '⏹ Stop Colour Auto-Capture' : '🎨 Auto-Capture Rendered Colours';
             button.classList.toggle('btn-commit', !isActive);
             button.classList.toggle('btn-purge', isActive);
         }
@@ -3225,11 +3380,12 @@
             stream.getVideoTracks().forEach(track => track.addEventListener('ended', () => stopInvitationColourMonitoring('sharing ended in the browser')));
 
             updateInvitationColourMonitorButton();
-            showDeviceEmulationNotice('Colour auto-capture armed. Invitation colours will be sampled automatically each time an invitation appears — no need to click anything while it is on screen.', 'success');
-            writeLog('Invitation colour auto-capture armed via screen capture stream.', 'success');
+            showDeviceEmulationNotice('Colour auto-capture armed. Invitation and main-form colours will be sampled automatically each time either appears — no need to click anything while they are on screen.', 'success');
+            writeLog('Rendered colour auto-capture armed via screen capture stream.', 'success');
 
-            // Sample immediately if an invitation happens to be up already.
+            // Sample immediately if a surface happens to be up already.
             if (locateVisibleInvitationNode()) scheduleInvitationColourSample(300);
+            Object.keys(capturedFormDesignManifests).forEach(formId => scheduleFormColourSample(formId, 300));
         }
 
         function stopInvitationColourMonitoring(reason) {
@@ -3240,7 +3396,7 @@
             invitationColourMonitorStream = null;
             invitationColourMonitorVideo = null;
             updateInvitationColourMonitorButton();
-            writeLog(`Invitation colour auto-capture disarmed (${reason}). Previously sampled results are retained.`, 'info');
+            writeLog(`Rendered colour auto-capture disarmed (${reason}). Previously sampled results are retained.`, 'info');
         }
 
         function scheduleInvitationColourSample(delayMilliseconds) {
@@ -3251,6 +3407,88 @@
                 pendingInvitationSampleToken = null;
                 sampleInvitationColoursFromLiveStream();
             }, delayMilliseconds);
+        }
+
+        // Shared by every surface this app pixel-probes (invitation, main form): crops a
+        // screen-capture video frame to `rect` and reports what share of pixels in that crop
+        // match each expected colour. Returns null if the frame can't be read yet, 'retry' if
+        // the capture pipeline handed back an empty/near-black frame, or the sampled results.
+        // Multi-page forms only show a subset of their buttons on any given page (Submit is
+        // often only on the last page, Next often only before it), and colours are re-sampled on
+        // every page transition — so a later sample's "not found" for a button that simply isn't
+        // on THIS page must never erase an earlier sample that genuinely found it. A fresh "pass"
+        // always wins as new positive evidence; anything else only replaces a prior result that
+        // wasn't already a confirmed pass.
+        function mergeColourProbeResults(previous, fresh) {
+            const merged = Object.assign({}, previous);
+            Object.entries(fresh).forEach(([label, result]) => {
+                const prior = previous[label];
+                if (!prior || result.verdict === 'pass' || prior.verdict !== 'pass') {
+                    merged[label] = result;
+                }
+            });
+            return merged;
+        }
+
+        function samplePixelColoursInRegion(video, rect, expectedColours) {
+            const scaleX = video.videoWidth / window.innerWidth;
+            const scaleY = video.videoHeight / window.innerHeight;
+            if (!Number.isFinite(scaleX) || scaleX <= 0) return null;
+
+            const cropWidth = Math.max(1, Math.round(rect.width * scaleX));
+            const cropHeight = Math.max(1, Math.round(rect.height * scaleY));
+
+            const canvas = document.createElement('canvas');
+            canvas.width = cropWidth; canvas.height = cropHeight;
+            const context = canvas.getContext('2d');
+            context.drawImage(video,
+                Math.round(rect.left * scaleX), Math.round(rect.top * scaleY), cropWidth, cropHeight,
+                0, 0, cropWidth, cropHeight);
+
+            const pixels = context.getImageData(0, 0, cropWidth, cropHeight).data;
+            const totalPixels = cropWidth * cropHeight;
+
+            // An empty capture pipeline yields a near-black rectangle. Reporting that as a
+            // colour mismatch would be a false negative, so the sample is discarded and
+            // retried instead of overwriting good results with a lie.
+            let nearBlackPixels = 0;
+            for (let i = 0; i < pixels.length; i += 4) {
+                if (pixels[i] < 8 && pixels[i + 1] < 8 && pixels[i + 2] < 8) nearBlackPixels++;
+            }
+            if (nearBlackPixels / totalPixels > 0.9) return 'retry';
+
+            const sampled = {};
+            expectedColours.forEach(([label, configuredValue]) => {
+                const target = parseColourToRgbTriplet(configuredValue);
+                if (!target) return;
+
+                let matchCount = 0;
+                for (let i = 0; i < pixels.length; i += 4) {
+                    const distance = Math.sqrt(
+                        Math.pow(pixels[i] - target[0], 2) +
+                        Math.pow(pixels[i + 1] - target[1], 2) +
+                        Math.pow(pixels[i + 2] - target[2], 2));
+                    if (distance <= PIXEL_COLOUR_MATCH_TOLERANCE) matchCount++;
+                }
+
+                const coverage = matchCount / totalPixels;
+                const isRendered = matchCount >= PIXEL_ABSOLUTE_MATCH_FLOOR || coverage >= PIXEL_COVERAGE_THRESHOLD;
+                const isInconclusive = !isRendered && matchCount > 0;
+                const capturedAt = new Date().toLocaleTimeString();
+
+                sampled[label] = {
+                    verdict: isRendered ? 'pass' : (isInconclusive ? 'info' : 'block'),
+                    actual: isRendered
+                        ? `rendered (${matchCount} px, ${(coverage * 100).toFixed(3)}% of region)`
+                        : (isInconclusive ? `only ${matchCount} px matched` : 'not found in region'),
+                    detail: isRendered
+                        ? `Auto-captured from the rendered region at ${capturedAt}: ${matchCount} of ${totalPixels} pixels match the configured colour within tolerance.`
+                        : (isInconclusive
+                            ? `Auto-captured at ${capturedAt}, but too few matching pixels to conclude either way — this happens with very small or heavily anti-aliased elements. Confirm visually.`
+                            : `Auto-captured at ${capturedAt}: no pixels within tolerance of the configured colour were found, so the rendered colour appears to differ from configuration.`)
+                };
+            });
+            return sampled;
         }
 
         function sampleInvitationColoursFromLiveStream() {
@@ -3271,66 +3509,9 @@
             if (expectedColours.length === 0) return;
 
             try {
-                const scaleX = video.videoWidth / window.innerWidth;
-                const scaleY = video.videoHeight / window.innerHeight;
-                if (!Number.isFinite(scaleX) || scaleX <= 0) return;
-
-                const cropWidth = Math.max(1, Math.round(rect.width * scaleX));
-                const cropHeight = Math.max(1, Math.round(rect.height * scaleY));
-
-                const canvas = document.createElement('canvas');
-                canvas.width = cropWidth; canvas.height = cropHeight;
-                const context = canvas.getContext('2d');
-                context.drawImage(video,
-                    Math.round(rect.left * scaleX), Math.round(rect.top * scaleY), cropWidth, cropHeight,
-                    0, 0, cropWidth, cropHeight);
-
-                const pixels = context.getImageData(0, 0, cropWidth, cropHeight).data;
-                const totalPixels = cropWidth * cropHeight;
-
-                // An empty capture pipeline yields a near-black rectangle. Reporting that as a
-                // colour mismatch would be a false negative, so the sample is discarded and
-                // retried instead of overwriting good results with a lie.
-                let nearBlackPixels = 0;
-                for (let i = 0; i < pixels.length; i += 4) {
-                    if (pixels[i] < 8 && pixels[i + 1] < 8 && pixels[i + 2] < 8) nearBlackPixels++;
-                }
-                if (nearBlackPixels / totalPixels > 0.9) {
-                    scheduleInvitationColourSample(800);
-                    return;
-                }
-
-                const sampled = {};
-                expectedColours.forEach(([label, configuredValue]) => {
-                    const target = parseColourToRgbTriplet(configuredValue);
-                    if (!target) return;
-
-                    let matchCount = 0;
-                    for (let i = 0; i < pixels.length; i += 4) {
-                        const distance = Math.sqrt(
-                            Math.pow(pixels[i] - target[0], 2) +
-                            Math.pow(pixels[i + 1] - target[1], 2) +
-                            Math.pow(pixels[i + 2] - target[2], 2));
-                        if (distance <= PIXEL_COLOUR_MATCH_TOLERANCE) matchCount++;
-                    }
-
-                    const coverage = matchCount / totalPixels;
-                    const isRendered = matchCount >= PIXEL_ABSOLUTE_MATCH_FLOOR || coverage >= PIXEL_COVERAGE_THRESHOLD;
-                    const isInconclusive = !isRendered && matchCount > 0;
-                    const capturedAt = new Date().toLocaleTimeString();
-
-                    sampled[label] = {
-                        verdict: isRendered ? 'pass' : (isInconclusive ? 'info' : 'block'),
-                        actual: isRendered
-                            ? `rendered (${matchCount} px, ${(coverage * 100).toFixed(3)}% of region)`
-                            : (isInconclusive ? `only ${matchCount} px matched` : 'not found in region'),
-                        detail: isRendered
-                            ? `Auto-captured from the rendered invitation at ${capturedAt}: ${matchCount} of ${totalPixels} pixels match the configured colour within tolerance.`
-                            : (isInconclusive
-                                ? `Auto-captured at ${capturedAt}, but too few matching pixels to conclude either way — this happens with very small or heavily anti-aliased elements. Confirm visually.`
-                                : `Auto-captured at ${capturedAt}: no pixels within tolerance of the configured colour were found, so the rendered colour appears to differ from configuration.`)
-                    };
-                });
+                const sampled = samplePixelColoursInRegion(video, rect, expectedColours);
+                if (sampled === null) return;
+                if (sampled === 'retry') { scheduleInvitationColourSample(800); return; }
 
                 invitationPixelProbeResults = sampled;
                 const passCount = Object.values(sampled).filter(r => r.verdict === 'pass').length;
@@ -3338,6 +3519,148 @@
                 renderDesignAndDisplayValidator();
             } catch (err) {
                 writeLog(`❌ Invitation colour auto-capture failed: ${err.message}`, 'warn');
+            }
+        }
+
+        // Colours configured on the main survey form's own settings (background/text/submit/
+        // close/next/back button) — resolved from the same formDataV2 manifest the validator
+        // group reads from, filtered by the show/hide flags so a hidden button's colour is never
+        // reported as a mismatch for not appearing on screen.
+        function resolveFormDesignColours(manifest) {
+            const basic = (manifest.settings && manifest.settings.formBasicSettings) || {};
+            const design = (manifest.settings && manifest.settings.formDesignSettingsContract) || {};
+            // Next/Back only ever render on a multi-page form regardless of their show/hide
+            // flags — asserting their colour on a single-page form would report a false mismatch
+            // for a button that was correctly never drawn.
+            const isMultiPage = Array.isArray(manifest.pages) && manifest.pages.length > 1;
+            const colours = [
+                ['Background Colour', design.backgroundColor],
+                ['Text Colour', design.textColor]
+            ];
+            if (!basic.isHideSubmitButton) {
+                colours.push(['Submit Button Colour', basic.submitButtoncolor]);
+                colours.push(['Submit Button Text Colour', basic.submitButtonTextColor]);
+            }
+            if (basic.isShowCloseButton) {
+                colours.push(['Close Button Colour', basic.closeButtoncolor]);
+                colours.push(['Close Button Text Colour', basic.closeButtonTextColor]);
+            }
+            if (isMultiPage && !basic.isHideNextButton) {
+                colours.push(['Next Button Colour', basic.nextButtoncolor]);
+                colours.push(['Next Button Text Colour', basic.nextButtonTextColor]);
+            }
+            if (isMultiPage && basic.isShowBackButton) {
+                colours.push(['Back Button Colour', basic.backButtoncolor]);
+                colours.push(['Back Button Text Colour', basic.backButtonTextColor]);
+            }
+            return colours.filter(([, value]) => !!value);
+        }
+
+        let formPixelProbeResults = {};
+
+        function scheduleFormColourSample(formId, delayMilliseconds) {
+            if (!invitationColourMonitorStream) return;
+            setTimeout(() => sampleFormColoursFromLiveStream(formId), delayMilliseconds);
+        }
+
+        function sampleFormColoursFromLiveStream(formId) {
+            const video = invitationColourMonitorVideo;
+            const iframe = locateFormRenderIframe(formId);
+            const manifest = capturedFormDesignManifests[formId];
+            if (!video || !iframe || !manifest) return;
+
+            const rect = iframe.getBoundingClientRect();
+            const isVisible = rect.width > 0 && rect.height > 0 &&
+                window.getComputedStyle(iframe).visibility !== 'hidden';
+            if (!isVisible) return;
+
+            const expectedColours = resolveFormDesignColours(manifest);
+            if (expectedColours.length === 0) return;
+
+            // For lightbox/animation forms `rect` is the full-viewport overlay (see the geometry
+            // note in validateFormSettingsDesign), not the form's own box, so this crop is the
+            // whole screen. A "not found anywhere on screen" verdict is still a reliable signal,
+            // but a "found" verdict only confirms the colour is present somewhere on screen, not
+            // specifically inside the form — flagged below rather than overstating precision.
+            const isUnscopedCrop = detectRenderedDisplayModeForForm(formId) === 'lightbox'
+                || detectRenderedDisplayModeForForm(formId) === 'animation';
+
+            try {
+                const sampled = samplePixelColoursInRegion(video, rect, expectedColours);
+                if (sampled === null) return;
+                if (sampled === 'retry') { setTimeout(() => sampleFormColoursFromLiveStream(formId), 800); return; }
+
+                if (isUnscopedCrop) {
+                    Object.values(sampled).forEach(result => {
+                        if (result.verdict === 'pass') {
+                            result.detail += ' This form renders inside a full-viewport overlay, so the sampled region was the whole screen rather than the form itself — this confirms the colour is present on screen but not specifically inside the form.';
+                        }
+                    });
+                }
+
+                formPixelProbeResults[formId] = mergeColourProbeResults(formPixelProbeResults[formId] || {}, sampled);
+                const passCount = Object.values(sampled).filter(r => r.verdict === 'pass').length;
+                writeLog(`Form ${formId} colours auto-captured: ${passCount}/${Object.keys(sampled).length} configured colours confirmed in the rendered region.`, 'success');
+                renderDesignAndDisplayValidator();
+            } catch (err) {
+                writeLog(`❌ Form colour auto-capture failed: ${err.message}`, 'warn');
+            }
+        }
+
+        function resolveThankYouColours(manifest) {
+            const thankYou = (manifest.settings && manifest.settings.formThankYouPageSettings) || {};
+            return [
+                ['Thank-You Background Colour', thankYou.backgroundColor],
+                ['Thank-You Button Colour', thankYou.buttonColor],
+                ['Thank-You Text Colour', thankYou.textColor]
+            ].filter(([, value]) => !!value);
+        }
+
+        let formThankYouPixelProbeResults = {};
+
+        function scheduleThankYouColourSample(formId, delayMilliseconds) {
+            if (!invitationColourMonitorStream) return;
+            setTimeout(() => sampleThankYouColoursFromLiveStream(formId), delayMilliseconds);
+        }
+
+        // The thank-you page renders in place inside the same form iframe/journey, so it shares
+        // the form colour probe's full-viewport-overlay caveat for lightbox/animation forms.
+        function sampleThankYouColoursFromLiveStream(formId) {
+            const video = invitationColourMonitorVideo;
+            const iframe = locateFormRenderIframe(formId);
+            const manifest = capturedFormDesignManifests[formId];
+            if (!video || !iframe || !manifest) return;
+
+            const rect = iframe.getBoundingClientRect();
+            const isVisible = rect.width > 0 && rect.height > 0 &&
+                window.getComputedStyle(iframe).visibility !== 'hidden';
+            if (!isVisible) return;
+
+            const expectedColours = resolveThankYouColours(manifest);
+            if (expectedColours.length === 0) return;
+
+            const isUnscopedCrop = detectRenderedDisplayModeForForm(formId) === 'lightbox'
+                || detectRenderedDisplayModeForForm(formId) === 'animation';
+
+            try {
+                const sampled = samplePixelColoursInRegion(video, rect, expectedColours);
+                if (sampled === null) return;
+                if (sampled === 'retry') { setTimeout(() => sampleThankYouColoursFromLiveStream(formId), 800); return; }
+
+                if (isUnscopedCrop) {
+                    Object.values(sampled).forEach(result => {
+                        if (result.verdict === 'pass') {
+                            result.detail += ' This form renders inside a full-viewport overlay, so the sampled region was the whole screen rather than the form itself — this confirms the colour is present on screen but not specifically inside the thank-you page.';
+                        }
+                    });
+                }
+
+                formThankYouPixelProbeResults[formId] = mergeColourProbeResults(formThankYouPixelProbeResults[formId] || {}, sampled);
+                const passCount = Object.values(sampled).filter(r => r.verdict === 'pass').length;
+                writeLog(`Thank-you page colours auto-captured for form ${formId}: ${passCount}/${Object.keys(sampled).length} configured colours confirmed.`, 'success');
+                renderDesignAndDisplayValidator();
+            } catch (err) {
+                writeLog(`❌ Thank-you colour auto-capture failed: ${err.message}`, 'warn');
             }
         }
 
@@ -3352,6 +3675,120 @@
                     buildDesignComparisonCheck('Display Direction', form.displayDirection || '(none)', form.displayDirection || '(none)', { referenceOnly: true })
                 ]
             };
+        }
+
+        function validateFormSettingsDesign(form) {
+            const manifest = capturedFormDesignManifests[form.formId];
+            if (!manifest) return null;
+
+            const basic = (manifest.settings && manifest.settings.formBasicSettings) || {};
+            const design = (manifest.settings && manifest.settings.formDesignSettingsContract) || {};
+            const thankYou = (manifest.settings && manifest.settings.formThankYouPageSettings) || {};
+            const isMultiPage = Array.isArray(manifest.pages) && manifest.pages.length > 1;
+            // A covering background image (if configured) paints over the solid backgroundColor
+            // entirely, so a probe finding no trace of that colour is expected, not a mismatch.
+            const hasCoveringBackgroundImage = !!(design.backgroundImgUrl && design.backgroundImgUrl.url && design.doCover);
+
+            const iframe = locateFormRenderIframe(form.formId);
+            const rect = iframe ? iframe.getBoundingClientRect() : null;
+            const isCurrentlyVisible = !!(rect && rect.width > 0 && rect.height > 0 &&
+                window.getComputedStyle(iframe).visibility !== 'hidden');
+            const latchedForm = latchedDesignObservations.forms[form.formId];
+            const renderedMode = detectRenderedDisplayModeForForm(form.formId);
+
+            const checks = [];
+
+            // Unlike the invitation shell — which the parent page sizes itself via an inline
+            // style that mirrors configuration exactly — the form's own iframe is not a usable
+            // proxy for its configured box. Confirmed by live inspection: for lightbox/animation
+            // the SDK renders it as a full-viewport click-catching overlay (width/height: 100%
+            // of the *viewport*, not the form), so its measured size was always the browser
+            // window size and every comparison reported a false mismatch. The real box is drawn
+            // entirely inside that cross-origin document, with no separately measurable
+            // footprint here — this app's "embedded" demo container has the same problem for a
+            // different reason (its own CSS stretches the iframe to the container width for
+            // layout). Reported for context only; never asserted as pass/fail.
+            const isFullViewportOverlay = renderedMode === 'lightbox' || renderedMode === 'animation';
+            if (isCurrentlyVisible || latchedForm) {
+                const measuredWidth = isCurrentlyVisible ? Math.round(rect.width) : latchedForm.width;
+                const measuredHeight = isCurrentlyVisible ? Math.round(rect.height) : latchedForm.height;
+                const provenanceNote = isCurrentlyVisible
+                    ? (isFullViewportOverlay
+                        ? `Rendered as a full-viewport "${renderedMode}" overlay — this is the overlay's size, not the form's own box, which is drawn inside the cross-origin document and cannot be measured from this page. Confirm the box size visually.`
+                        : `Rendered via this dashboard's embedded demo container, which stretches its iframe to the container width for layout rather than the SDK's configured size.`)
+                    : `Latched while the form was last on screen at ${describeObservationAge(latchedForm.observedAt)}; it has been presented ${latchedForm.observationCount} time(s) this session.`;
+
+                checks.push(buildDesignComparisonCheck('Configured Geometry', `${basic.widthPX || '?'} × ${basic.heightPX || '?'}px`, `${measuredWidth} × ${measuredHeight}px`, {
+                    referenceOnly: true, note: provenanceNote }));
+            } else {
+                checks.push(buildDesignComparisonCheck('Configured Geometry', `${basic.widthPX || '?'} × ${basic.heightPX || '?'}px`, 'never observed', {
+                    referenceOnly: true,
+                    note: 'This form has not rendered on screen yet this session, so there is nothing to measure. It will be captured automatically the moment it appears.' }));
+            }
+
+            // The form body renders in a cross-origin iframe, so colours are only independently
+            // verifiable through the same pixel probe used for the invitation.
+            const probeResults = formPixelProbeResults[form.formId] || {};
+            resolveFormDesignColours(manifest).forEach(([label, configuredValue]) => {
+                const probed = probeResults[label];
+                if (probed) {
+                    let note = probed.detail;
+                    let verdict = probed.verdict;
+                    if (label === 'Background Colour' && verdict === 'block' && hasCoveringBackgroundImage) {
+                        verdict = 'info';
+                        note += ' A background image is configured with "cover" enabled, which likely paints over this colour entirely — this is expected, not a real mismatch.';
+                    }
+                    checks.push({ property: label, expected: configuredValue, actual: probed.actual, isColor: true,
+                        verdict, note });
+                } else {
+                    checks.push(buildDesignComparisonCheck(label, configuredValue, 'not yet sampled', {
+                        referenceOnly: true, isColor: true,
+                        note: 'Run colour auto-capture while this form is on screen to verify this colour actually rendered.' }));
+                }
+            });
+
+            // Labels and navigation behaviour render inside the same cross-origin iframe and
+            // cannot be independently asserted from this document — reported for visual
+            // confirmation, same as the invitation's headline/body text.
+            [
+                ['Submit Button Label', !basic.isHideSubmitButton ? basic.submitButtonLabel : null],
+                ['Close Button Label', basic.isShowCloseButton ? basic.closeButtonLabel : null],
+                ['Next Button Label', isMultiPage && !basic.isHideNextButton ? basic.nextButtonLabel : null],
+                ['Back Button Label', isMultiPage && basic.isShowBackButton ? basic.backButtonLabel : null],
+                ['Navigation Buttons', basic.navigationButtons]
+            ].forEach(([label, value]) => {
+                if (!value) return;
+                checks.push(buildDesignComparisonCheck(label, value, 'visual check', {
+                    referenceOnly: true,
+                    note: 'Text rendered inside the cross-origin form iframe. Compare on screen against the configured value.' }));
+            });
+
+            if (thankYou.includeThankYouPage) {
+                // Headline is text — same OCR-shaped limitation as every other label in this
+                // group, so it stays visual-only. Colours go through the same pixel probe as the
+                // rest of the form, triggered off the MDigital_ThankYou_Displayed journey step.
+                if (thankYou.headline) {
+                    checks.push(buildDesignComparisonCheck('Thank-You Headline', thankYou.headline, 'visual check', {
+                        referenceOnly: true,
+                        note: 'Rendered inside the cross-origin form iframe after submission. Compare visually against the configured value.' }));
+                }
+
+                const thankYouProbeResults = formThankYouPixelProbeResults[form.formId] || {};
+                resolveThankYouColours(manifest).forEach(([label, configuredValue]) => {
+                    const probed = thankYouProbeResults[label];
+                    if (probed) {
+                        checks.push({ property: label, expected: configuredValue, actual: probed.actual, isColor: true,
+                            verdict: probed.verdict, note: probed.detail });
+                    } else {
+                        checks.push(buildDesignComparisonCheck(label, configuredValue, 'not yet sampled', {
+                            referenceOnly: true, isColor: true,
+                            note: 'Colour auto-capture must be armed before submitting feedback — the thank-you page is only sampled at the moment it appears, right after submission.' }));
+                    }
+                });
+            }
+
+            if (checks.length === 0) return null;
+            return { title: `Form Settings · form ${form.formId}`, checks };
         }
 
         function buildDesignValidationReport() {
@@ -3408,6 +3845,8 @@
                     const invitationGroup = validateInvitationDesign(form);
                     if (invitationGroup) groups.push(invitationGroup);
                 }
+                const formSettingsGroup = validateFormSettingsDesign(form);
+                if (formSettingsGroup) groups.push(formSettingsGroup);
                 const displayGroup = validateDisplayModeForForm(form);
                 if (displayGroup) groups.push(displayGroup);
             });
@@ -3473,7 +3912,7 @@
 
         function downloadDesignValidationReportAsCSV() {
             const groups = buildDesignValidationReport();
-            if (!groups || groups.length === 0) { alert("Nothing to validate yet. Inject a property and let a form render first!"); return; }
+            if (!groups || groups.length === 0) { toast("Nothing to validate yet. Inject a property and let a form render first!"); return; }
 
             const escapeCsvCell = value => `"${String(value === null || value === undefined ? '' : value).replace(/"/g, '""')}"`;
             let csvBodyContent = ["Validation Group", "Property", "Expected (targeting)", "Actual (rendered)", "Verdict", "Note"].map(escapeCsvCell).join(",") + "\n";
@@ -3773,7 +4212,7 @@
 
         function downloadFormTargetingMatrixAsCSV() {
             const registry = readPublishedFormRegistryFromSdk();
-            if (!registry) { alert("No form registry available yet. Inject a property embed first!"); return; }
+            if (!registry) { toast("No form registry available yet. Inject a property embed first!"); return; }
 
             const escapeCsvCell = value => `"${String(value === null || value === undefined ? '' : value).replace(/"/g, '""')}"`;
             let csvBodyContent = ["Form ID", "Trigger Type", "Display Type", "Shown", "Should Be Shown",
@@ -4261,7 +4700,7 @@
 
         function saveConfigurationBaseline() {
             const snapshot = buildCurrentConfigurationSnapshot();
-            if (!snapshot) { alert("No form registry available yet. Inject a property embed first!"); return; }
+            if (!snapshot) { toast("No form registry available yet. Inject a property embed first!"); return; }
 
             localStorage.setItem(CONFIG_BASELINE_STORAGE_KEY, JSON.stringify(snapshot));
             renderConfigurationBaselineMeta();
@@ -4342,9 +4781,9 @@
             const pill = document.getElementById('drift-summary-pill');
             const baseline = loadStoredConfigurationBaseline();
 
-            if (!baseline) { alert("No baseline saved yet. Press Save Baseline first, or import one."); return; }
+            if (!baseline) { toast("No baseline saved yet. Press Save Baseline first, or import one."); return; }
             const current = buildCurrentConfigurationSnapshot();
-            if (!current) { alert("No form registry available yet. Inject a property embed first!"); return; }
+            if (!current) { toast("No form registry available yet. Inject a property embed first!"); return; }
 
             const changes = diffConfigurationSnapshots(baseline, current);
 
@@ -4386,7 +4825,7 @@
 
         function exportConfigurationBaseline() {
             const snapshot = loadStoredConfigurationBaseline() || buildCurrentConfigurationSnapshot();
-            if (!snapshot) { alert("Nothing to export yet. Inject a property embed first!"); return; }
+            if (!snapshot) { toast("Nothing to export yet. Inject a property embed first!"); return; }
 
             const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
             const link = document.createElement("a");
@@ -4411,7 +4850,7 @@
                     writeLog(`Config baseline imported from ${file.name}: ${Object.keys(parsed.forms).length} forms.`, 'success');
                     compareAgainstConfigurationBaseline();
                 } catch (err) {
-                    alert(`Could not import baseline: ${err.message}`);
+                    toast(`Could not import baseline: ${err.message}`);
                     writeLog(`❌ Baseline import failed: ${err.message}`, 'warn');
                 }
             };
@@ -4464,7 +4903,7 @@
         function startAutomatedPageJourney() {
             if (isJourneyRunning) return;
             if (!window.KAMPYLE_ONSITE_SDK) {
-                alert("Inject a property embed first — a journey without an active SDK cannot advance any rule.");
+                toast("Inject a property embed first — a journey without an active SDK cannot advance any rule.");
                 return;
             }
 
@@ -4562,7 +5001,7 @@
             const formIdToken = document.getElementById('manual-form-id-input').value.trim();
             const consoleTerminal = document.getElementById('sdk-terminal-output');
             
-            if (!formIdToken) { alert("SDK Client Exception: Form ID parameter configuration field is required."); return; }
+            if (!formIdToken) { toast("SDK Client Exception: Form ID parameter configuration field is required."); return; }
             if (!window.KAMPYLE_ONSITE_SDK) {
                 consoleTerminal.style.color = "var(--danger-red)";
                 consoleTerminal.innerText = "❌ TypeError: KAMPYLE_ONSITE_SDK object method array is undefined. Inject embed framework first.";
@@ -4679,19 +5118,19 @@
             const nameKey = document.getElementById('param-key-name').value.trim();
             let rawValue = document.getElementById('param-value-data').value;
 
-            if (!nameKey) { alert("Parameter Name field cannot be left blank."); return; }
+            if (!nameKey) { toast("Parameter Name field cannot be left blank."); return; }
             let validatedFinalValue;
 
             switch(dataType) {
                 case 'Number':
                     validatedFinalValue = Number(rawValue);
-                    if (isNaN(validatedFinalValue)) { alert("Validation Error: Entry must conform to Numeric standards."); return; }
+                    if (isNaN(validatedFinalValue)) { toast("Validation Error: Entry must conform to Numeric standards."); return; }
                     break;
                 case 'Boolean':
                     validatedFinalValue = (rawValue === 'true');
                     break;
                 case 'Datetime':
-                    if (!rawValue) { alert("Please select a target Date-Time sequence metric."); return; }
+                    if (!rawValue) { toast("Please select a target Date-Time sequence metric."); return; }
                     validatedFinalValue = new Date(rawValue).toISOString();
                     break;
                 case 'Random':
@@ -4841,11 +5280,11 @@
             const activePage = allPages.find(p => document.getElementById(p).classList.contains('active')) || 'main-page';
             const scriptCode = document.getElementById(`input-${activePage}`).value.trim();
             const slotId = document.getElementById('profile-selector').value;
-            if (!slotId) { alert("Select a Profile Storage Slot first."); return; }
-            if (!scriptCode) { alert("The code deployment text workspace is empty."); return; }
+            if (!slotId) { toast("Select a Profile Storage Slot first."); return; }
+            if (!scriptCode) { toast("The code deployment text workspace is empty."); return; }
             localStorage.setItem(`qa_profile_slot_${slotId}`, scriptCode);
             writeLog(`Script profile snapshot committed to local cache allocation slot [${slotId.toUpperCase()}]`, 'info');
-            alert(`Script saved to Profile ${slotId.slice(-1)}!`);
+            toast(`Script saved to Profile ${slotId.slice(-1)}!`, 'success');
         }
 
         function loadSelectedProfile() {
@@ -4900,13 +5339,40 @@
             }
         }
 
-        function injectProperty(pageId) {
+        const ARM_CAPTURE_BEFORE_INJECT_STORAGE_KEY = 'qa_arm_capture_before_inject';
+
+        // The toggle appears in two places (the Setup sidebar and beside the main-page Inject
+        // Property button) so it's reachable from wherever a tester actually is. Both copies are
+        // the same underlying preference, so changing either one syncs the other immediately
+        // rather than leaving them free to disagree.
+        function persistArmCaptureBeforeInjectPreference(changedCheckbox) {
+            const isChecked = changedCheckbox ? changedCheckbox.checked : false;
+            localStorage.setItem(ARM_CAPTURE_BEFORE_INJECT_STORAGE_KEY, isChecked ? 'true' : 'false');
+            document.querySelectorAll('.arm-capture-toggle-input').forEach(el => { el.checked = isChecked; });
+        }
+
+        async function injectProperty(pageId) {
             const txt = document.getElementById(`input-${pageId}`);
             const msg = document.getElementById(`msg-${pageId}`);
             const code = txt ? txt.value.trim() : '';
 
             if (msg) { msg.className = "message"; msg.innerText = ""; }
             if (!code) { if (msg) { msg.innerText = "⚠️ Paste sample payload code first."; msg.classList.add('error'); } return; }
+
+            // Arming has to happen before anything is injected — getDisplayMedia needs a fresh
+            // user gesture and this click is it, so it must run first, synchronously in this same
+            // handler, or the browser will refuse the prompt once the gesture has expired. This
+            // is also why it's a checkbox rather than always-on: forcing a screen-share prompt on
+            // every routine injection would be its own kind of annoying.
+            const armCheckbox = document.querySelector('.arm-capture-toggle-input');
+            if (armCheckbox && armCheckbox.checked && !invitationColourMonitorStream) {
+                writeLog('Arming colour auto-capture before injecting, so nothing renders unobserved...', 'info');
+                try {
+                    await toggleInvitationColourMonitoring();
+                } catch (err) {
+                    writeLog(`❌ Could not arm colour auto-capture before injecting: ${err.message}`, 'warn');
+                }
+            }
 
             const simulationLatency = parseInt(document.getElementById('latency-slider').value);
             writeLog(`Processing target property insertion tracking command delay parameter: ${simulationLatency}ms`, 'info');
@@ -4946,6 +5412,9 @@
             refreshOnsiteLifecycleStateValues();
             renderDeviceEmulationBanner();
             renderConfigurationBaselineMeta();
+
+            const armCapturePreference = localStorage.getItem(ARM_CAPTURE_BEFORE_INJECT_STORAGE_KEY) === 'true';
+            document.querySelectorAll('.arm-capture-toggle-input').forEach(el => { el.checked = armCapturePreference; });
 
             // The handset preview stays closed until explicitly requested: it duplicates the
             // dashboard inside itself, so showing it unprompted is noise on a desktop session.
