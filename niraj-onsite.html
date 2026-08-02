@@ -457,6 +457,16 @@
         .state-pill-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 14px 0; }
         .no-rules-notice { color: #64748b; font-style: italic; font-size: 0.8rem; padding: 10px 4px; }
 
+        /* --- TEACHING EMPTY STATES --- */
+        /* A passive "Awaiting..." tells a newcomer nothing is happening, not what the panel is
+           for or what to do next. These explain both, so a first-time reader (increasingly a
+           manager, not just the tester who built this) can self-onboard without asking. */
+        .teaching-empty-state { display: flex; gap: 12px; padding: 14px 4px; align-items: flex-start; }
+        .teaching-empty-icon { font-size: 1.3rem; line-height: 1; flex-shrink: 0; margin-top: 1px; }
+        .teaching-empty-title { color: #94a3b8; font-weight: bold; font-size: 0.82rem; margin-bottom: 3px; }
+        .teaching-empty-body { color: #64748b; font-size: 0.78rem; line-height: 1.5; }
+        .teaching-empty-body b { color: #94a3b8; font-weight: 600; }
+
         /* --- GLOBAL STATUS BAR --- */
         /* Sits directly under the nav so session state and anything needing attention are
            readable without scrolling. Previously a blocked rule or a failed check could only
@@ -523,6 +533,41 @@
             .toast-item { animation: none; }
             .toast-item.toast-leaving { animation: none; }
         }
+
+        /* --- KEYBOARD / COMMAND PALETTE --- */
+        /* Every action here was previously mouse-only, so a tester repeating the same check
+           dozens of times (inject, switch workspace, filter, inject again) paid a full
+           point-and-click tax every time. */
+        .command-palette-overlay {
+            display: none; position: fixed; inset: 0; z-index: 3000;
+            background: rgba(6, 9, 16, 0.6); backdrop-filter: blur(2px);
+            align-items: flex-start; justify-content: center; padding-top: 12vh;
+        }
+        .command-palette-overlay.open { display: flex; }
+        .command-palette {
+            width: min(560px, 90vw); max-height: 60vh; display: flex; flex-direction: column;
+            background: #0b0f19; border: 1px solid #334155; border-radius: 12px;
+            box-shadow: 0 24px 64px rgba(0,0,0,0.5); overflow: hidden;
+        }
+        .command-palette-input {
+            width: 100%; box-sizing: border-box; border: none; border-bottom: 1px solid #1e293b;
+            background: transparent; color: #e2e8f0; font-family: monospace; font-size: 0.95rem;
+            padding: 16px 18px; outline: none;
+        }
+        .command-palette-input::placeholder { color: #64748b; }
+        .command-palette-list { overflow-y: auto; padding: 6px; }
+        .command-palette-empty { padding: 16px 18px; color: #64748b; font-family: monospace; font-size: 0.8rem; }
+        .command-palette-item {
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            padding: 10px 12px; border-radius: 8px; cursor: pointer;
+            font-family: monospace; font-size: 0.82rem; color: #cbd5e1;
+        }
+        .command-palette-item .cp-hint {
+            color: #64748b; font-size: 0.7rem; border: 1px solid #334155; border-radius: 4px;
+            padding: 1px 6px; white-space: nowrap;
+        }
+        .command-palette-item.active { background: rgba(14,165,233,0.14); color: #38bdf8; }
+        .command-palette-item.active .cp-hint { color: #38bdf8; border-color: rgba(56,189,248,0.5); }
 
         /* --- CAUSE-AND-EFFECT LINKING --- */
         /* A rule verdict and the stored value that produced it live in two different panels.
@@ -1134,12 +1179,20 @@
                 </optgroup>
             </select>
             <button class="global-purge-btn" onclick="executeGlobalNuclearApplicationReset()" style="height:32px; font-size:0.8rem; padding:0 12px;">🔄 Hard Purge & Reset</button>
+            <button onclick="openCommandPalette()" title="Command palette — workspaces 1-5, / to filter" style="height:32px; font-size:0.75rem; padding:0 10px; background:#1e293b; border:1px solid #334155; color:#94a3b8; font-family:monospace;">⌘K</button>
         </div>
     </nav>
 
     <div class="global-status-bar" id="global-status-bar"></div>
     <div class="workspace-bar" id="workspace-bar"></div>
     <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+    <div class="command-palette-overlay" id="command-palette-overlay" role="dialog" aria-modal="true" aria-label="Command palette">
+        <div class="command-palette">
+            <input type="text" class="command-palette-input" id="command-palette-input" placeholder="Type a command or search... (Esc to close)" autocomplete="off">
+            <div class="command-palette-list" id="command-palette-list"></div>
+        </div>
+    </div>
 
     <div id="master-canvas-wrapper" class="wrapper">
         <div id="device-emulation-banner" class="device-emulation-banner"></div>
@@ -1313,30 +1366,50 @@
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
             <h2>📋 Page 1: UI Integrity Auditing</h2>
             <div class="injector-panel"><textarea id="input-page1" placeholder="Paste embed code or raw JS here..."></textarea><div class="action-bar"><button id="btn-page1" onclick="injectProperty('page1')">Inject Property</button><div id="msg-page1" class="message"></div></div></div>
+            <div class="diag-panel" style="margin-top:20px;">
+                <h4 style="margin:0 0 10px 0;">🎯 Targeting rules on this page</h4>
+                <div id="page-targeting-summary-page1"></div>
+            </div>
         </div>
 
         <div id="page2" class="page">
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
             <h2>⚙️ Page 2: Asynchronous Interception Logic</h2>
             <div class="injector-panel"><textarea id="input-page2" placeholder="Paste embed code or raw JS here..."></textarea><div class="action-bar"><button id="btn-page2" onclick="injectProperty('page2')">Inject Property</button><div id="msg-page2" class="message"></div></div></div>
+            <div class="diag-panel" style="margin-top:20px;">
+                <h4 style="margin:0 0 10px 0;">🎯 Targeting rules on this page</h4>
+                <div id="page-targeting-summary-page2"></div>
+            </div>
         </div>
 
         <div id="page3" class="page">
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
             <h2>📱 Page 3: Adaptive Viewport Testing</h2>
             <div class="injector-panel"><textarea id="input-page3" placeholder="Paste embed code or raw JS here..."></textarea><div class="action-bar"><button id="btn-page3" onclick="injectProperty('page3')">Inject Property</button><div id="msg-page3" class="message"></div></div></div>
+            <div class="diag-panel" style="margin-top:20px;">
+                <h4 style="margin:0 0 10px 0;">🎯 Targeting rules on this page</h4>
+                <div id="page-targeting-summary-page3"></div>
+            </div>
         </div>
 
         <div id="page4" class="page">
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
             <h2>🌐 Page 4: Cross-Origin Pipeline Validation</h2>
             <div class="injector-panel"><textarea id="input-page4" placeholder="Paste embed code or raw JS here..."></textarea><div class="action-bar"><button id="btn-page4" onclick="injectProperty('page4')">Inject Property</button><div id="msg-page4" class="message"></div></div></div>
+            <div class="diag-panel" style="margin-top:20px;">
+                <h4 style="margin:0 0 10px 0;">🎯 Targeting rules on this page</h4>
+                <div id="page-targeting-summary-page4"></div>
+            </div>
         </div>
 
         <div id="page5" class="page">
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
             <h2>🛡️ Page 5: Behavioral Rule Isolation</h2>
             <div class="injector-panel"><textarea id="input-page5" placeholder="Paste embed code or raw JS here..."></textarea><div class="action-bar"><button id="btn-page5" onclick="injectProperty('page5')">Inject Property</button><div id="msg-page5" class="message"></div></div></div>
+            <div class="diag-panel" style="margin-top:20px;">
+                <h4 style="margin:0 0 10px 0;">🎯 Targeting rules on this page</h4>
+                <div id="page-targeting-summary-page5"></div>
+            </div>
         </div>
 
         <div class="qa-dropzones-wrapper">
@@ -1392,7 +1465,13 @@
             <div class="diag-panel diag-panel-full-span">
                 <h4>📜 List of Enabled Provisions [<span id="provisions-counter-badge" style="color:var(--accent-green);">0</span>]</h4>
                 <div id="provisions-matrix-stream-box" class="telemetry-scroll-box">
-                    <div style="color:#64748b; font-style:italic; font-size:0.8rem;" id="empty-provisions-notice">Awaiting onsite manifest metadata retrieval...</div>
+                    <div class="teaching-empty-state" id="empty-provisions-notice">
+                        <div class="teaching-empty-icon">📜</div>
+                        <div>
+                            <div class="teaching-empty-title">Provisions describe what the SDK has enabled for this property</div>
+                            <div class="teaching-empty-body">A provision is a feature flag Medallia toggles per property — screen capture, custom parameters, session recording, and similar. <b>Inject a property embed</b> above to see which ones are turned on here.</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1450,7 +1529,7 @@
                 never pass through this page, so they cannot be shown here.
             </p>
             <div id="submission-inspector-container" style="margin-top:14px;">
-                <div class="no-rules-notice">Awaiting form activity. Open a form and submit feedback to capture a submission trace...</div>
+                <div class="no-rules-notice">Awaiting form activity. Open a form and either submit or close it to capture the first trace. <button class="rule-source-link" onclick="focusPropertyInjectorOnActivePage()">Jump to injector</button></div>
             </div>
         </div>
 
@@ -1471,7 +1550,7 @@
                 <code style="color:#a78bfa;">rgb(80, 129, 255)</code> count as a match.
             </p>
             <div id="design-validator-container" data-panel-body style="margin-top:14px;">
-                <div class="no-rules-notice">Inject a property embed and let a form render to begin design validation...</div>
+                <div class="no-rules-notice">Inject a property embed and let a form render to begin design validation. <button class="rule-source-link" onclick="focusPropertyInjectorOnActivePage()">Jump to injector</button></div>
             </div>
         </div>
 
@@ -1499,7 +1578,7 @@
                 </select>
             </div>
             <div id="targeting-matrix-container" data-panel-body style="margin-top:12px;">
-                <div class="no-rules-notice">Inject a property embed to enumerate published forms and their targeting configuration...</div>
+                <div class="no-rules-notice">Inject a property embed to enumerate published forms and their targeting configuration. <button class="rule-source-link" onclick="focusPropertyInjectorOnActivePage()">Jump to injector</button></div>
             </div>
         </div>
 
@@ -1546,7 +1625,7 @@
             </div>
             <div class="journey-progress"><div class="journey-progress-bar" id="journey-progress-bar"></div></div>
             <div id="journey-log-container" style="margin-top:12px;">
-                <div class="no-rules-notice">Journey has not been run yet. Inject a property first so rule changes can be observed.</div>
+                <div class="no-rules-notice">Journey has not been run yet. Inject a property first so rule changes can be observed. <button class="rule-source-link" onclick="focusPropertyInjectorOnActivePage()">Jump to injector</button></div>
             </div>
         </div>
 
@@ -1562,7 +1641,13 @@
             </div>
             <div class="event-toolbar-row" id="event-name-chip-row"></div>
             <div id="analytics-events-stream-box" class="event-stream-box">
-                <div style="color:#64748b; font-style:italic; font-size:0.8rem;" id="empty-analytics-notice">Standing by for background user action telemetry events...</div>
+                <div class="teaching-empty-state" id="empty-analytics-notice">
+                    <div class="teaching-empty-icon">📊</div>
+                    <div>
+                        <div class="teaching-empty-title">Every batched analytics event the SDK sends home</div>
+                        <div class="teaching-empty-body">This is the same collector traffic Medallia's own analytics receives — form shown, invitation accepted, submitted, and similar. <b>Inject a property and interact with a form</b> to see events arrive here.</div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -1586,7 +1671,7 @@
             </div>
             <div class="event-toolbar-row" id="sdkbus-chip-row"></div>
             <div id="sdkbus-events-stream-box" class="event-stream-box">
-                <div style="color:#64748b; font-style:italic; font-size:0.8rem;">Awaiting native SDK lifecycle broadcasts. Inject a property embed to arm the bus tap...</div>
+                <div class="no-rules-notice">Awaiting native SDK lifecycle broadcasts. Inject a property embed to arm the bus tap. <button class="rule-source-link" onclick="focusPropertyInjectorOnActivePage()">Jump to injector</button></div>
             </div>
         </div>
 
@@ -1655,6 +1740,162 @@
             setTimeout(() => el.remove(), 250);
         }
 
+        // --- 1c. KEYBOARD OPERATION & COMMAND PALETTE ---
+        // Every action here was previously mouse-only, so a tester repeating the same handful of
+        // checks paid a full point-and-click tax every single time. Shortcuts are suppressed
+        // while focus is inside a text input/textarea/select so typing 'i' into a filter box
+        // doesn't also jump you somewhere.
+        function isTypingTarget(el) {
+            if (!el) return false;
+            const tag = el.tagName;
+            return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+        }
+
+        function focusActiveFilterInput() {
+            // Prioritise whichever filter lives in the workspace already on screen — pressing
+            // '/' while looking at Activity should reach the event filter, not jump you away to
+            // Targeting's.
+            const candidateIds = activeWorkspaceKey === 'activity'
+                ? ['event-filter-input', 'sdkbus-filter-input', 'targeting-filter-input']
+                : ['targeting-filter-input', 'event-filter-input', 'sdkbus-filter-input'];
+            for (const id of candidateIds) {
+                const el = document.getElementById(id);
+                if (!el) continue;
+                // The owning panel may be collapsed, or in a workspace that isn't active yet —
+                // the same reveal logic a trace-chip jump uses, so a hidden filter is still reachable.
+                jumpToPanelTarget(`#${id}`);
+                if (el.offsetParent !== null) { el.focus(); el.select(); return true; }
+            }
+            return false;
+        }
+
+        function focusPropertyInjectorOnActivePage() {
+            const activePage = allPages.find(p => document.getElementById(p) && document.getElementById(p).classList.contains('active')) || 'main-page';
+            const input = document.getElementById(`input-${activePage}`);
+            if (input) { jumpToPanelTarget(`#input-${activePage}`); input.focus(); }
+        }
+
+        const COMMAND_PALETTE_ACTIONS = [
+            { label: 'Go to Targeting workspace', hint: '1', run: () => setActiveWorkspace('targeting') },
+            { label: 'Go to Appearance workspace', hint: '2', run: () => setActiveWorkspace('appearance') },
+            { label: 'Go to Activity workspace', hint: '3', run: () => setActiveWorkspace('activity') },
+            { label: 'Go to Setup workspace', hint: '4', run: () => setActiveWorkspace('config') },
+            { label: 'Go to All workspace', hint: '5', run: () => setActiveWorkspace('all') },
+            { label: 'Focus the active filter box', hint: '/', run: () => focusActiveFilterInput() },
+            { label: 'Focus the property injector', run: () => focusPropertyInjectorOnActivePage() },
+            { label: 'Run Journey Automation', run: () => startAutomatedPageJourney() },
+            { label: 'Copy session report to clipboard', run: () => copySessionReportToClipboard() },
+            { label: 'Download session report (Markdown)', run: () => downloadSessionReportAsMarkdown() },
+            { label: 'Export Design Validation report (CSV)', run: () => downloadDesignValidationReportAsCSV() },
+            { label: 'Export Submission report (CSV)', run: () => downloadSubmissionReportAsCSV() },
+            { label: 'Export Targeting Matrix (CSV)', run: () => downloadFormTargetingMatrixAsCSV() },
+            { label: 'Toggle colour auto-capture', run: () => toggleInvitationColourMonitoring() },
+            { label: 'Clear execution log', run: () => clearExecutionLogs() },
+            { label: 'Hard Purge & Reset', hint: '⚠', run: () => executeGlobalNuclearApplicationReset() }
+        ];
+
+        let commandPaletteActiveIndex = 0;
+        let commandPaletteFilteredActions = COMMAND_PALETTE_ACTIONS;
+
+        function openCommandPalette() {
+            const overlay = document.getElementById('command-palette-overlay');
+            const input = document.getElementById('command-palette-input');
+            if (!overlay || !input) return;
+            overlay.classList.add('open');
+            input.value = '';
+            commandPaletteActiveIndex = 0;
+            renderCommandPaletteResults('');
+            input.focus();
+        }
+
+        function closeCommandPalette() {
+            const overlay = document.getElementById('command-palette-overlay');
+            if (overlay) overlay.classList.remove('open');
+        }
+
+        function renderCommandPaletteResults(query) {
+            const list = document.getElementById('command-palette-list');
+            if (!list) return;
+            const normalizedQuery = query.trim().toLowerCase();
+            commandPaletteFilteredActions = normalizedQuery
+                ? COMMAND_PALETTE_ACTIONS.filter(a => a.label.toLowerCase().includes(normalizedQuery))
+                : COMMAND_PALETTE_ACTIONS;
+            commandPaletteActiveIndex = Math.min(commandPaletteActiveIndex, Math.max(0, commandPaletteFilteredActions.length - 1));
+
+            if (commandPaletteFilteredActions.length === 0) {
+                list.innerHTML = `<div class="command-palette-empty">No matching command.</div>`;
+                return;
+            }
+            list.innerHTML = commandPaletteFilteredActions.map((action, index) => `
+                <div class="command-palette-item ${index === commandPaletteActiveIndex ? 'active' : ''}" data-index="${index}">
+                    <span>${escapeMarkupForSafeRender(action.label)}</span>
+                    ${action.hint ? `<span class="cp-hint">${escapeMarkupForSafeRender(action.hint)}</span>` : ''}
+                </div>`).join('');
+
+            list.querySelectorAll('.command-palette-item').forEach(node => {
+                node.onclick = () => runCommandPaletteAction(parseInt(node.getAttribute('data-index'), 10));
+            });
+        }
+
+        function runCommandPaletteAction(index) {
+            const action = commandPaletteFilteredActions[index];
+            closeCommandPalette();
+            if (action) action.run();
+        }
+
+        window.addEventListener('keydown', (e) => {
+            const overlay = document.getElementById('command-palette-overlay');
+            const paletteOpen = !!overlay && overlay.classList.contains('open');
+
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+                e.preventDefault();
+                if (paletteOpen) closeCommandPalette(); else openCommandPalette();
+                return;
+            }
+
+            if (paletteOpen) {
+                if (e.key === 'Escape') { e.preventDefault(); closeCommandPalette(); }
+                else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    commandPaletteActiveIndex = Math.min(commandPaletteActiveIndex + 1, commandPaletteFilteredActions.length - 1);
+                    renderCommandPaletteResults(document.getElementById('command-palette-input').value);
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    commandPaletteActiveIndex = Math.max(commandPaletteActiveIndex - 1, 0);
+                    renderCommandPaletteResults(document.getElementById('command-palette-input').value);
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    runCommandPaletteAction(commandPaletteActiveIndex);
+                }
+                return;
+            }
+
+            if (isTypingTarget(document.activeElement)) return;
+
+            if (e.key >= '1' && e.key <= '5' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                const workspace = WORKSPACE_DEFINITIONS[Number(e.key) - 1];
+                if (workspace) { e.preventDefault(); navigateTo('main-page'); setActiveWorkspace(workspace.key); }
+            } else if (e.key === '/') {
+                e.preventDefault();
+                navigateTo('main-page');
+                focusActiveFilterInput();
+            }
+        });
+
+        const commandPaletteInputEl = document.getElementById('command-palette-input');
+        if (commandPaletteInputEl) {
+            commandPaletteInputEl.addEventListener('input', (e) => {
+                commandPaletteActiveIndex = 0;
+                renderCommandPaletteResults(e.target.value);
+            });
+        }
+        const commandPaletteOverlayEl = document.getElementById('command-palette-overlay');
+        if (commandPaletteOverlayEl) {
+            commandPaletteOverlayEl.addEventListener('click', (e) => {
+                if (e.target.id === 'command-palette-overlay') closeCommandPalette();
+            });
+        }
+
       // --- 2. HTTP SERVER & CONSOLE ERROR TRAFFIC DETECTOR LISTENER ---
         window.addEventListener('qa_network_error', (e) => {
             const notice = document.getElementById('empty-network-notice');
@@ -1682,6 +1923,28 @@
             return String(value === null || value === undefined ? '' : value)
                 .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
                 .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+        }
+
+        // Lighter than buildTeachingEmptyState — for panels that already carry a permanent
+        // description paragraph above the empty container, so restating what the panel is FOR
+        // would just be noise. This only needs to turn "nothing yet" into a one-click next step.
+        // Reuses .rule-source-link's existing `.diag-panel button` specificity scoping (see the
+        // cause-and-effect CSS comment) rather than risking that trap a fourth time.
+        function buildActionableEmptyState(message) {
+            return `<div class="no-rules-notice">${message} <button class="rule-source-link" onclick="focusPropertyInjectorOnActivePage()">Jump to injector</button></div>`;
+        }
+
+        // A teaching empty state explains what the panel is FOR and what to do next, not just
+        // that it's currently empty — `body` may contain simple <b> markup, so callers pass
+        // already-safe literal strings here rather than untrusted data.
+        function buildTeachingEmptyState(icon, title, body) {
+            return `<div class="teaching-empty-state">
+                <div class="teaching-empty-icon">${icon}</div>
+                <div>
+                    <div class="teaching-empty-title">${title}</div>
+                    <div class="teaching-empty-body">${body}</div>
+                </div>
+            </div>`;
         }
 
         window.addEventListener('qa_analytics_event', (e) => {
@@ -1750,7 +2013,13 @@
                     : `${visibleRecords.length}/${collectedAnalyticsEventsCacheList.length}`;
 
             if (collectedAnalyticsEventsCacheList.length === 0) {
-                stream.innerHTML = `<div style="color:#64748b; font-style:italic; font-size:0.8rem;" id="empty-analytics-notice">Standing by for background user action telemetry events...</div>`;
+                stream.innerHTML = `<div class="teaching-empty-state" id="empty-analytics-notice">
+                    <div class="teaching-empty-icon">📊</div>
+                    <div>
+                        <div class="teaching-empty-title">Every batched analytics event the SDK sends home</div>
+                        <div class="teaching-empty-body">This is the same collector traffic Medallia's own analytics receives — form shown, invitation accepted, submitted, and similar. <b>Inject a property and interact with a form</b> to see events arrive here.</div>
+                    </div>
+                </div>`;
                 return;
             }
             if (visibleRecords.length === 0) {
@@ -1917,7 +2186,7 @@
                     : `${visibleRecords.length}/${collectedSdkBusEventsCacheList.length}`;
 
             if (collectedSdkBusEventsCacheList.length === 0) {
-                stream.innerHTML = `<div style="color:#64748b; font-style:italic; font-size:0.8rem;">Awaiting native SDK lifecycle broadcasts. Inject a property embed to arm the bus tap...</div>`;
+                stream.innerHTML = buildActionableEmptyState('Awaiting native SDK lifecycle broadcasts. Inject a property embed to arm the bus tap.');
                 return;
             }
             if (visibleRecords.length === 0) {
@@ -2094,7 +2363,7 @@
             }
 
             if (capturedSubmissionTraces.length === 0) {
-                container.innerHTML = `<div class="no-rules-notice">Awaiting form activity. Open a form and submit feedback to capture a submission trace...</div>`;
+                container.innerHTML = buildActionableEmptyState('Awaiting form activity. Open a form and either submit or close it to capture the first trace.');
                 return;
             }
 
@@ -2313,6 +2582,7 @@
         // Refreshed on a slower cadence than the storage audit: the matrix rebuilds whole cards,
         // so a tighter loop would fight with clicks landing on the card headers.
         setInterval(renderFormTargetingRulesMatrix, 1500);
+        setInterval(renderPageTargetingSummary, 1500);
         setInterval(() => {
             renderDesignAndDisplayValidator();
             renderDeviceEmulationBanner();
@@ -3861,7 +4131,7 @@
             const groups = buildDesignValidationReport();
             if (!groups || groups.length === 0) {
                 if (summaryPill) { summaryPill.className = "status-pill pill-warn"; summaryPill.innerText = "Awaiting render"; }
-                container.innerHTML = `<div class="no-rules-notice">Inject a property embed and let a form render to begin design validation...</div>`;
+                container.innerHTML = buildActionableEmptyState('Inject a property embed and let a form render to begin design validation.');
                 return;
             }
 
@@ -4088,6 +4358,86 @@
             return rules;
         }
 
+        // The rule's own match syntax isn't documented anywhere in the SDK responses this app
+        // has captured, so this is deliberately best-effort: it recognises a few common shapes
+        // (a plain string, or an object carrying the pattern under a likely field name) and
+        // returns null — "cannot confidently evaluate" — for anything else, rather than guessing
+        // and silently asserting a wrong verdict.
+        function evaluateUrlRuleAgainstCurrentLocation(rule) {
+            if (!rule) return null;
+            const currentUrl = window.location.pathname + window.location.search;
+            let pattern = null, matchType = 'contains';
+            if (typeof rule === 'string') {
+                pattern = rule;
+            } else if (typeof rule === 'object') {
+                pattern = rule.value || rule.url || rule.pattern || rule.contains || null;
+                if (rule.type) matchType = String(rule.type).toLowerCase();
+            }
+            if (!pattern) return null;
+            try {
+                const matches = matchType.includes('regex') ? new RegExp(pattern).test(currentUrl)
+                    : matchType.includes('exact') ? currentUrl === pattern
+                    : currentUrl.includes(pattern);
+                return { matches, pattern };
+            } catch (err) {
+                return null;
+            }
+        }
+
+        // Every other rule type is evaluated identically regardless of which scenario page is
+        // active — only a URL include/exclude rule genuinely depends on it, which is otherwise
+        // buried in the Targeting workspace rather than visible on the page it actually concerns.
+        function renderPageTargetingSummary() {
+            const activePage = allPages.find(p => document.getElementById(p) && document.getElementById(p).classList.contains('active'));
+            if (!activePage || activePage === 'main-page') return;
+            const container = document.getElementById(`page-targeting-summary-${activePage}`);
+            if (!container) return;
+
+            const registry = readPublishedFormRegistryFromSdk();
+            if (!registry) {
+                container.innerHTML = buildActionableEmptyState('Inject a property embed to see which forms are eligible on this page.');
+                return;
+            }
+            if (registry.length === 0) {
+                container.innerHTML = `<div class="no-rules-notice">Property injected, but it publishes no forms.</div>`;
+                return;
+            }
+
+            container.innerHTML = registry.map(form => {
+                const rules = decodeTargetingRulesForForm(form);
+                const blocking = rules.filter(r => r.verdict === 'block');
+                const inclusionRule = form.urlRules && form.urlRules.inclusionUrl && form.urlRules.inclusionUrl.rule;
+                const exclusionRule = form.urlRules && form.urlRules.exclusionUrl && form.urlRules.exclusionUrl.rule;
+
+                const urlNotes = [];
+                if (inclusionRule) {
+                    const evaluated = evaluateUrlRuleAgainstCurrentLocation(inclusionRule);
+                    urlNotes.push(evaluated
+                        ? `Include rule "${escapeMarkupForSafeRender(evaluated.pattern)}" ${evaluated.matches ? 'matches this page' : 'does <b>not</b> match this page'} (best-effort match — confirm against the raw rule in the Targeting workspace).`
+                        : `Has an include rule this app cannot confidently auto-evaluate — compare it manually against this URL (${escapeMarkupForSafeRender(window.location.pathname + window.location.search)}).`);
+                }
+                if (exclusionRule) {
+                    const evaluated = evaluateUrlRuleAgainstCurrentLocation(exclusionRule);
+                    urlNotes.push(evaluated
+                        ? `Exclude rule "${escapeMarkupForSafeRender(evaluated.pattern)}" ${evaluated.matches ? 'matches this page (would suppress it here)' : 'does not match this page'} (best-effort match).`
+                        : `Has an exclude rule this app cannot confidently auto-evaluate — compare it manually against this URL.`);
+                }
+
+                const verdictLabel = blocking.length
+                    ? `<span class="verdict-pill verdict-block">Blocked</span>`
+                    : `<span class="verdict-pill verdict-pass">Eligible</span>`;
+                return `<div class="targeting-rule-row" style="grid-template-columns: 1fr;">
+                    <div>
+                        <span class="targeting-rule-name">Form ${escapeMarkupForSafeRender(form.formId)}</span>
+                        <span class="targeting-form-meta">${escapeMarkupForSafeRender(form.formType)} · ${escapeMarkupForSafeRender(form.displayType)}</span>
+                        ${verdictLabel}
+                        ${blocking.length ? `<div class="targeting-rule-explain">Blocked by: ${blocking.map(r => escapeMarkupForSafeRender(r.name)).join(', ')}</div>` : ''}
+                        ${urlNotes.map(note => `<div class="targeting-rule-explain">${note}</div>`).join('')}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
         function buildFormStatePillMarkup(state) {
             if (!state) return `<span class="status-pill pill-warn">No live state yet</span>`;
             const pills = [
@@ -4114,7 +4464,7 @@
 
             if (!registry) {
                 if (statusPill) { statusPill.className = "status-pill pill-warn"; statusPill.innerText = "Awaiting SDK"; }
-                container.innerHTML = `<div class="no-rules-notice">Inject a property embed to enumerate published forms and their targeting configuration...</div>`;
+                container.innerHTML = buildActionableEmptyState('Inject a property embed to enumerate published forms and their targeting configuration.');
                 document.getElementById('targeting-counter-badge').innerText = "0";
                 return;
             }
@@ -4516,6 +4866,108 @@
             return snapshot;
         }
 
+        // --- SESSION REPORT EXPORT ---
+        // Every other export in this app is a raw per-panel data dump (CSV of every rule, every
+        // event, every check) — useful for a spreadsheet, unreadable pasted into a ticket. This
+        // is the opposite: a short, narrative summary of only what needs attention, built from
+        // the same functions the panels themselves use so it can never disagree with what is on
+        // screen.
+        function buildSessionReportMarkdown() {
+            const snapshot = buildGlobalStatusSnapshot();
+            const lines = [];
+            const now = new Date();
+
+            lines.push(`# Onsite Validation Session Report`);
+            lines.push(`_${now.toLocaleString()} · ${window.location.href}_`);
+            lines.push('');
+
+            if (!snapshot.injected) {
+                lines.push('No property injected this session.');
+                return lines.join('\n');
+            }
+
+            lines.push(`**Property:** ${snapshot.propertyId || 'unknown'}`);
+            lines.push(`**Forms published:** ${snapshot.formCount} · **live on page:** ${snapshot.shownForms}`);
+            lines.push(`**Blocked by targeting:** ${snapshot.blockedForms}`);
+            if (snapshot.designChecked) lines.push(`**Design checks:** ${snapshot.designChecked - snapshot.designMismatches}/${snapshot.designChecked} matched`);
+            lines.push(`**Submissions this session:** ${snapshot.submissions}`);
+            if (snapshot.networkErrors) lines.push(`**Network errors:** ${snapshot.networkErrors}`);
+            lines.push('');
+
+            const registry = readPublishedFormRegistryFromSdk();
+            if (registry && registry.length) {
+                lines.push('## Targeting');
+                registry.forEach(form => {
+                    const rules = decodeTargetingRulesForForm(form);
+                    const blocking = rules.filter(r => r.verdict === 'block');
+                    lines.push(`- **Form ${form.formId}** (${form.formType}, ${form.displayType}) — ${blocking.length
+                        ? `blocked by ${blocking.map(r => r.name).join(', ')}`
+                        : 'no blocking rules'}`);
+                    blocking.forEach(rule => lines.push(`  - \`${rule.name}\`: ${rule.explanation}`));
+                });
+                lines.push('');
+            }
+
+            const designGroups = buildDesignValidationReport();
+            if (designGroups && designGroups.length) {
+                const mismatchGroups = designGroups
+                    .map(group => ({ title: group.title, checks: group.checks.filter(c => c.verdict === 'block') }))
+                    .filter(group => group.checks.length > 0);
+                lines.push('## Design mismatches');
+                if (mismatchGroups.length === 0) {
+                    lines.push('None — every independently-checkable value matched configuration.');
+                } else {
+                    mismatchGroups.forEach(group => {
+                        lines.push(`- **${group.title}**`);
+                        group.checks.forEach(check => lines.push(`  - \`${check.property}\`: expected \`${check.expected}\`, rendered \`${check.actual}\``));
+                    });
+                }
+                lines.push('');
+            }
+
+            if (capturedSubmissionTraces.length) {
+                const submitted = capturedSubmissionTraces.filter(t => t.isComplete).length;
+                const abandoned = capturedSubmissionTraces.filter(t => !t.isComplete && t.isAbandoned).length;
+                const open = capturedSubmissionTraces.length - submitted - abandoned;
+                lines.push('## Submissions');
+                lines.push(`${submitted} submitted · ${abandoned} abandoned · ${open} in progress`);
+                lines.push('');
+            }
+
+            const networkErrorEntries = Array.from(document.querySelectorAll('#network-error-stream-box .network-err-entry'))
+                .map(el => el.innerText.trim());
+            if (networkErrorEntries.length) {
+                lines.push('## Network errors');
+                networkErrorEntries.forEach(entry => lines.push(`- ${entry}`));
+                lines.push('');
+            }
+
+            return lines.join('\n');
+        }
+
+        function copySessionReportToClipboard() {
+            const report = buildSessionReportMarkdown();
+            if (!navigator.clipboard) {
+                writeLog("Clipboard API unavailable in this browsing context. Report written to the log instead.", 'warn');
+                writeLog(report, 'info');
+                return;
+            }
+            navigator.clipboard.writeText(report)
+                .then(() => { toast('Session report copied to clipboard.', 'success'); writeLog('Session report copied to clipboard.', 'success'); })
+                .catch(err => { toast(`Clipboard write rejected: ${err.message}`); writeLog(`Clipboard write rejected: ${err.message}`, 'warn'); });
+        }
+
+        function downloadSessionReportAsMarkdown() {
+            const report = buildSessionReportMarkdown();
+            const blob = new Blob([report], { type: 'text/markdown;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute('download', `Onsite_Session_Report_${Date.now()}.md`);
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            writeLog('Session report downloaded as Markdown.', 'success');
+        }
+
         function renderGlobalStatusBar() {
             const bar = document.getElementById('global-status-bar');
             if (!bar || IS_NESTED_PREVIEW_FRAME) return;
@@ -4550,12 +5002,17 @@
             if (s.networkErrors) chips.push(chip('chip-alert', 'Errors', s.networkErrors, '#network-error-stream-box'));
 
             bar.innerHTML = chips.join('') + '<span class="status-spacer"></span>' +
+                `<span class="status-chip chip-idle" data-action="copy-session-report" role="button" tabindex="0" title="Copy a pasteable summary of this session">📋 Copy Report</span>` +
                 `<span class="status-chip chip-idle" data-jump="#log-stream-box" role="button" tabindex="0">Activity log</span>`;
 
             bar.querySelectorAll('[data-jump]').forEach(node => {
                 const activate = () => jumpToPanelTarget(node.getAttribute('data-jump'));
                 node.onclick = activate;
                 node.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } };
+            });
+            bar.querySelectorAll('[data-action="copy-session-report"]').forEach(node => {
+                node.onclick = copySessionReportToClipboard;
+                node.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copySessionReportToClipboard(); } };
             });
         }
 
@@ -4575,7 +5032,11 @@
                     setActiveWorkspace(ownerWorkspace, { skipScroll: true });
                 }
             }
-            if (target.classList.contains('panel-body-collapsed')) {
+            // `.closest`, not `.classList.contains` on the target itself: a collapsed panel
+            // toggles the class onto every `[data-panel-body]` descendant, and a jump target is
+            // often nested inside one of those (a filter input inside its toolbar row) rather
+            // than being that element itself — checking only the exact target missed those.
+            if (target.closest('.panel-body-collapsed')) {
                 const panel = target.closest('.diag-panel');
                 if (panel) setPanelCollapsed(panel.getAttribute('data-panel-key'), false);
             }
@@ -5261,6 +5722,7 @@
 
             writeLog(`SPA Route Event: Switching active view container target: /${pageId}`, 'info');
             updateActiveBrowserAddressBarQueryString(false);
+            renderPageTargetingSummary();
 
             setTimeout(() => {
                 if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
