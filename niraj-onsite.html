@@ -425,6 +425,11 @@
         .design-value.value-actual { color: #38bdf8; }
         .color-swatch { width: 13px; height: 13px; border-radius: 3px; border: 1px solid #475569; flex-shrink: 0; display: inline-block; }
         .design-note { color: #64748b; font-size: 0.72rem; font-family: 'Segoe UI', sans-serif; margin-top: 2px; }
+        .contrast-scope-badge {
+            display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 10px;
+            background: #1e293b; color: #94a3b8; font-family: monospace; font-size: 0.66rem;
+            font-weight: normal; vertical-align: middle;
+        }
 
         /* --- FORM TARGETING RULES MATRIX --- */
         .targeting-form-card { background: #090d16; border: 1px solid var(--panel-border); border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
@@ -453,6 +458,7 @@
         .verdict-pass { background: rgba(16, 185, 129, 0.15); color: #34d399; }
         .verdict-block { background: rgba(239, 68, 68, 0.15); color: #f87171; }
         .verdict-info { background: rgba(100, 116, 139, 0.18); color: #94a3b8; }
+        .verdict-watch { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
 
         .state-pill-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 14px 0; }
         .no-rules-notice { color: #64748b; font-style: italic; font-size: 0.8rem; padding: 10px 4px; }
@@ -533,6 +539,129 @@
             .toast-item { animation: none; }
             .toast-item.toast-leaving { animation: none; }
         }
+
+        /* --- PAGE 1: HOSTILE LAYOUT FIXTURE --- */
+        /* An empty page can never reproduce the most common real-world onsite bug: the button
+           or invitation losing a z-index fight, or landing under a sticky footer / cookie
+           banner. These are opt-in (only the thin, always-realistic header/footer bars are on by
+           default) so a collision has to be turned on deliberately, then it is measured by
+           bounding-box math rather than eyeballed. */
+        .hostile-layout-controls {
+            display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 16px; margin: 0 0 16px 0;
+            background: #090d16; border: 1px solid var(--panel-border); border-radius: 10px;
+        }
+        .hostile-layout-controls label {
+            display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #cbd5e1; cursor: pointer;
+        }
+        .hostile-layout-controls .fixture-z-note { color: #64748b; font-family: monospace; font-size: 0.68rem; }
+
+        .fixture-sticky-header {
+            position: sticky; top: 100px; z-index: 400;
+            background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+            padding: 10px 16px; margin-bottom: 16px;
+            display: flex; align-items: center; justify-content: space-between;
+            font-family: monospace; font-size: 0.78rem; color: #94a3b8;
+        }
+        .fixture-sticky-footer {
+            position: fixed; left: 16px; right: 16px; bottom: 0; z-index: 400;
+            background: #0f172a; border: 1px solid #334155; border-bottom: none;
+            border-radius: 10px 10px 0 0;
+            padding: 12px 16px; display: none;
+            align-items: center; justify-content: space-between;
+            font-family: monospace; font-size: 0.78rem; color: #94a3b8;
+        }
+        .fixture-sticky-footer.active { display: flex; }
+
+        .fixture-cookie-banner {
+            position: fixed; left: 16px; bottom: 16px; z-index: 2147483647;
+            width: 340px; max-width: calc(100vw - 32px);
+            background: #111827; border: 1px solid #334155; border-radius: 10px;
+            padding: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            display: none; font-size: 0.78rem; color: #cbd5e1;
+        }
+        .fixture-cookie-banner.active { display: block; }
+        .fixture-cookie-banner button { margin-top: 10px; }
+
+        .fixture-promo-decoy {
+            /* Deliberately close to the viewport's right edge: this is where a vertical/tab-
+               style feedback button commonly anchors, so a promo at a typical width lands right
+               on top of it — reproducing a real collision by default rather than needing to be
+               positioned by hand. */
+            position: fixed; top: 50%; right: -20px; transform: translateY(-50%);
+            z-index: 999999; width: 280px;
+            background: linear-gradient(135deg, #7c3aed, #db2777);
+            border-radius: 14px; padding: 22px; box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+            display: none; color: #fff; text-align: center;
+        }
+        .fixture-promo-decoy.active { display: block; }
+        .fixture-promo-decoy button { margin-top: 12px; }
+
+        .fixture-filler-content { display: none; }
+        .fixture-filler-content.active { display: block; }
+        .fixture-filler-block {
+            padding: 60px 20px; margin: 16px 0; background: #090d16;
+            border: 1px dashed #1e293b; border-radius: 10px; color: #475569;
+            font-family: monospace; font-size: 0.8rem; text-align: center;
+        }
+
+        .collision-row {
+            display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+            border-radius: 6px; font-family: monospace; font-size: 0.78rem; margin-bottom: 6px;
+        }
+        .collision-row.collision-hit { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.4); color: #f87171; }
+        .collision-row.collision-clear { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.3); color: #34d399; }
+
+        /* --- UNIFIED SESSION TIMELINE --- */
+        /* Analytics events, SDK bus broadcasts, submission steps and storage mutations are each
+           captured correctly, but in four separate panels with no shared axis — so "what was
+           DECLINED_DATE at the instant the invitation appeared" has never been directly
+           answerable, only reconstructed by cross-referencing timestamps by hand. This merges
+           all four onto one chronological, filterable, scrubbable list. */
+        .timeline-source-filters { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 12px; }
+        .timeline-source-filters label { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; cursor: pointer; }
+        .timeline-source-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+        .timeline-dot-analytics { background: #fb923c; }
+        .timeline-dot-sdkbus { background: #38bdf8; }
+        .timeline-dot-submission { background: #34d399; }
+        .timeline-dot-storage { background: #a78bfa; }
+        .timeline-dot-network { background: #f87171; }
+
+        .timeline-scrubber-box {
+            background: #090d16; border: 1px solid var(--panel-border); border-radius: 10px;
+            padding: 14px 16px; margin-bottom: 14px;
+        }
+        .timeline-scrubber-box input[type="range"] { width: 100%; margin: 8px 0; }
+        .timeline-scrubber-label { font-family: monospace; font-size: 0.78rem; color: #94a3b8; display: flex; justify-content: space-between; }
+        .timeline-state-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-top: 10px; }
+        .timeline-state-item {
+            font-family: monospace; font-size: 0.72rem; background: #0d1527; border: 1px solid #1e293b;
+            border-radius: 6px; padding: 6px 9px; color: #64748b;
+        }
+        .timeline-state-item b { color: #cbd5e1; display: block; font-size: 0.68rem; text-transform: uppercase; }
+
+        .timeline-track { max-height: 480px; overflow-y: auto; }
+        .timeline-row { display: grid; grid-template-columns: 90px 14px 1fr; gap: 10px; align-items: start; padding: 7px 4px; border-bottom: 1px solid #111827; }
+        .timeline-row-time { font-family: monospace; font-size: 0.7rem; color: #64748b; padding-top: 2px; }
+        .timeline-row-dot-col { display: flex; justify-content: center; padding-top: 4px; }
+        .timeline-row-body { font-family: monospace; font-size: 0.78rem; color: #cbd5e1; }
+        .timeline-row-source { color: #64748b; font-size: 0.68rem; text-transform: uppercase; margin-left: 6px; }
+
+        /* --- PAGE 5: BEHAVIOURAL RULE HARNESS --- */
+        /* TimeOnPage / TimeInSession / NumberOfPagesViewed / NumberOfVisits / UserAbandonment
+           are all decoded as "info — runtime" in the targeting matrix, because they can only be
+           observed by actually behaving, not by reading a stored value. This makes that
+           behaviour producible on demand instead of waiting for it to happen naturally. */
+        .behavioral-stat-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px;
+            margin-bottom: 14px;
+        }
+        .behavioral-stat-card {
+            background: #090d16; border: 1px solid var(--panel-border); border-radius: 8px;
+            padding: 12px 14px;
+        }
+        .behavioral-stat-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 4px; }
+        .behavioral-stat-value { font-family: monospace; font-size: 1.15rem; font-weight: bold; color: #38bdf8; }
+        .behavioral-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 
         /* --- KEYBOARD / COMMAND PALETTE --- */
         /* Every action here was previously mouse-only, so a tester repeating the same check
@@ -898,6 +1027,38 @@
             }));
         });
         
+        // =========================================================================
+        // 🕰️ LOCALSTORAGE MUTATION OBSERVER (feeds the Unified Session Timeline)
+        // =========================================================================
+        // Confirmed by direct testing, not assumed: patching Storage.prototype.setItem misses
+        // real mutations, because `localStorage.key = value` (bracket/property assignment) is a
+        // genuinely different code path per the Web Storage spec — it never calls .setItem() at
+        // all, and this SDK's own writes (kampyleUserSession etc.) go entirely through that path.
+        // A setItem patch alone silently missed every one of them. Polling and diffing catches a
+        // mutation regardless of how it was written — it costs up to one tick (400ms, piggy-
+        // backed on the existing fast poll below) of timestamp precision, which is irrelevant at
+        // this tool's granularity.
+        let capturedStorageMutations = [];
+        let previousLocalStorageSnapshot = {};
+        function detectLocalStorageMutationsViaPolling() {
+            const now = Date.now();
+            const currentSnapshot = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                currentSnapshot[key] = localStorage.getItem(key);
+            }
+            new Set([...Object.keys(previousLocalStorageSnapshot), ...Object.keys(currentSnapshot)]).forEach(key => {
+                const previousValue = previousLocalStorageSnapshot[key];
+                const currentValue = currentSnapshot[key];
+                if (previousValue !== currentValue) {
+                    capturedStorageMutations.push({ key, value: currentValue === undefined ? '(removed)' : currentValue, at: now });
+                }
+            });
+            previousLocalStorageSnapshot = currentSnapshot;
+        }
+
+        let capturedNetworkErrorEvents = [];
+
         // =========================================================================
         // 🛡️ BACKGROUND PROXY INTERCEPTOR DECK (FETCH & XMLHTTPREQUEST)
         // =========================================================================
@@ -1365,10 +1526,56 @@
         <div id="page1" class="page">
             <a onclick="navigateTo('main-page')" class="back-link">← Return to Dashboard</a>
             <h2>📋 Page 1: UI Integrity Auditing</h2>
+
+            <div class="hostile-layout-controls">
+                <label><input type="checkbox" id="fixture-toggle-footer" onchange="toggleHostileLayoutFixture('footer', this)"> Sticky CTA footer <span class="fixture-z-note">(z:400)</span></label>
+                <label><input type="checkbox" id="fixture-toggle-cookie" onchange="toggleHostileLayoutFixture('cookie', this)"> Cookie consent banner <span class="fixture-z-note">(z:2147483647)</span></label>
+                <label><input type="checkbox" id="fixture-toggle-promo" onchange="toggleHostileLayoutFixture('promo', this)"> Promo popup decoy <span class="fixture-z-note">(z:999999)</span></label>
+                <label><input type="checkbox" id="fixture-toggle-filler" onchange="toggleHostileLayoutFixture('filler', this)"> Long scroll content</label>
+                <span class="fixture-z-note">A real page fights the onsite widget for space and stacking order — an empty page can't reproduce that. Sticky header stays on; the rest are opt-in.</span>
+            </div>
+
+            <div class="fixture-sticky-header">
+                <span>🌐 example-storefront.com</span>
+                <span>Home · Products · Support</span>
+            </div>
+
             <div class="injector-panel"><textarea id="input-page1" placeholder="Paste embed code or raw JS here..."></textarea><div class="action-bar"><button id="btn-page1" onclick="injectProperty('page1')">Inject Property</button><div id="msg-page1" class="message"></div></div></div>
             <div class="diag-panel" style="margin-top:20px;">
                 <h4 style="margin:0 0 10px 0;">🎯 Targeting rules on this page</h4>
                 <div id="page-targeting-summary-page1"></div>
+            </div>
+
+            <div class="diag-panel" style="margin-top:20px;">
+                <h4 style="margin:0 0 10px 0;">💥 Layout Collision Report</h4>
+                <p style="margin:0 0 12px 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                    Compares the feedback button and invitation's actual rendered bounding box against every <strong>active</strong>
+                    fixture above — real overlap math, not a screenshot to eyeball. Toggle a fixture on to test it.
+                </p>
+                <div id="collision-report-container"></div>
+            </div>
+
+            <div class="fixture-filler-content" data-fixture="filler">
+                <div class="fixture-filler-block">Filler section 1 — simulates real page content between the fold and the footer.</div>
+                <div class="fixture-filler-block">Filler section 2 — long enough that a sticky footer or cookie banner has room to genuinely collide with a scroll-anchored widget.</div>
+                <div class="fixture-filler-block">Filler section 3 — the onsite SDK's button position is usually configured as fixed-to-viewport, so scrolling this far shouldn't move it; that's exactly the assumption these fixtures test.</div>
+            </div>
+
+            <div class="fixture-sticky-footer" data-fixture="footer">
+                <span>🛒 Free shipping over $50</span>
+                <button onclick="document.getElementById('fixture-toggle-footer').click()" style="height:26px; font-size:0.72rem; padding:0 10px;">Dismiss</button>
+            </div>
+
+            <div class="fixture-cookie-banner" data-fixture="cookie">
+                <strong>🍪 We use cookies</strong>
+                <p style="margin:8px 0; color:#94a3b8;">This site uses cookies to improve your experience. Many real consent tools ship at <code style="color:#a78bfa;">z-index: 2147483647</code> — the maximum 32-bit value — specifically to guarantee nothing else can render above them.</p>
+                <button onclick="document.getElementById('fixture-toggle-cookie').click()" style="height:28px; font-size:0.75rem; padding:0 12px;">Accept</button>
+            </div>
+
+            <div class="fixture-promo-decoy" data-fixture="promo">
+                <strong>✨ Sale ends soon!</strong>
+                <p style="margin:8px 0; font-size:0.85rem;">20% off everything, today only.</p>
+                <button onclick="document.getElementById('fixture-toggle-promo').click()" style="height:28px; font-size:0.75rem; padding:0 12px; background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.4); color:#fff;">Close</button>
             </div>
         </div>
 
@@ -1409,6 +1616,24 @@
             <div class="diag-panel" style="margin-top:20px;">
                 <h4 style="margin:0 0 10px 0;">🎯 Targeting rules on this page</h4>
                 <div id="page-targeting-summary-page5"></div>
+            </div>
+
+            <div class="diag-panel" style="margin-top:20px;">
+                <h4 style="margin:0 0 10px 0;">⏱️ Behavioural Rule Harness</h4>
+                <p style="margin:0 0 14px 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                    <code style="color:#a78bfa;">TimeOnPage</code>, <code style="color:#a78bfa;">TimeInSession</code>,
+                    <code style="color:#a78bfa;">NumberOfPagesViewed</code>, <code style="color:#a78bfa;">NumberOfVisits</code> and
+                    <code style="color:#a78bfa;">UserAbandonment</code> all show as <span class="verdict-pill verdict-info" style="display:inline;">ⓘ runtime</span>
+                    in the Targeting Matrix because they can only be observed by actually behaving, not by reading a stored value.
+                    This produces that behaviour on demand instead of waiting for it to happen naturally — watch the Analytics /
+                    SDK Bus streams and the Targeting Matrix above for a reaction after each action below.
+                </p>
+                <div class="behavioral-stat-grid" id="behavioral-stat-grid"></div>
+                <div class="behavioral-actions">
+                    <button class="lifecycle-btn btn-commit" onclick="simulateExitIntent()" title="Dispatches the mouseout/mouseleave gesture browsers use to detect the cursor leaving toward the tab bar">🖱️ Simulate Exit Intent</button>
+                    <button class="lifecycle-btn" onclick="triggerUpdatePageViewNow()">📍 Trigger updatePageView() Now</button>
+                    <button class="lifecycle-btn btn-purge" onclick="purgeEntireOnsiteLifecycleState()">🔄 Reset Behavioural Counters</button>
+                </div>
             </div>
         </div>
 
@@ -1554,6 +1779,27 @@
             </div>
         </div>
 
+        <div class="diag-panel" data-panel-key="contrast" style="margin-top:25px;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">♿ WCAG Contrast Audit</h4>
+                <span id="contrast-audit-summary" class="status-pill pill-warn">Awaiting property</span>
+                <button class="lifecycle-btn panel-collapse-btn" onclick="togglePanelCollapsed('contrast')">▾ Collapse</button>
+                <button class="lifecycle-btn" onclick="renderContrastAuditPanel()">🔄 Re-check Now</button>
+                <button class="lifecycle-btn" onclick="downloadContrastAuditReportAsCSV()">📥 Export CSV</button>
+            </div>
+            <div class="collapsed-summary" data-panel-summary style="display:none;"></div>
+            <p data-panel-body style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                Checks every configured colour pair — button text against its background, body text against page background,
+                and button fills against their surrounding background — against WCAG 2.1 contrast thresholds. Text pairs need
+                <strong>4.5:1</strong> for AA (<strong>7:1</strong> for AAA); button/UI fills against their background need
+                <strong>3:1</strong>. Computed from the same configured values the Design Validator already reads — nothing new
+                is captured, so this works the instant a property is injected, before anything even renders.
+            </p>
+            <div id="contrast-audit-container" data-panel-body style="margin-top:14px;">
+                <div class="no-rules-notice">Inject a property embed to audit its configured colour pairs. <button class="rule-source-link" onclick="focusPropertyInjectorOnActivePage()">Jump to injector</button></div>
+            </div>
+        </div>
+
         <div class="diag-panel" data-panel-key="targeting" style="margin-top:25px;">
             <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
                 <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">🎯 Form Targeting Rules Matrix [<span id="targeting-counter-badge" style="color:#a78bfa;">0</span>]</h4>
@@ -1675,6 +1921,31 @@
             </div>
         </div>
 
+        <div class="diag-panel" data-panel-key="timeline" style="margin-top:25px;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">🕰️ Unified Session Timeline</h4>
+                <span id="timeline-summary-badge" class="status-pill pill-warn">0 events</span>
+                <button class="lifecycle-btn panel-collapse-btn" onclick="togglePanelCollapsed('timeline')">▾ Collapse</button>
+                <button class="lifecycle-btn" onclick="renderUnifiedSessionTimeline()">🔄 Refresh</button>
+                <button class="lifecycle-btn" onclick="downloadUnifiedSessionTimelineAsCSV()">📥 Export CSV</button>
+            </div>
+            <div class="collapsed-summary" data-panel-summary style="display:none;"></div>
+            <p data-panel-body style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                Analytics events, SDK bus broadcasts, submission steps and every
+                <code style="color:#a78bfa;">localStorage</code> write (this app's own and the SDK's) merged onto one
+                chronological axis. Drag the scrubber to reconstruct exactly what every tracked storage key held at that
+                instant — the question "what was <code style="color:#a78bfa;">DECLINED_DATE</code> when the invitation
+                appeared" is what this is for.
+            </p>
+            <div class="timeline-source-filters" data-panel-body id="timeline-source-filters"></div>
+            <div class="timeline-scrubber-box" data-panel-body id="timeline-scrubber-box" style="display:none;">
+                <div class="timeline-scrubber-label"><span>Session start</span><span id="timeline-scrubber-current">now</span><span>Now</span></div>
+                <input type="range" id="timeline-scrubber-input" min="0" max="1000" value="1000" oninput="renderTimelineStateAtScrubPosition()">
+                <div class="timeline-state-grid" id="timeline-state-grid"></div>
+            </div>
+            <div class="timeline-track" data-panel-body id="timeline-track-container"></div>
+        </div>
+
         <div class="log-panel">
             <div class="log-header">
                 <h3>💻 Real-Time QA Execution Timeline Log</h3>
@@ -1787,6 +2058,9 @@
             { label: 'Copy session report to clipboard', run: () => copySessionReportToClipboard() },
             { label: 'Download session report (Markdown)', run: () => downloadSessionReportAsMarkdown() },
             { label: 'Export Design Validation report (CSV)', run: () => downloadDesignValidationReportAsCSV() },
+            { label: 'Export WCAG Contrast Audit (CSV)', run: () => downloadContrastAuditReportAsCSV() },
+            { label: 'Export Unified Session Timeline (CSV)', run: () => downloadUnifiedSessionTimelineAsCSV() },
+            { label: 'Simulate Exit Intent (Page 5)', run: () => { navigateTo('page5'); simulateExitIntent(); } },
             { label: 'Export Submission report (CSV)', run: () => downloadSubmissionReportAsCSV() },
             { label: 'Export Targeting Matrix (CSV)', run: () => downloadFormTargetingMatrixAsCSV() },
             { label: 'Toggle colour auto-capture', run: () => toggleInvitationColourMonitoring() },
@@ -1898,6 +2172,7 @@
 
       // --- 2. HTTP SERVER & CONSOLE ERROR TRAFFIC DETECTOR LISTENER ---
         window.addEventListener('qa_network_error', (e) => {
+            capturedNetworkErrorEvents.push({ status: e.detail.status, type: e.detail.type, url: e.detail.url, at: Date.now() });
             const notice = document.getElementById('empty-network-notice');
             if (notice) notice.remove();
             const stream = document.getElementById('network-error-stream-box');
@@ -1950,6 +2225,7 @@
         window.addEventListener('qa_analytics_event', (e) => {
             collectedAnalyticsEventsCacheList.push({
                 time: new Date().toLocaleTimeString(),
+                at: Date.now(),
                 eventName: e.detail.name,
                 formId: e.detail.formId,
                 trigger: e.detail.trigger,
@@ -2120,6 +2396,7 @@
         window.addEventListener('qa_sdk_custom_event', (e) => {
             collectedSdkBusEventsCacheList.push({
                 time: new Date().toLocaleTimeString(),
+                at: Date.now(),
                 eventName: e.detail.name,
                 source: e.detail.source,
                 data: e.detail.data,
@@ -2573,6 +2850,7 @@
         setInterval(() => {
             runLiveStorageAndDOMStructureAudit();
             refreshOnsiteLifecycleStateValues();
+            detectLocalStorageMutationsViaPolling();
             // Latched on the fast loop as well as the validator's own cadence: an invitation
             // dismissed quickly could otherwise close between two slower samples and never be
             // recorded at all.
@@ -2583,8 +2861,12 @@
         // so a tighter loop would fight with clicks landing on the card headers.
         setInterval(renderFormTargetingRulesMatrix, 1500);
         setInterval(renderPageTargetingSummary, 1500);
+        setInterval(checkLayoutCollisions, 1500);
+        setInterval(renderBehavioralStatGrid, 1000);
+        setInterval(renderUnifiedSessionTimeline, 2000);
         setInterval(() => {
             renderDesignAndDisplayValidator();
+            renderContrastAuditPanel();
             renderDeviceEmulationBanner();
             if (!IS_NESTED_PREVIEW_FRAME) {
                 renderUserAgentScopeReport();
@@ -4200,6 +4482,254 @@
             writeLog("CSV Export Engine Complete: Downloaded design and display validation report.", 'success');
         }
 
+        // --- 5b3. WCAG CONTRAST AUDIT ---
+        // Every check here runs on configured colour values already captured for the Design
+        // Validator (button/invitation/form/thank-you manifests) — no new network capture, no
+        // screen recording, no cross-origin caveats. That also means it works the instant a
+        // property is injected, before anything has even rendered once.
+        // https://www.w3.org/TR/WCAG21/#contrast-minimum — sRGB relative luminance formula.
+        function srgbChannelToLinear(channel8bit) {
+            const c = channel8bit / 255;
+            return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+        }
+
+        function relativeLuminance(rgbTriplet) {
+            const [r, g, b] = rgbTriplet;
+            return 0.2126 * srgbChannelToLinear(r) + 0.7152 * srgbChannelToLinear(g) + 0.0722 * srgbChannelToLinear(b);
+        }
+
+        function computeContrastRatio(rgbA, rgbB) {
+            const lA = relativeLuminance(rgbA);
+            const lB = relativeLuminance(rgbB);
+            const lighter = Math.max(lA, lB);
+            const darker = Math.min(lA, lB);
+            return (lighter + 0.05) / (darker + 0.05);
+        }
+
+        // `kind: 'text'` uses the normal-text thresholds (4.5:1 AA / 7:1 AAA); `kind: 'component'`
+        // uses the UI-component threshold (3:1 AA, WCAG 1.4.11) for a button fill against its
+        // surrounding background rather than text sitting on it.
+        // `textSize: 'small' | 'large'` — WCAG's large-text exception (3:1 instead of 4.5:1)
+        // only applies at ≥18pt/24px regular or ≥14pt/18.66px bold. Where it's actually
+        // measurable (the feedback button renders same-origin), it's measured, not guessed —
+        // see measureFeedbackButtonTextSize(). Everywhere else button/label text renders inside
+        // a cross-origin frame and can't be measured, so it's presumed small (the WCAG-safe
+        // default, and correct for every real feedback-widget button/label this app has seen).
+        // `textSize` left undefined means genuinely ambiguous (body copy, a headline) — that
+        // keeps the honest "might pass, confirm visually" middle tier.
+        function evaluateContrastPair(property, colourAValue, colourBValue, kind, textSize, sizeNote) {
+            const rgbA = parseColourToRgbTriplet(colourAValue);
+            const rgbB = parseColourToRgbTriplet(colourBValue);
+            if (!rgbA || !rgbB) return null;
+
+            const ratio = computeContrastRatio(rgbA, rgbB);
+            const roundedRatio = Math.round(ratio * 100) / 100;
+            const sizeSuffix = sizeNote ? ` (${sizeNote})` : '';
+
+            let verdict, pillLabel, note;
+            if (kind === 'component') {
+                if (ratio >= 3) { verdict = 'pass'; pillLabel = `${roundedRatio}:1 · AA`; }
+                else { verdict = 'block'; pillLabel = `${roundedRatio}:1 · fails`; note = 'Fails the 3:1 minimum WCAG 1.4.11 requires for a button/control fill against its surrounding background.'; }
+            } else if (textSize === 'large') {
+                if (ratio >= 7) { verdict = 'pass'; pillLabel = `${roundedRatio}:1 · AAA`; }
+                else if (ratio >= 3) { verdict = 'pass'; pillLabel = `${roundedRatio}:1 · AA`; note = `Meets AA under the large-text 3:1 exception${sizeSuffix}.`; }
+                else { verdict = 'block'; pillLabel = `${roundedRatio}:1 · fails`; note = `Fails AA even under the large-text 3:1 exception${sizeSuffix}.`; }
+            } else if (textSize === 'small') {
+                if (ratio >= 7) { verdict = 'pass'; pillLabel = `${roundedRatio}:1 · AAA`; }
+                else if (ratio >= 4.5) { verdict = 'pass'; pillLabel = `${roundedRatio}:1 · AA`; }
+                else { verdict = 'block'; pillLabel = `${roundedRatio}:1 · fails`; note = `Fails the 4.5:1 AA threshold for normal-size text${sizeSuffix} — doesn't qualify for WCAG's large-text 3:1 exception.`; }
+            } else {
+                if (ratio >= 7) { verdict = 'pass'; pillLabel = `${roundedRatio}:1 · AAA`; }
+                else if (ratio >= 4.5) { verdict = 'pass'; pillLabel = `${roundedRatio}:1 · AA`; }
+                else if (ratio >= 3) { verdict = 'watch'; pillLabel = `${roundedRatio}:1 · unverified`; note = 'Fails the 4.5:1 normal-text AA threshold. Only meets AA if this text renders at ≥18pt/24px regular (or ≥14pt/18.66px bold) — actual rendered size isn\'t available from configuration, so confirm visually before treating this as safe.'; }
+                else { verdict = 'block'; pillLabel = `${roundedRatio}:1 · fails`; note = 'Fails AA at any text size (needs at least the 3:1 large-text floor).'; }
+            }
+            return { property, colourA: colourAValue, colourB: colourBValue, ratio: roundedRatio, verdict, pillLabel, note };
+        }
+
+        // The feedback button renders directly in this document (same-origin), so its actual
+        // text size is measurable rather than presumed — unlike everything inside the invitation
+        // or form iframes. Returns null if the button isn't currently rendered.
+        function measureFeedbackButtonTextSize() {
+            const btn = document.getElementById('nebula_div_btn');
+            if (!btn) return null;
+            const textNode = btn.querySelector('.kampyle_button-text') || btn;
+            const computed = window.getComputedStyle(textNode);
+            const px = parseFloat(computed.fontSize);
+            if (!px) return null;
+            const isBold = parseInt(computed.fontWeight, 10) >= 700;
+            const isLarge = px >= (isBold ? 18.66 : 24);
+            return { px, isBold, isLarge };
+        }
+
+        function buildContrastAuditReport() {
+            const registry = readPublishedFormRegistryFromSdk();
+            if (!registry) return null;
+
+            // Every raw check is collected with its category and owning form first, THEN
+            // deduplicated within each category by (property, colour A, colour B) — a colour
+            // pair repeated identically across many forms (an untouched shared default) is one
+            // finding, not one per form. Sorted failures-first, and within a verdict tier by how
+            // many forms are affected — a failure unique to one form was a deliberate choice and
+            // is the more interesting anomaly; one shared by every form is obviously untouched
+            // configuration and only needs to be seen once.
+            const rawChecks = [];
+            const push = (category, formId, property, a, b, kind, textSize, sizeNote) => {
+                if (!a || !b) return;
+                rawChecks.push({ category, formId, property, a, b, kind, textSize, sizeNote });
+            };
+
+            const measuredButton = measureFeedbackButtonTextSize();
+            const buttonSizeTier = measuredButton ? (measuredButton.isLarge ? 'large' : 'small') : 'small';
+            const buttonSizeNote = measuredButton
+                ? `measured ${measuredButton.px}px${measuredButton.isBold ? ' bold' : ''}`
+                : 'presumed small — not currently rendered to measure';
+            const crossOriginSizeNote = 'presumed small — renders inside a cross-origin frame, actual size not measurable';
+
+            registry.filter(f => f.formType === 'button' && f.buttonData).forEach(form => {
+                const b = form.buttonData;
+                push('Feedback Button', form.formId, 'Button Text vs Background', b.textColor, b.backgroundColor, 'text', buttonSizeTier, buttonSizeNote);
+                push('Feedback Button', form.formId, 'Button Text vs Background (hover)', b.textHoverColor, b.backgroundHoverColor, 'text', buttonSizeTier, buttonSizeNote);
+            });
+
+            Object.keys(capturedInvitationDesignManifests).forEach(formId => {
+                const manifest = capturedInvitationDesignManifests[formId];
+                ['desktopDesign', 'mobileDesign'].forEach(designKey => {
+                    const d = manifest[designKey];
+                    if (!d) return;
+                    const category = `Invitation (${designKey === 'desktopDesign' ? 'desktop' : 'mobile'})`;
+                    push(category, formId, 'Provide Button Text vs Background', d.invitationProvideButtonTextColor, d.invitationProvideButtonColor, 'text', 'small', crossOriginSizeNote);
+                    push(category, formId, 'Decline Button Text vs Background', d.invitationDeclineButtonTextColor, d.invitationDeclineButtonColor, 'text', 'small', crossOriginSizeNote);
+                    push(category, formId, 'Provide Button vs Invitation Background', d.invitationProvideButtonColor, d.invitationBackgroundColor, 'component');
+                    push(category, formId, 'Decline Button vs Invitation Background', d.invitationDeclineButtonColor, d.invitationBackgroundColor, 'component');
+                });
+            });
+
+            Object.keys(capturedFormDesignManifests).forEach(formId => {
+                const manifest = capturedFormDesignManifests[formId];
+                const basic = (manifest.settings && manifest.settings.formBasicSettings) || {};
+                const design = (manifest.settings && manifest.settings.formDesignSettingsContract) || {};
+                const thankYou = (manifest.settings && manifest.settings.formThankYouPageSettings) || {};
+                const isMultiPage = Array.isArray(manifest.pages) && manifest.pages.length > 1;
+
+                // Body copy's size is genuinely unknown (could be a large headline or fine
+                // print), so it keeps the honest "might be large text" middle tier — unlike
+                // every button label below, which is presumed small on purpose.
+                push('Form Settings', formId, 'Body Text vs Background', design.textColor, design.backgroundColor, 'text');
+                if (!basic.isHideSubmitButton) push('Form Settings', formId, 'Submit Button Text vs Background', basic.submitButtonTextColor, basic.submitButtoncolor, 'text', 'small', crossOriginSizeNote);
+                if (basic.isShowCloseButton) push('Form Settings', formId, 'Close Button Text vs Background', basic.closeButtonTextColor, basic.closeButtoncolor, 'text', 'small', crossOriginSizeNote);
+                if (isMultiPage && !basic.isHideNextButton) push('Form Settings', formId, 'Next Button Text vs Background', basic.nextButtonTextColor, basic.nextButtoncolor, 'text', 'small', crossOriginSizeNote);
+                if (isMultiPage && basic.isShowBackButton) push('Form Settings', formId, 'Back Button Text vs Background', basic.backButtonTextColor, basic.backButtoncolor, 'text', 'small', crossOriginSizeNote);
+
+                if (thankYou.includeThankYouPage) {
+                    push('Thank-You Page', formId, 'Thank-You Text vs Background', thankYou.textColor, thankYou.backgroundColor, 'text');
+                    push('Thank-You Page', formId, 'Thank-You Button vs Background', thankYou.buttonColor, thankYou.backgroundColor, 'component');
+                }
+            });
+
+            const categoryOrder = [];
+            const categoryMap = new Map();
+            rawChecks.forEach(raw => {
+                if (!categoryMap.has(raw.category)) { categoryMap.set(raw.category, new Map()); categoryOrder.push(raw.category); }
+                const dedupMap = categoryMap.get(raw.category);
+                const dedupKey = `${raw.property}::${raw.a}::${raw.b}`;
+                if (dedupMap.has(dedupKey)) {
+                    dedupMap.get(dedupKey).formIds.push(raw.formId);
+                } else {
+                    const evaluated = evaluateContrastPair(raw.property, raw.a, raw.b, raw.kind, raw.textSize, raw.sizeNote);
+                    if (evaluated) dedupMap.set(dedupKey, Object.assign(evaluated, { formIds: [raw.formId] }));
+                }
+            });
+
+            const verdictRank = { block: 0, watch: 1, pass: 2 };
+            return categoryOrder.map(category => {
+                const checks = Array.from(categoryMap.get(category).values())
+                    .sort((a, b) => (verdictRank[a.verdict] - verdictRank[b.verdict]) || (a.formIds.length - b.formIds.length));
+                return { title: category, checks };
+            }).filter(group => group.checks.length > 0);
+        }
+
+        function renderContrastAuditPanel() {
+            const container = document.getElementById('contrast-audit-container');
+            const summaryPill = document.getElementById('contrast-audit-summary');
+            if (!container) return;
+
+            const groups = buildContrastAuditReport();
+            if (!groups || groups.length === 0) {
+                if (summaryPill) { summaryPill.className = "status-pill pill-warn"; summaryPill.innerText = "Awaiting property"; }
+                container.innerHTML = `<div class="no-rules-notice">Inject a property embed to audit its configured colour pairs. <button class="rule-source-link" onclick="focusPropertyInjectorOnActivePage()">Jump to injector</button></div>`;
+                return;
+            }
+
+            let failCount = 0, watchCount = 0, passCount = 0;
+            groups.forEach(group => group.checks.forEach(check => {
+                if (check.verdict === 'block') failCount++;
+                else if (check.verdict === 'watch') watchCount++;
+                else passCount++;
+            }));
+
+            if (summaryPill) {
+                summaryPill.className = "status-pill " + (failCount ? "pill-danger" : watchCount ? "pill-warn" : "pill-success");
+                summaryPill.innerText = failCount
+                    ? `${failCount} fail AA` + (watchCount ? ` · ${watchCount} unverified` : '')
+                    : watchCount ? `${watchCount} unverified (need size check)` : `All ${passCount} pairs pass AA`;
+            }
+
+            container.innerHTML = "";
+            groups.forEach(group => {
+                const groupFailures = group.checks.filter(c => c.verdict === 'block').length;
+                const groupWatches = group.checks.filter(c => c.verdict === 'watch').length;
+                const groupBadgeText = groupFailures
+                    ? `${groupFailures} fail(s)` + (groupWatches ? ` · ${groupWatches} unverified` : '')
+                    : groupWatches ? `${groupWatches} unverified` : 'all pass';
+                const groupBadgeClass = groupFailures ? 'pill-danger' : groupWatches ? 'pill-warn' : 'pill-success';
+                const groupNode = document.createElement('div');
+                groupNode.className = "design-group";
+                groupNode.innerHTML = `
+                    <div class="design-group-title">
+                        <span>${escapeMarkupForSafeRender(group.title)}</span>
+                        <span class="status-pill ${groupBadgeClass}">${escapeMarkupForSafeRender(groupBadgeText)}</span>
+                    </div>
+                    <div class="design-check-row design-check-head">
+                        <div>Property</div><div>Colour A</div><div>Colour B</div><div>Ratio</div>
+                    </div>
+                    ${group.checks.map(check => {
+                        const scopeLabel = check.formIds.length === 1 ? `form ${check.formIds[0]}` : `${check.formIds.length} forms`;
+                        return `
+                        <div class="design-check-row">
+                            <div>
+                                <div class="design-prop-name">${escapeMarkupForSafeRender(check.property)} <span class="contrast-scope-badge" title="${escapeMarkupForSafeRender(check.formIds.join(', '))}">${escapeMarkupForSafeRender(scopeLabel)}</span></div>
+                                ${check.note ? `<div class="design-note">${escapeMarkupForSafeRender(check.note)}</div>` : ''}
+                            </div>
+                            <div class="design-value"><span class="color-swatch" style="background:${escapeMarkupForSafeRender(check.colourA)};"></span>${escapeMarkupForSafeRender(check.colourA)}</div>
+                            <div class="design-value"><span class="color-swatch" style="background:${escapeMarkupForSafeRender(check.colourB)};"></span>${escapeMarkupForSafeRender(check.colourB)}</div>
+                            <span class="verdict-pill verdict-${check.verdict}">${escapeMarkupForSafeRender(check.pillLabel)}</span>
+                        </div>`;
+                    }).join('')}
+                `;
+                container.appendChild(groupNode);
+            });
+        }
+
+        function downloadContrastAuditReportAsCSV() {
+            const groups = buildContrastAuditReport();
+            if (!groups || groups.length === 0) { toast("Nothing to audit yet. Inject a property first!"); return; }
+
+            const escapeCsvCell = value => `"${String(value === null || value === undefined ? '' : value).replace(/"/g, '""')}"`;
+            let csv = ["Group", "Property", "Colour A", "Colour B", "Ratio", "Verdict", "Forms Affected", "Note"].map(escapeCsvCell).join(",") + "\n";
+            groups.forEach(group => group.checks.forEach(check => {
+                csv += [group.title, check.property, check.colourA, check.colourB, `${check.ratio}:1`, check.verdict, check.formIds.join('; '), check.note || ''].map(escapeCsvCell).join(",") + "\n";
+            }));
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute('download', `WCAG_Contrast_Audit.csv`);
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            writeLog("CSV Export Engine Complete: Downloaded WCAG contrast audit report.", 'success');
+        }
+
         // --- 5c. FORM TARGETING RULES MATRIX ---
         // Every published form is read straight from the SDK's own form registry, and its
         // onSiteData block is decoded into readable rules. Where a rule depends on stored
@@ -4363,6 +4893,292 @@
         // (a plain string, or an object carrying the pattern under a likely field name) and
         // returns null — "cannot confidently evaluate" — for anything else, rather than guessing
         // and silently asserting a wrong verdict.
+        // --- PAGE 1: HOSTILE LAYOUT FIXTURE ---
+        const HOSTILE_LAYOUT_STORAGE_KEY = 'qa_hostile_layout_fixtures';
+
+        function getHostileLayoutState() {
+            try { return JSON.parse(localStorage.getItem(HOSTILE_LAYOUT_STORAGE_KEY)) || {}; }
+            catch (err) { return {}; }
+        }
+
+        function toggleHostileLayoutFixture(name, checkbox) {
+            const state = getHostileLayoutState();
+            state[name] = checkbox.checked;
+            localStorage.setItem(HOSTILE_LAYOUT_STORAGE_KEY, JSON.stringify(state));
+            applyHostileLayoutState();
+        }
+
+        function applyHostileLayoutState() {
+            const state = getHostileLayoutState();
+            ['footer', 'cookie', 'promo', 'filler'].forEach(name => {
+                const el = document.querySelector(`[data-fixture="${name}"]`);
+                if (el) el.classList.toggle('active', !!state[name]);
+                const checkbox = document.getElementById(`fixture-toggle-${name}`);
+                if (checkbox) checkbox.checked = !!state[name];
+            });
+            checkLayoutCollisions();
+        }
+
+        // Objective overlap measurement rather than something a tester has to eyeball in a
+        // screenshot: real bounding-box intersection between whatever the SDK actually rendered
+        // and whichever fixtures are currently active.
+        function checkLayoutCollisions() {
+            const reportEl = document.getElementById('collision-report-container');
+            if (!reportEl) return;
+
+            const sdkTargets = [
+                { label: 'Feedback Button', el: document.getElementById('nebula_div_btn') },
+                { label: 'Invitation Modal', el: document.getElementById('kampyleInviteModal') }
+            ].filter(t => t.el);
+
+            if (sdkTargets.length === 0) {
+                reportEl.innerHTML = buildActionableEmptyState('Inject a property and let the button or invitation render to check for layout collisions.');
+                return;
+            }
+
+            const fixtures = [
+                { label: 'Sticky Header', el: document.querySelector('.fixture-sticky-header') },
+                { label: 'Sticky CTA Footer', el: document.querySelector('[data-fixture="footer"]') },
+                { label: 'Cookie Banner', el: document.querySelector('[data-fixture="cookie"]') },
+                { label: 'Promo Decoy', el: document.querySelector('[data-fixture="promo"]') }
+            ].filter(f => f.el && (f.el.classList.contains('active') || f.el.classList.contains('fixture-sticky-header')));
+
+            const rectsIntersect = (a, b) => !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+
+            let html = '';
+            sdkTargets.forEach(target => {
+                const targetRect = target.el.getBoundingClientRect();
+                const isRendered = targetRect.width > 0 && targetRect.height > 0 &&
+                    window.getComputedStyle(target.el).visibility !== 'hidden';
+                if (!isRendered) {
+                    html += `<div class="collision-row collision-clear">${escapeMarkupForSafeRender(target.label)}: not currently rendered on screen.</div>`;
+                    return;
+                }
+                if (fixtures.length === 0) {
+                    html += `<div class="collision-row collision-clear">${escapeMarkupForSafeRender(target.label)} is rendered. No fixtures are active — toggle one above to test a real collision.</div>`;
+                    return;
+                }
+                fixtures.forEach(fixture => {
+                    const fixtureRect = fixture.el.getBoundingClientRect();
+                    const hit = rectsIntersect(targetRect, fixtureRect);
+                    const targetZ = window.getComputedStyle(target.el).zIndex;
+                    const fixtureZ = window.getComputedStyle(fixture.el).zIndex;
+                    html += `<div class="collision-row ${hit ? 'collision-hit' : 'collision-clear'}">
+                        ${hit ? '⚠️' : '✓'} ${escapeMarkupForSafeRender(target.label)} (z-index ${escapeMarkupForSafeRender(targetZ)}) vs ${escapeMarkupForSafeRender(fixture.label)} (z-index ${escapeMarkupForSafeRender(fixtureZ)})
+                        — ${hit ? 'bounding boxes overlap' : 'no overlap'}
+                    </div>`;
+                });
+            });
+            reportEl.innerHTML = html;
+        }
+
+        // --- PAGE 5: BEHAVIOURAL RULE HARNESS ---
+        // Keyed per page id rather than a single value, so navigating away and back to page5
+        // (or visiting another page's future harness) restarts the dwell clock the same way a
+        // real page load would — this document only ever activates one .page at a time, so
+        // "time on page" has to be measured from here, not from the SDK.
+        const pageEnteredAtByPage = {};
+
+        function simulateExitIntent() {
+            // The standard exit-intent technique: a mouseout/mouseleave firing with clientY <= 0
+            // means the cursor crossed the top edge of the viewport toward the tab bar. This
+            // dispatches that exact signal on both document and documentElement, since
+            // implementations vary in which they listen on — but there's no way to confirm from
+            // here which (if either) this SDK actually watches, so success has to be read off
+            // the Analytics/SDK Bus streams, not assumed from the dispatch alone.
+            const eventInit = { bubbles: true, cancelable: true, clientY: -10, clientX: window.innerWidth / 2, relatedTarget: null };
+            document.dispatchEvent(new MouseEvent('mouseout', eventInit));
+            document.dispatchEvent(new MouseEvent('mouseleave', eventInit));
+            document.documentElement.dispatchEvent(new MouseEvent('mouseout', eventInit));
+            toast('Exit-intent gesture dispatched. Check the Analytics / SDK Bus streams for a reaction.', 'info');
+            writeLog('Exit-intent gesture simulated (mouseout/mouseleave at clientY -10).', 'info');
+        }
+
+        function triggerUpdatePageViewNow() {
+            if (!window.KAMPYLE_ONSITE_SDK || typeof window.KAMPYLE_ONSITE_SDK.updatePageView !== 'function') {
+                toast('No property injected yet — nothing to trigger.');
+                return;
+            }
+            window.KAMPYLE_ONSITE_SDK.updatePageView();
+            writeLog('Manually triggered updatePageView() to force a mid-dwell rule re-evaluation.', 'success');
+            renderFormTargetingRulesMatrix();
+        }
+
+        function renderBehavioralStatGrid() {
+            const grid = document.getElementById('behavioral-stat-grid');
+            if (!grid) return;
+
+            const sessionStart = Number(localStorage.getItem('kampyleUserSession'));
+            const secondsInSession = sessionStart ? Math.floor((Date.now() - sessionStart) / 1000) : null;
+            const pagesViewed = localStorage.getItem('kampyleSessionPageCounter');
+            const visitCount = localStorage.getItem('kampyleUserSessionsCount');
+            const pageEnteredAt = pageEnteredAtByPage['page5'];
+            const secondsOnThisPage = pageEnteredAt ? Math.floor((Date.now() - pageEnteredAt) / 1000) : 0;
+
+            const stats = [
+                ['Time in session', secondsInSession !== null ? `${secondsInSession}s` : 'not set'],
+                ['Time on this page', `${secondsOnThisPage}s`],
+                ['Pages viewed (session)', pagesViewed || '0'],
+                ['Visit count', visitCount || '0']
+            ];
+            grid.innerHTML = stats.map(([label, value]) => `
+                <div class="behavioral-stat-card">
+                    <div class="behavioral-stat-label">${escapeMarkupForSafeRender(label)}</div>
+                    <div class="behavioral-stat-value">${escapeMarkupForSafeRender(value)}</div>
+                </div>`).join('');
+        }
+
+        // --- UNIFIED SESSION TIMELINE ---
+        const TIMELINE_SOURCE_META = {
+            analytics: { label: 'Analytics', dotClass: 'timeline-dot-analytics' },
+            sdkbus: { label: 'SDK Bus', dotClass: 'timeline-dot-sdkbus' },
+            submission: { label: 'Submission', dotClass: 'timeline-dot-submission' },
+            storage: { label: 'Storage', dotClass: 'timeline-dot-storage' },
+            network: { label: 'Network', dotClass: 'timeline-dot-network' }
+        };
+
+        let timelineScrubRange = null;
+
+        // Every source already exists in its own panel with its own capture array — this reads
+        // straight from those (never a second copy) and normalises onto one `at` epoch axis.
+        function buildUnifiedSessionTimeline() {
+            const events = [];
+
+            collectedAnalyticsEventsCacheList.forEach(rec => {
+                if (!rec.at) return;
+                events.push({ at: rec.at, source: 'analytics', label: rec.eventName, detail: `form ${rec.formId || 'N/A'}${rec.transport ? ' · ' + rec.transport : ''}` });
+            });
+
+            collectedSdkBusEventsCacheList.forEach(rec => {
+                if (!rec.at) return;
+                events.push({ at: rec.at, source: 'sdkbus', label: rec.eventName, detail: `form ${rec.formId || 'N/A'}${rec.source ? ' · ' + rec.source : ''}` });
+            });
+
+            capturedSubmissionTraces.forEach(trace => {
+                trace.steps.forEach(step => {
+                    events.push({ at: step.at, source: 'submission', label: step.action, detail: `form ${trace.formId}` });
+                });
+            });
+
+            capturedStorageMutations.forEach(mut => {
+                events.push({ at: mut.at, source: 'storage', label: `${mut.key} → ${mut.value}`, detail: '' });
+            });
+
+            capturedNetworkErrorEvents.forEach(err => {
+                events.push({ at: err.at, source: 'network', label: `[${err.status}] ${err.type}`, detail: err.url });
+            });
+
+            events.sort((a, b) => a.at - b.at);
+            return events;
+        }
+
+        function renderTimelineSourceFilters() {
+            const container = document.getElementById('timeline-source-filters');
+            if (!container || container.dataset.built) return;
+            container.dataset.built = 'true';
+            container.innerHTML = Object.entries(TIMELINE_SOURCE_META).map(([key, meta]) => `
+                <label>
+                    <input type="checkbox" checked data-timeline-source="${key}" onchange="renderUnifiedSessionTimeline()">
+                    <span class="timeline-source-dot ${meta.dotClass}"></span>${escapeMarkupForSafeRender(meta.label)}
+                </label>`).join('');
+        }
+
+        function getActiveTimelineSources() {
+            const checkboxes = document.querySelectorAll('[data-timeline-source]');
+            if (checkboxes.length === 0) return Object.keys(TIMELINE_SOURCE_META);
+            return Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.getAttribute('data-timeline-source'));
+        }
+
+        // The scrubber's actual payoff: reconstruct what every tracked lifecycle key held at
+        // whatever instant it's dragged to, by replaying every mutation up to that point rather
+        // than only ever being able to read the CURRENT value.
+        function renderTimelineStateAtScrubPosition() {
+            const slider = document.getElementById('timeline-scrubber-input');
+            const currentLabel = document.getElementById('timeline-scrubber-current');
+            const stateGrid = document.getElementById('timeline-state-grid');
+            if (!slider || !currentLabel || !stateGrid || !timelineScrubRange) return;
+
+            const { earliest, latest } = timelineScrubRange;
+            const fraction = Number(slider.value) / 1000;
+            const targetTime = earliest + (latest - earliest) * fraction;
+            currentLabel.innerText = `${new Date(targetTime).toLocaleTimeString()} (${describeRelativeAgeFromNow(targetTime)})`;
+
+            const stateAtTime = {};
+            capturedStorageMutations.forEach(mutation => {
+                if (mutation.at <= targetTime) stateAtTime[mutation.key] = mutation.value;
+            });
+
+            stateGrid.innerHTML = ONSITE_LIFECYCLE_STORAGE_KEYS.map(def => {
+                const hasValue = Object.prototype.hasOwnProperty.call(stateAtTime, def.key);
+                const value = hasValue ? stateAtTime[def.key] : '(unset)';
+                return `<div class="timeline-state-item"><b>${escapeMarkupForSafeRender(def.key)}</b>${escapeMarkupForSafeRender(value)}</div>`;
+            }).join('');
+        }
+
+        function renderUnifiedSessionTimeline() {
+            renderTimelineSourceFilters();
+            const track = document.getElementById('timeline-track-container');
+            const badge = document.getElementById('timeline-summary-badge');
+            const scrubberBox = document.getElementById('timeline-scrubber-box');
+            if (!track) return;
+
+            const allEvents = buildUnifiedSessionTimeline();
+            if (badge) {
+                badge.className = 'status-pill ' + (allEvents.length ? 'pill-success' : 'pill-warn');
+                badge.innerText = `${allEvents.length} event${allEvents.length === 1 ? '' : 's'}`;
+            }
+
+            if (allEvents.length === 0) {
+                track.innerHTML = buildActionableEmptyState('Inject a property and interact with a form to populate the timeline.');
+                if (scrubberBox) scrubberBox.style.display = 'none';
+                return;
+            }
+
+            if (scrubberBox) scrubberBox.style.display = 'block';
+            timelineScrubRange = { earliest: allEvents[0].at, latest: allEvents[allEvents.length - 1].at };
+            renderTimelineStateAtScrubPosition();
+
+            const activeSources = getActiveTimelineSources();
+            const visibleEvents = allEvents.filter(e => activeSources.includes(e.source));
+
+            if (visibleEvents.length === 0) {
+                track.innerHTML = `<div class="no-rules-notice">No events match the active source filters.</div>`;
+                return;
+            }
+
+            // Oldest-first: matches the scrubber's left-to-right direction, and a timeline reads
+            // more naturally top-to-bottom as time passing than the newest-first convention the
+            // other event streams in this app use.
+            track.innerHTML = visibleEvents.map(event => {
+                const meta = TIMELINE_SOURCE_META[event.source];
+                return `<div class="timeline-row">
+                    <div class="timeline-row-time">${new Date(event.at).toLocaleTimeString()}</div>
+                    <div class="timeline-row-dot-col"><span class="timeline-source-dot ${meta.dotClass}"></span></div>
+                    <div class="timeline-row-body">${escapeMarkupForSafeRender(event.label)}<span class="timeline-row-source">${escapeMarkupForSafeRender(meta.label)}</span>${event.detail ? `<div class="design-note">${escapeMarkupForSafeRender(event.detail)}</div>` : ''}</div>
+                </div>`;
+            }).join('');
+        }
+
+        function downloadUnifiedSessionTimelineAsCSV() {
+            const events = buildUnifiedSessionTimeline();
+            if (events.length === 0) { toast('Nothing to export yet. Inject a property and interact with a form first!'); return; }
+
+            const escapeCsvCell = value => `"${String(value === null || value === undefined ? '' : value).replace(/"/g, '""')}"`;
+            let csv = ['Time', 'Source', 'Label', 'Detail'].map(escapeCsvCell).join(',') + '\n';
+            events.forEach(event => {
+                csv += [new Date(event.at).toISOString(), TIMELINE_SOURCE_META[event.source].label, event.label, event.detail || '']
+                    .map(escapeCsvCell).join(',') + '\n';
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute('download', 'Unified_Session_Timeline.csv');
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            writeLog('CSV Export Engine Complete: Downloaded unified session timeline.', 'success');
+        }
+
         function evaluateUrlRuleAgainstCurrentLocation(rule) {
             if (!rule) return null;
             const currentUrl = window.location.pathname + window.location.search;
@@ -4741,12 +5557,14 @@
             'Feedback Submission Scope': 'appearance',
             'Feedback Submission Inspector': 'activity',
             'Design & Display Render Validator': 'appearance',
+            'WCAG Contrast Audit': 'appearance',
             'Form Targeting Rules Matrix': 'targeting',
             'Config Drift Baseline': 'config',
             'Journey Automation': 'targeting',
             'Live Analytics Events Tracking': 'activity',
             'Native SDK Custom Event Bus': 'activity',
-            'Real-Time QA Execution Timeline Log': 'activity'
+            'Real-Time QA Execution Timeline Log': 'activity',
+            'Unified Session Timeline': 'activity'
         };
 
         let activeWorkspaceKey = 'targeting';
@@ -4810,7 +5628,7 @@
             const snapshot = window.KAMPYLE_ONSITE_SDK ? buildGlobalStatusSnapshot() : null;
             const alertsByWorkspace = {
                 targeting: snapshot ? snapshot.blockedForms : 0,
-                appearance: snapshot ? snapshot.designMismatches : 0,
+                appearance: snapshot ? snapshot.designMismatches + snapshot.contrastFailures : 0,
                 activity: snapshot ? snapshot.networkErrors : 0,
                 config: 0, all: 0
             };
@@ -4842,7 +5660,8 @@
                 propertyId: null, formCount: 0, blockedForms: 0, shownForms: 0,
                 networkErrors: document.querySelectorAll('#network-error-stream-box .network-err-entry').length,
                 submissions: capturedSubmissionTraces.filter(t => t.isComplete).length,
-                designMismatches: 0, designChecked: 0
+                designMismatches: 0, designChecked: 0,
+                contrastFailures: 0, contrastChecked: 0
             };
 
             try { snapshot.propertyId = String(KAMPYLE_DATA.getPropertyId()); } catch (err) { /* not injected */ }
@@ -4861,6 +5680,14 @@
                 designGroups.forEach(group => group.checks.forEach(check => {
                     if (check.verdict === 'pass') snapshot.designChecked++;
                     else if (check.verdict === 'block') { snapshot.designMismatches++; snapshot.designChecked++; }
+                }));
+            }
+
+            const contrastGroups = buildContrastAuditReport();
+            if (contrastGroups) {
+                contrastGroups.forEach(group => group.checks.forEach(check => {
+                    snapshot.contrastChecked++;
+                    if (check.verdict === 'block') snapshot.contrastFailures++;
                 }));
             }
             return snapshot;
@@ -4905,6 +5732,26 @@
                         : 'no blocking rules'}`);
                     blocking.forEach(rule => lines.push(`  - \`${rule.name}\`: ${rule.explanation}`));
                 });
+                lines.push('');
+            }
+
+            const contrastGroups = buildContrastAuditReport();
+            if (contrastGroups && contrastGroups.length) {
+                const failing = contrastGroups
+                    .map(group => ({ title: group.title, checks: group.checks.filter(c => c.verdict === 'block' || c.verdict === 'watch') }))
+                    .filter(group => group.checks.length > 0);
+                lines.push('## Accessibility (WCAG contrast)');
+                if (failing.length === 0) {
+                    lines.push('None — every configured colour pair passes its threshold.');
+                } else {
+                    failing.forEach(group => {
+                        lines.push(`- **${group.title}**`);
+                        group.checks.forEach(check => {
+                            const scope = check.formIds.length === 1 ? `form ${check.formIds[0]}` : `${check.formIds.length} forms: ${check.formIds.join(', ')}`;
+                            lines.push(`  - \`${check.property}\` (${scope}): ${check.colourA} on ${check.colourB} — ${check.pillLabel}${check.note ? ` (${check.note})` : ''}`);
+                        });
+                    });
+                }
                 lines.push('');
             }
 
@@ -4997,6 +5844,11 @@
                         : chip('chip-live', 'Design consistent', null, '#design-validator-container'));
                 }
                 if (s.submissions) chips.push(chip('chip-live', 'Submitted', s.submissions, '#submission-inspector-container'));
+                if (s.contrastChecked) {
+                    chips.push(s.contrastFailures
+                        ? chip('chip-alert', 'Contrast fails', s.contrastFailures, '#contrast-audit-container')
+                        : chip('chip-live', 'Contrast OK', null, '#contrast-audit-container'));
+                }
             }
 
             if (s.networkErrors) chips.push(chip('chip-alert', 'Errors', s.networkErrors, '#network-error-stream-box'));
@@ -5723,6 +6575,9 @@
             writeLog(`SPA Route Event: Switching active view container target: /${pageId}`, 'info');
             updateActiveBrowserAddressBarQueryString(false);
             renderPageTargetingSummary();
+            checkLayoutCollisions();
+            pageEnteredAtByPage[pageId] = Date.now();
+            renderBehavioralStatGrid();
 
             setTimeout(() => {
                 if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
@@ -5877,6 +6732,7 @@
 
             const armCapturePreference = localStorage.getItem(ARM_CAPTURE_BEFORE_INJECT_STORAGE_KEY) === 'true';
             document.querySelectorAll('.arm-capture-toggle-input').forEach(el => { el.checked = armCapturePreference; });
+            applyHostileLayoutState();
 
             // The handset preview stays closed until explicitly requested: it duplicates the
             // dashboard inside itself, so showing it unprompted is noise on a desktop session.
