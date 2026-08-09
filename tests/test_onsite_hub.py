@@ -56,28 +56,53 @@ def server():
     proc.terminate()
 
 
-@pytest.fixture
-def page(server):
+@pytest.fixture(scope="session")
+def browser(server):
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        pg = browser.new_page(viewport={"width": 1440, "height": 900})
-        errors = []
-        pg.on("pageerror", lambda e: errors.append(str(e)))
-        pg.goto(server)
-        pg.wait_for_load_state("networkidle")
-        pg.evaluate("localStorage.clear(); sessionStorage.clear();")
-        pg.reload()
-        pg.wait_for_load_state("networkidle")
-        pg.errors = errors
-        yield pg
-        browser.close()
+        b = p.chromium.launch(headless=True)
+        yield b
+        b.close()
 
 
-def inject(pg, wait_ms=13000):
+@pytest.fixture
+def page(browser, server):
+    # A fresh context per test rather than a fresh browser. A context already isolates
+    # localStorage, sessionStorage and cookies — which is the entire reason the old fixture
+    # cleared storage and reloaded — but costs milliseconds where a browser launch costs about a
+    # second. Starting clean also means the app cannot auto-inject a saved script from a previous
+    # test, so the reload that used to guard against that is gone too.
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    pg = context.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(server, wait_until="domcontentloaded")
+    # Proves DOMContentLoaded init actually ran, not merely that the document parsed.
+    pg.wait_for_function(
+        "() => document.querySelectorAll('#workspace-bar .workspace-tab').length > 0",
+        timeout=15000)
+    pg.errors = errors
+    yield pg
+    context.close()
+
+
+def inject(pg, timeout=35000):
+    """Inject the real embed and wait until the app has finished reacting to it.
+
+    This replaces a flat 13s sleep that was standing in for three separate things at once: the
+    SDK publishing its form registry, the targeting matrix rendering from that registry, and the
+    periodic audit panels completing a first pass. Waiting on those conditions directly is both
+    faster (they are typically ready in 2-4s) and stricter — a fixed sleep that is slightly too
+    short fails intermittently on a loaded machine, and one that is comfortably too long hides a
+    real regression in how quickly the app responds.
+    """
     pg.fill("#input-main-page", EMBED)
     pg.click("#btn-main-page")
-    pg.wait_for_function("() => !!window.KAMPYLE_ONSITE_SDK", timeout=30000)
-    pg.wait_for_timeout(wait_ms)
+    pg.wait_for_function("() => !!window.KAMPYLE_ONSITE_SDK", timeout=timeout)
+    pg.wait_for_function(
+        """() => (readPublishedFormRegistryFromSdk() || []).length >= 4
+                 && document.querySelectorAll('#targeting-matrix-container .targeting-form-card').length >= 4
+                 && document.querySelectorAll('#a11y-audit-container .a11y-check-row').length > 0""",
+        timeout=timeout)
 
 
 # --------------------------------------------------------------------------------------------
@@ -91,10 +116,15 @@ def test_failed_injection_reports_failure_not_success(page):
               '<script src="https://resources.digital-cloud-qa-web.medallia.com/websites/999999/onsite/embed.js"></script>')
     page.click("#btn-main-page")
 
-    page.wait_for_timeout(2000)
-    assert "waiting for the SDK" in page.locator("#msg-main-page").inner_text()
+    page.wait_for_function(
+        "() => document.getElementById('msg-main-page').innerText.includes('waiting for the SDK')",
+        timeout=10000)
 
-    page.wait_for_timeout(25000)
+    # The app gives up after its own SDK_INIT_TIMEOUT_MS (25s), so this cannot be made quick —
+    # but waiting for the verdict beats sleeping past it and hoping the timing still lines up.
+    page.wait_for_function(
+        "() => document.getElementById('msg-main-page').className.includes('error')",
+        timeout=40000)
     message = page.locator("#msg-main-page").inner_text()
     assert "error" in page.evaluate("document.getElementById('msg-main-page').className")
     assert "did not load" in message
@@ -222,6 +252,48 @@ def test_hidden_feedback_button_is_not_reported_as_an_accessibility_failure(page
     if result:
         assert result["reach"] == "info", "hidden is 'cannot evaluate', never a failure"
         assert result["name"] in ("pass", "info")
+
+
+def test_open_form_modal_is_not_reported_as_a_keyboard_failure(page):
+    """Regression: while a lightbox form is open the SDK sets tabindex="-1" and aria-hidden="true"
+    on the feedback button while leaving it visible behind the overlay. That is correct modal
+    behaviour — background controls must not be tabbable behind a dialog — but the audit called it
+    a blocker, and it reached the status bar, collectAllCurrentFindings() and the filed bug report.
+    So the tool told testers to file an accessibility bug against the SDK for doing the right
+    thing, on the most ordinary path through the app: open a form, then read the audit."""
+    inject(page)
+
+    # The feedback button only renders on /Page1, and it is the element under test.
+    page.evaluate("() => { document.getElementById('simulated-url-input').value = '/Page1'; applySimulatedUrlPath(); }")
+    page.wait_for_function("() => !!locateFeedbackButtonElement()", timeout=25000)
+
+    page.evaluate("() => window.KAMPYLE_ONSITE_SDK.showForm(19105)")
+
+    # Wait for the precise state the regression was about — out of the tab order *and* still on
+    # screen — and require it to hold for a full second before trusting it. Measured: while the
+    # lightbox opens the SDK flips the button between visibility:hidden and visible for roughly
+    # 1.5s, so a single-shot check catches a transient hidden frame, and a hidden button already
+    # returned 'info' before this fix. Asserting on that frame would pass without ever exercising
+    # the bug. If this state never settles the SDK's behaviour has changed and this test should
+    # fail loudly rather than quietly prove nothing.
+    page.wait_for_function("""() => {
+        const b = locateFeedbackButtonElement();
+        const ok = !!b && b.tabIndex === -1 && isElementCurrentlyVisible(b)
+                   && window.KAMPYLE_ONSITE_SDK.isSurveyDisplayed();
+        if (!ok) { window.__modalStableSince = null; return false; }
+        window.__modalStableSince = window.__modalStableSince || Date.now();
+        return Date.now() - window.__modalStableSince >= 1000;
+    }""", timeout=30000)
+
+    reach = page.evaluate("""() => {
+        const by = {}; buildAccessibilityAuditReport().forEach(c => by[c.id] = c);
+        return by['btn-reachable'].verdict;
+    }""")
+    assert reach == "info", "correct modal behaviour must not be reported as a failure"
+
+    leaked = [f for f in page.evaluate("() => collectAllCurrentFindings()")
+              if f["severity"] == "block" and "keyboard-reachable" in f["title"]]
+    assert not leaked, "the false blocker must not reach the list the bug report is built from"
 
 
 def test_consent_violations_require_opting_into_consent_testing(page):
