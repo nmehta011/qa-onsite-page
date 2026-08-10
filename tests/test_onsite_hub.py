@@ -149,6 +149,75 @@ def test_all_four_form_types_are_enumerated(page):
     assert types == ["button", "code", "embedded", "invitation"]
 
 
+def test_count_rule_honours_its_comparison_operator(page):
+    """Regression: the rule ships as {numberOfRepeats: 2, compareString: 'greaterThan'} and the
+    app read the 2 alone, comparing with >=. So at exactly 2 visits it called the form eligible,
+    offered "Set visits to 2" as the one-click fix, and then reported nothing blocked while the
+    form stayed hidden — the tool disagreeing with the SDK about the thing it exists to predict.
+
+    Confirmed against the live property by seeding the counter and watching whether the embedded
+    form actually renders: 1 -> hidden, 2 -> hidden, 3 -> rendered."""
+    inject(page)
+
+    def verdict_at(visits):
+        return page.evaluate(f"""() => {{
+            localStorage.setItem('kampyleUserSessionsCount', '{visits}');
+            const f = (readPublishedFormRegistryFromSdk()||[]).find(x => x.formType === 'embedded');
+            const r = decodeTargetingRulesForForm(f).find(x => x.name === 'NumberOfVisits');
+            return {{verdict: r.verdict, configured: r.configured, fix: r.fix}};
+        }}""")
+
+    at_two = verdict_at(2)
+    assert at_two["verdict"] == "block", "2 does not satisfy 'greater than 2' — this was the bug"
+    assert "more than 2" in at_two["configured"], \
+        f"the operator must be visible in the rule, got {at_two['configured']!r}"
+
+    # The offered fix has to actually satisfy the rule, or the app walks the tester into the
+    # same false 'nothing blocked' it used to report on its own.
+    assert at_two["fix"]["value"] == "3", f"fix must clear the threshold, got {at_two['fix']['value']!r}"
+
+    assert verdict_at(3)["verdict"] == "pass"
+    assert verdict_at(1)["verdict"] == "block"
+
+
+def test_count_rule_operators_match_the_sdk_comparison_table(page):
+    """The operator table mirrors kampyleCompareByOperator in the property's own generic*.js:
+    lowercased before matching (config ships camelCase), and anything unrecognised falls through
+    its switch to false rather than being guessed at."""
+    inject(page)
+    results = page.evaluate("""() => {
+        const call = (actual, want, op) => {
+            const r = evaluateCountRuleAgainstOperator(actual, want, op);
+            return r === null ? 'unreadable' : (r.satisfied ? 'pass' : 'block') + ':' + r.targetValue;
+        };
+        return {
+            gt_above:   call(3, 2, 'greaterThan'),
+            gt_equal:   call(2, 2, 'greaterThan'),
+            gt_below:   call(1, 2, 'greaterThan'),
+            lt_below:   call(1, 2, 'smallerThan'),
+            lt_equal:   call(2, 2, 'smallerThan'),
+            eq_match:   call(2, 2, 'equals'),
+            eq_miss:    call(3, 2, 'equals'),
+            ne_differs: call(3, 2, 'doesNotEqual'),
+            ne_same:    call(2, 2, 'doesNotEqual'),
+            uppercased: call(3, 2, 'GREATERTHAN'),
+            unknown:    call(3, 2, 'bogusOperator'),
+            unreachable: call(1, 0, 'smallerThan'),
+        };
+    }""")
+    assert results == {
+        "gt_above": "pass:3", "gt_equal": "block:3", "gt_below": "block:3",
+        "lt_below": "pass:1", "lt_equal": "block:1",
+        "eq_match": "pass:2", "eq_miss": "block:2",
+        "ne_differs": "pass:3", "ne_same": "block:3",
+        "uppercased": "pass:3",
+        "unknown": "unreadable",
+        # A count cannot go below zero, so "fewer than 0" can never be satisfied and must not
+        # offer a fix that writes a negative value.
+        "unreachable": "block:null",
+    }, results
+
+
 def test_visit_count_rule_is_computed_not_deferred(page):
     """Regression: NumberOfVisits reported 'info' (unknowable at runtime) even though both the
     requirement and the live counter were already in hand."""

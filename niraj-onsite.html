@@ -5524,6 +5524,37 @@
             return { verdict: 'pass', explanation: `${actionLabel} ${daysElapsed.toFixed(2)} day(s) ago, past the ${quarantineDays}-day window. Form is eligible again.` };
         }
 
+        // Count rules carry an operator, and ignoring it produces confidently wrong answers.
+        // "numberOfVisits: { numberOfRepeats: 2, compareString: 'greaterThan' }" means visits > 2,
+        // but this app read the 2 alone and compared with >=, so it called a form eligible at 2
+        // visits, offered "Set visits to 2" as the one-click fix, and then reported nothing
+        // blocked while the form stayed hidden. Mirrors kampyleCompareByOperator in the property's
+        // own generic*.js: the operator is lowercased before matching (config ships camelCase),
+        // and anything unrecognised falls through its switch to false. Only the numeric operators
+        // are modelled -- the string ones (contains, startswith, regex) never appear on a count.
+        const TARGETING_COUNT_COMPARATORS = {
+            equals:       { satisfiedBy: (actual, want) => actual === want, describe: want => `exactly ${want}`,
+                            smallestSatisfyingValue: want => want },
+            doesnotequal: { satisfiedBy: (actual, want) => actual !== want, describe: want => `any number except ${want}`,
+                            smallestSatisfyingValue: want => want + 1 },
+            greaterthan:  { satisfiedBy: (actual, want) => actual > want,   describe: want => `more than ${want}`,
+                            smallestSatisfyingValue: want => want + 1 },
+            // A count cannot go below zero, so "fewer than 0" is unreachable and offers no fix.
+            smallerthan:  { satisfiedBy: (actual, want) => actual < want,   describe: want => `fewer than ${want}`,
+                            smallestSatisfyingValue: want => (want > 0 ? want - 1 : null) }
+        };
+
+        function evaluateCountRuleAgainstOperator(actual, want, compareString) {
+            const comparator = TARGETING_COUNT_COMPARATORS[String(compareString == null ? '' : compareString).toLowerCase()];
+            if (!comparator) return null;   // unreadable operator -- the caller reports it rather than guessing
+            const target = comparator.smallestSatisfyingValue(want);
+            return {
+                satisfied: comparator.satisfiedBy(actual, want),
+                requirement: comparator.describe(want),
+                targetValue: target === null || target < 0 ? null : target
+            };
+        }
+
         function decodeTargetingRulesForForm(form) {
             const rules = [];
             const onSiteData = form.onSiteData || {};
@@ -5588,27 +5619,69 @@
             if (onSiteData.numberOfPagesViewed && onSiteData.numberOfPagesViewed.numberOfRepeats) {
                 const required = Number(onSiteData.numberOfPagesViewed.numberOfRepeats);
                 const current = Number(localStorage.getItem('kampyleSessionPageCounter') || '0');
-                const satisfied = Number.isFinite(current) && current >= required;
-                push('NumberOfPagesViewed', `${required} page(s) in session`, satisfied ? 'pass' : 'block',
-                    satisfied
-                        ? `${current} page(s) viewed this session, which meets the ${required} required.`
-                        : `Only ${current} of the ${required} required page(s) viewed this session — short by ${required - current}. Navigate between the scenario pages to advance it.`,
-                    'kampyleSessionPageCounter',
-                    satisfied ? null : `it needs ${required} page views this session and there ${current === 1 ? 'has been' : 'have been'} ${current}`,
-                    satisfied ? null : { label: `Set page views to ${required}`, key: 'kampyleSessionPageCounter', value: String(required) });
+                const comparison = evaluateCountRuleAgainstOperator(current, required, onSiteData.numberOfPagesViewed.compareString);
+
+                if (!comparison) {
+                    // The SDK reads this one straight through kampyleCompareByOperator with no
+                    // null-guard, so an operator its switch doesn't recognise evaluates to false
+                    // and the form stays hidden. Reported as a block, not an unknown.
+                    push('NumberOfPagesViewed', `${required} page(s) in session`, 'block',
+                        `Configured operator "${onSiteData.numberOfPagesViewed.compareString}" is not one the SDK recognises, so its comparison evaluates to false and this rule can never pass. ${current} page(s) viewed this session.`,
+                        'kampyleSessionPageCounter',
+                        `its page-view operator "${onSiteData.numberOfPagesViewed.compareString}" is not one the SDK recognises, so the rule can never pass`);
+                } else {
+                    const { satisfied, requirement, targetValue } = comparison;
+                    push('NumberOfPagesViewed', `${requirement} page(s) in session`, satisfied ? 'pass' : 'block',
+                        satisfied
+                            ? `${current} page(s) viewed this session, which satisfies "${requirement}".`
+                            : `${current} page(s) viewed this session, but this rule needs ${requirement}.${targetValue === null ? '' : ' Navigate between the scenario pages to advance it.'}`,
+                        'kampyleSessionPageCounter',
+                        satisfied ? null : `it needs ${requirement} page views this session and there ${current === 1 ? 'has been' : 'have been'} ${current}`,
+                        satisfied || targetValue === null ? null
+                            : { label: `Set page views to ${targetValue}`, key: 'kampyleSessionPageCounter', value: String(targetValue) });
+                }
             }
 
             if (onSiteData.numberOfVisits && onSiteData.numberOfVisits.numberOfRepeats) {
                 const required = Number(onSiteData.numberOfVisits.numberOfRepeats);
-                const current = Number(localStorage.getItem('kampyleUserSessionsCount') || '0');
-                const satisfied = Number.isFinite(current) && current >= required;
-                push('NumberOfVisits', `${required} visit(s)`, satisfied ? 'pass' : 'block',
-                    satisfied
-                        ? `This browser has ${current} recorded visit(s), which meets the ${required} required.`
-                        : `This browser has ${current} recorded visit(s) but ${required} are required — short by ${required - current}.`,
-                    'kampyleUserSessionsCount',
-                    satisfied ? null : `it needs ${required} visits and this browser has ${current}`,
-                    satisfied ? null : { label: `Set visits to ${required}`, key: 'kampyleUserSessionsCount', value: String(required) });
+                const rawVisits = localStorage.getItem('kampyleUserSessionsCount');
+                const current = Number(rawVisits || '0');
+                const compareString = onSiteData.numberOfVisits.compareString;
+
+                if (rawVisits === null || rawVisits === '') {
+                    // The SDK guards this rule with `if (visitsCount)` before it compares anything,
+                    // so a browser with no stored count fails it whatever the operator says. The
+                    // SDK writes the key on first load, so this is mostly reachable via a purge.
+                    push('NumberOfVisits', `${required} visit(s)`, 'block',
+                        'No kampyleUserSessionsCount is stored yet. The SDK checks that this value exists before it compares anything, so the rule fails regardless of the operator — reload once to let the SDK record a visit.',
+                        'kampyleUserSessionsCount',
+                        'this browser has no recorded visit count yet',
+                        { label: 'Set visits to 1', key: 'kampyleUserSessionsCount', value: '1' });
+                } else if (compareString == null) {
+                    // Its null branch passes the rule outright rather than defaulting to a
+                    // comparison, so a count with no operator is not a constraint at all.
+                    push('NumberOfVisits', `${required} visit(s), no operator configured`, 'pass',
+                        `No compareString is configured alongside the visit count, and the SDK passes this rule outright when the operator is absent rather than assuming one. This browser has ${current} recorded visit(s), but the count is not actually being enforced.`,
+                        'kampyleUserSessionsCount');
+                } else {
+                    const comparison = evaluateCountRuleAgainstOperator(current, required, compareString);
+                    if (!comparison) {
+                        push('NumberOfVisits', `${required} visit(s)`, 'block',
+                            `Configured operator "${compareString}" is not one the SDK recognises, so its comparison evaluates to false and this rule can never pass. This browser has ${current} recorded visit(s).`,
+                            'kampyleUserSessionsCount',
+                            `its visit operator "${compareString}" is not one the SDK recognises, so the rule can never pass`);
+                    } else {
+                        const { satisfied, requirement, targetValue } = comparison;
+                        push('NumberOfVisits', `${requirement} visit(s)`, satisfied ? 'pass' : 'block',
+                            satisfied
+                                ? `This browser has ${current} recorded visit(s), which satisfies "${requirement}".`
+                                : `This browser has ${current} recorded visit(s) but this rule needs ${requirement}.`,
+                            'kampyleUserSessionsCount',
+                            satisfied ? null : `it needs ${requirement} visits and this browser has ${current}`,
+                            satisfied || targetValue === null ? null
+                                : { label: `Set visits to ${targetValue}`, key: 'kampyleUserSessionsCount', value: String(targetValue) });
+                    }
+                }
             }
 
             if (onSiteData.kampyleTimeOnPage && onSiteData.kampyleTimeOnPage.time) {
