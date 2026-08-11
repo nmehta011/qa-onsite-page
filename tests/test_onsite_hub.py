@@ -143,10 +143,14 @@ def test_successful_injection_reports_the_property_id(page):
 # --------------------------------------------------------------------------------------------
 
 def test_all_four_form_types_are_enumerated(page):
+    """Asserts every trigger type is decoded, not that the property holds exactly four forms —
+    it gained a fifth (68478, code-triggered) mid-project and the stricter equality check failed
+    on a config change that was nobody's bug. A missing type still fails, which is the point."""
     inject(page)
     types = page.evaluate(
-        "() => (readPublishedFormRegistryFromSdk()||[]).map(f => f.formType).sort()")
-    assert types == ["button", "code", "embedded", "invitation"]
+        "() => (readPublishedFormRegistryFromSdk()||[]).map(f => f.formType)")
+    assert set(types) >= {"button", "code", "embedded", "invitation"}, \
+        f"a trigger type stopped being decoded, got {sorted(set(types))}"
 
 
 def test_count_rule_honours_its_comparison_operator(page):
@@ -230,27 +234,45 @@ def test_visit_count_rule_is_computed_not_deferred(page):
     assert rule["fix"], "a computable block should offer a one-click fix"
 
 
-def test_one_click_fix_unblocks_the_form(page):
+EMBEDDED_TONE = """() => {
+    const f = (readPublishedFormRegistryFromSdk()||[]).find(x => x.formType === 'embedded');
+    return buildFormShowVerdict(f, decodeTargetingRulesForForm(f)).tone;
+}"""
+
+EMBEDDED_SHOWN = """() => {
+    const f = (readPublishedFormRegistryFromSdk()||[]).find(x => x.formType === 'embedded');
+    return !!(f && f.state && f.state.shown);
+}"""
+
+
+def test_one_click_fix_actually_makes_the_form_appear(page):
+    """Regression: the fix wrote the value and the matrix flipped to 'nothing blocking', but the
+    SDK only re-reads storage on updatePageView() and nothing called it — so the form stayed
+    absent while the app reported its own remedy as a success. The URL fix already called it;
+    the storage fix never had.
+
+    The previous version of this test is why that survived: it asserted only that the app's own
+    verdict stopped saying 'block'. The app agreeing with itself proves nothing about the page,
+    so this now waits on the SDK reporting the form shown."""
     inject(page)
     page.evaluate("setActiveWorkspace('targeting')")
-    page.wait_for_timeout(1200)
 
-    before = page.evaluate("() => buildFormShowVerdict("
-                           "(readPublishedFormRegistryFromSdk()||[]).find(f=>f.formType==='embedded'),"
-                           "decodeTargetingRulesForForm((readPublishedFormRegistryFromSdk()||[]).find(f=>f.formType==='embedded'))).tone")
-    assert before == "block"
+    assert page.evaluate(EMBEDDED_TONE) == "block"
+    assert page.evaluate(EMBEDDED_SHOWN) is False, "precondition: the form must start hidden"
 
-    buttons = page.locator(".form-verdict-fix")
-    for i in range(buttons.count()):
-        if "visits" in buttons.nth(i).inner_text():
-            buttons.nth(i).click()
-            break
-    page.wait_for_timeout(2000)
+    clicked = page.evaluate("""() => {
+        const b = [...document.querySelectorAll('.form-verdict-fix')].find(x => /visits/i.test(x.innerText));
+        if (!b) return null;
+        const label = b.innerText.trim();
+        b.click();
+        return label;
+    }""")
+    assert clicked, "no visits fix button was rendered to click"
 
-    after = page.evaluate("() => buildFormShowVerdict("
-                          "(readPublishedFormRegistryFromSdk()||[]).find(f=>f.formType==='embedded'),"
-                          "decodeTargetingRulesForForm((readPublishedFormRegistryFromSdk()||[]).find(f=>f.formType==='embedded'))).tone")
-    assert after != "block"
+    # Ground truth: the SDK has to report the form shown. Asserting the hub's verdict alone is
+    # what let the broken version through.
+    page.wait_for_function(EMBEDDED_SHOWN, timeout=25000)
+    assert page.evaluate(EMBEDDED_TONE) != "block"
 
 
 def test_url_rule_is_evaluated_consistently_and_simulation_satisfies_it(page):

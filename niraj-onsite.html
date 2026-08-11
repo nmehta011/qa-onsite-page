@@ -5808,10 +5808,16 @@
                 return;
             }
             if (!fix.key) return;
-            localStorage.setItem(fix.key, fix.value);
-            writeLog(`🔧 Applied fix: ${fix.key} set to ${fix.value}.`, 'success');
-            toast(`${fix.label} — done. The matrix will re-evaluate within a second.`, 'success');
-            refreshOnsiteLifecycleStateValues();
+            // Routed through the same helper the Lifecycle State panel uses, because writing the
+            // value alone only changed what THIS app computed. The SDK re-reads storage on
+            // updatePageView(), so without that call the matrix flipped to "nothing blocking"
+            // while the form stayed absent from the page -- the app reporting its own remedy as a
+            // success the page never delivered. Confirmed: the one-click path wrote 3 and left
+            // sdkShown false with no iframe; the manual path wrote the same value, called
+            // updatePageView(), and the form rendered. Sharing the helper is what stops the two
+            // paths drifting apart again. The simulateUrl branch above already calls it.
+            commitLifecycleStorageWrite(fix.key, fix.value, `🔧 Applied fix: ${fix.key} set to ${fix.value}.`);
+            toast(`${fix.label} — done. Asked the SDK to re-evaluate targeting.`, 'success');
             renderFormTargetingRulesMatrix();
         }
 
