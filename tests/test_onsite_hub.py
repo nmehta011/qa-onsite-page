@@ -260,19 +260,99 @@ def test_one_click_fix_actually_makes_the_form_appear(page):
     assert page.evaluate(EMBEDDED_TONE) == "block"
     assert page.evaluate(EMBEDDED_SHOWN) is False, "precondition: the form must start hidden"
 
-    clicked = page.evaluate("""() => {
-        const b = [...document.querySelectorAll('.form-verdict-fix')].find(x => /visits/i.test(x.innerText));
-        if (!b) return null;
-        const label = b.innerText.trim();
-        b.click();
-        return label;
-    }""")
-    assert clicked, "no visits fix button was rendered to click"
+    # Clicks whatever the matrix offers rather than the visits fix by name: the property gained a
+    # rule-engine condition on this form mid-project, so naming one rule made the test depend on
+    # a config that changes. Every offered fix is applied until none remain.
+    applied = []
+    for _ in range(6):
+        clicked = page.evaluate("""() => {
+            const b = document.querySelector('.form-verdict-fix');
+            if (!b) return null;
+            const label = b.innerText.trim();
+            b.click();
+            return label;
+        }""")
+        if not clicked:
+            break
+        applied.append(clicked)
+        page.wait_for_timeout(2500)
+    assert applied, "the matrix offered no fix at all for a blocked form"
 
     # Ground truth: the SDK has to report the form shown. Asserting the hub's verdict alone is
     # what let the broken version through.
     page.wait_for_function(EMBEDDED_SHOWN, timeout=25000)
     assert page.evaluate(EMBEDDED_TONE) != "block"
+
+
+def test_rule_engine_criteria_offers_a_working_one_click_fix(page):
+    """The embedded form carries a rule-builder condition — custom param "test" contains "test".
+    The matrix used to dump it as raw JSON with no fix and call it something "only real behaviour
+    can satisfy", which was wrong twice over: it is readable, and it is satisfiable from here.
+
+    The SDK resolves a parameter through fetchCPValue from one of `var`, `url` or `cookie`, and
+    the configuration naming which is not exposed on any SDK global, so the fix writes the window
+    variable and the cookie. Confirmed against this rule: window.test is what it reads."""
+    inject(page)
+    # Clear the visit rule so the criteria condition is the remaining dependency.
+    page.evaluate("() => commitLifecycleStorageWrite('kampyleUserSessionsCount', '9', 'test setup')")
+
+    page.wait_for_function("""() => [...document.querySelectorAll('.form-verdict-fix')]
+        .some(b => /custom param/i.test(b.innerText))""", timeout=20000)
+
+    rule = page.evaluate("""() => {
+        const f = (readPublishedFormRegistryFromSdk()||[]).find(x => String(x.formId) === '67251');
+        return decodeTargetingRulesForForm(f).find(r => r.name === 'GenericRule');
+    }""")
+    assert rule["configured"] == 'custom param "test" contains "test"', \
+        f"the rule must read as English, not raw JSON — got {rule['configured']!r}"
+    assert rule["fix"]["customParams"] == [{"name": "test", "value": "test"}]
+
+    clicked = page.evaluate("""() => {
+        const b = [...document.querySelectorAll('.form-verdict-fix')].find(x => /custom param/i.test(x.innerText));
+        if (!b) return null;
+        const label = b.innerText.trim();
+        b.click();
+        return label;
+    }""")
+    assert clicked == "Set custom param test = test", clicked
+
+    page.wait_for_function(EMBEDDED_SHOWN, timeout=25000)
+    assert page.evaluate("() => String(window.test)") == "test"
+
+
+def test_criteria_rules_are_described_and_only_fixed_when_derivable(page):
+    """Nested groups, OR, and negation are all satisfiable by setting every named parameter — that
+    holds for OR as well as AND, so the conjunction needs no special case. A regex has no single
+    derivable value and two conditions contradicting each other on one parameter cannot both hold;
+    both offer no fix rather than one that quietly fails."""
+    inject(page)
+    shapes = page.evaluate("""() => {
+        const cp = (fieldName, condition, value) =>
+            ({type:'criteria', fieldOrigin:'customParam', fieldName, condition, value});
+        const group = (conjunction, ...kids) =>
+            ({type:'criteriaGroup', conjunction, childrenCriterias:kids});
+        const shape = r => ({desc: describeCriteriaRule(r), fix: buildCriteriaRuleFix(r)});
+        return {
+            nested: shape(group('AND', cp('a','equals','1'),
+                                group('OR', cp('b','equals','2'), cp('c','endsWith','3')))),
+            negation: shape(group('AND', cp('plan','doesNotEqual','free'))),
+            hasvalue: shape(group('AND', cp('email','hasValue',''))),
+            regex: shape(group('AND', cp('sku','regex','^A.*Z$'))),
+            contradictory: shape(group('AND', cp('x','equals','1'), cp('x','equals','2'))),
+        };
+    }""")
+
+    assert shapes["nested"]["desc"] == \
+        '(custom param "a" equals "1" AND (custom param "b" equals "2" OR custom param "c" ends with "3"))'
+    assert shapes["nested"]["fix"]["customParams"] == [
+        {"name": "a", "value": "1"}, {"name": "b", "value": "2"}, {"name": "c", "value": "3"}]
+
+    # A negation is satisfied by any other value, not by the configured one.
+    assert shapes["negation"]["fix"]["customParams"] == [{"name": "plan", "value": "free-qa"}]
+    assert shapes["hasvalue"]["fix"]["customParams"] == [{"name": "email", "value": "qa-value"}]
+
+    assert shapes["regex"]["fix"] is None, "a regex pattern has no single satisfying value"
+    assert shapes["contradictory"]["fix"] is None, "contradictory conditions must not be half-applied"
 
 
 SUBMITTED_QUARANTINE = """() => {

@@ -5564,6 +5564,100 @@
             };
         }
 
+        // --- CRITERIA / RULE-ENGINE TARGETING ---
+        // genericRule is the rule builder's output: a criteriaGroup with a conjunction and any
+        // number of child criteria (nested groups included). Each criterion names a custom
+        // parameter, a condition and a value -- e.g. customParam "test" contains "test".
+        //
+        // The SDK reads a parameter's live value through fetchCPValue, which resolves exactly
+        // three sources: `var` (a window property, dot-paths supported), `url` (a query
+        // parameter) and `cookie`, defaulting to `var` when the source is unset. Which one a
+        // given parameter uses lives in the onsite configuration behind getCustomParamById, and
+        // that is NOT exposed on any SDK global -- confirmed by probing every KAMPYLE_* object.
+        // So this writes the window property and the cookie, which covers the default and the
+        // common case, and says plainly that a URL-sourced parameter is not covered rather than
+        // reporting a fix that quietly did nothing. Verified against a real rule: setting
+        // window.test made the embedded form render; cookie and URL alone did not, because that
+        // parameter is var-sourced.
+        const CRITERIA_CONDITION_LABELS = {
+            equals: 'equals', doesnotequal: 'does not equal', contains: 'contains',
+            doesnotcontain: 'does not contain', startswith: 'starts with', endswith: 'ends with',
+            hasvalue: 'has any value', greaterthan: 'is greater than', smallerthan: 'is smaller than',
+            regex: 'matches regex', laterthan: 'is later than', earlierthan: 'is earlier than'
+        };
+
+        // A value that satisfies each condition. Absent entries have no single derivable value --
+        // a regex pattern cannot be inverted into one example, and the datetime comparisons
+        // depend on a casting path this app does not model -- so those offer no fix instead of a
+        // guessed one.
+        const CRITERIA_SATISFYING_VALUE = {
+            equals: want => String(want),
+            contains: want => String(want),
+            startswith: want => String(want),
+            endswith: want => String(want),
+            hasvalue: want => (String(want || '').trim() || 'qa-value'),
+            doesnotequal: want => `${want}-qa`,
+            doesnotcontain: want => (String(want || '') && !'qa-value'.includes(String(want)) ? 'qa-value' : null),
+            greaterthan: want => (Number.isFinite(Number(want)) ? String(Number(want) + 1) : null),
+            smallerthan: want => (Number.isFinite(Number(want)) ? String(Number(want) - 1) : null)
+        };
+
+        function collectCriteriaFromRuleGroup(node, collected) {
+            const out = collected || [];
+            if (!node || typeof node !== 'object') return out;
+            if (node.type === 'criteriaGroup' && Array.isArray(node.childrenCriterias)) {
+                node.childrenCriterias.forEach(child => collectCriteriaFromRuleGroup(child, out));
+            } else if (node.type === 'criteria') {
+                out.push(node);
+            }
+            return out;
+        }
+
+        function describeCriteriaRule(node) {
+            if (!node || typeof node !== 'object') return 'unreadable rule';
+            if (node.type === 'criteriaGroup' && Array.isArray(node.childrenCriterias)) {
+                const joiner = ` ${String(node.conjunction || 'AND').toUpperCase()} `;
+                const parts = node.childrenCriterias.map(describeCriteriaRule);
+                return parts.length === 1 ? parts[0] : `(${parts.join(joiner)})`;
+            }
+            const condition = CRITERIA_CONDITION_LABELS[String(node.condition || '').toLowerCase()]
+                || node.condition || 'compares to';
+            const target = node.fieldOrigin === 'customParam' ? `custom param "${node.fieldName}"` : `${node.fieldOrigin} "${node.fieldName}"`;
+            return String(node.condition || '').toLowerCase() === 'hasvalue'
+                ? `${target} ${condition}`
+                : `${target} ${condition} "${node.value}"`;
+        }
+
+        // Every criterion has to be satisfiable for the fix to be offered. Setting all of them
+        // satisfies an OR group as well as an AND one, so the conjunction needs no special case --
+        // but two criteria on the same parameter demanding different values cannot both hold, and
+        // that contradiction is reported rather than half-applied.
+        function buildCriteriaRuleFix(genericRule) {
+            const criteria = collectCriteriaFromRuleGroup(genericRule);
+            if (!criteria.length) return null;
+            if (criteria.some(c => c.fieldOrigin !== 'customParam')) return null;
+
+            const byName = new Map();
+            for (const criterion of criteria) {
+                const derive = CRITERIA_SATISFYING_VALUE[String(criterion.condition || '').toLowerCase()];
+                if (!derive) return null;
+                const value = derive(criterion.value);
+                if (value === null || value === undefined) return null;
+                const name = String(criterion.fieldName || '').trim();
+                if (!name) return null;
+                if (byName.has(name) && byName.get(name) !== value) return null;   // contradictory group
+                byName.set(name, value);
+            }
+
+            const params = [...byName.entries()].map(([name, value]) => ({ name, value }));
+            return {
+                label: params.length === 1
+                    ? `Set custom param ${params[0].name} = ${params[0].value}`
+                    : `Set ${params.length} custom params`,
+                customParams: params
+            };
+        }
+
         function decodeTargetingRulesForForm(form) {
             const rules = [];
             const onSiteData = form.onSiteData || {};
@@ -5719,8 +5813,21 @@
             }
 
             if (onSiteData.genericRule) {
-                push('GenericRule', JSON.stringify(onSiteData.genericRule), 'info',
-                    'Custom expression evaluated by the SDK against page variables and parameters.');
+                const description = describeCriteriaRule(onSiteData.genericRule);
+                const criteriaFix = buildCriteriaRuleFix(onSiteData.genericRule);
+                // Still 'info', not a computed verdict: the value the SDK compares against comes
+                // from whichever source that parameter is configured to read, and the
+                // configuration naming it is not reachable from the page. Reading window only and
+                // calling it a pass or a block would be the same false confidence the count rules
+                // used to have. The SDK's own outcome is already visible in the form's shown/
+                // blocked state above, which is the honest place to read it from.
+                push('GenericRule', description, 'info',
+                    criteriaFix
+                        ? `Rule engine condition: ${description}. Evaluated by the SDK against the live parameter value, which this page cannot read for certain — the parameter's configured source (window variable, URL parameter or cookie) is not exposed by the SDK. The fix sets a satisfying value as a window variable and a cookie, which covers the SDK's default source; if this parameter reads from a URL query parameter instead, set it in the Custom Parameters panel.`
+                        : `Rule engine condition: ${description}. No one-click fix is offered: a satisfying value cannot be derived from this combination of conditions (a regex or datetime comparison, a non-custom-parameter field, or two conditions on the same parameter that contradict each other).`,
+                    null,
+                    null,
+                    criteriaFix);
             }
 
             // The matrix used to hardcode 'info' here while the per-page summary panel called the
@@ -5805,12 +5912,23 @@
                 : form.formType === 'code' ? 'your own code to call it — use “Show a form on demand” in Setup to fire it now'
                 : form.formType === 'embedded' ? `its container to exist on the page (this app provides #embedded_form)`
                 : 'its invitation to be triggered';
+            if (!waiting.length) {
+                return { tone: 'pass', headline: `Nothing is blocking it — it just needs ${trigger}.`, fixes: [] };
+            }
+            // 'info' does not imply behavioural. A rule-engine condition is unknowable from here --
+            // the parameter's configured source is not exposed by the SDK -- yet it is still
+            // satisfiable from this page, so its fix is surfaced instead of the whole rule being
+            // described as something only real behaviour can reach. Dwell timers genuinely are
+            // behavioural and stay described that way.
+            const satisfiable = waiting.filter(r => r.fix);
+            const behavioural = waiting.filter(r => !r.fix);
+            const clauses = [];
+            if (satisfiable.length) clauses.push(`${satisfiable.map(r => r.name).join(' and ')}, which you can satisfy from here`);
+            if (behavioural.length) clauses.push(`${behavioural.map(r => r.name).join(' and ')}, which only real behaviour can satisfy`);
             return {
-                tone: waiting.length ? 'watch' : 'pass',
-                headline: waiting.length
-                    ? `Nothing is blocking it, but it still depends on ${waiting.map(r => r.name).join(' and ')}, which can only be satisfied by real behaviour. After that it needs ${trigger}.`
-                    : `Nothing is blocking it — it just needs ${trigger}.`,
-                fixes: []
+                tone: 'watch',
+                headline: `Nothing is blocking it, but it still depends on ${clauses.join('; and on ')}. After that it needs ${trigger}.`,
+                fixes: satisfiable.map(r => r.fix)
             };
         }
 
@@ -5824,6 +5942,24 @@
                 const field = document.getElementById('simulated-url-input');
                 if (field) field.value = fix.simulateUrl;
                 applySimulatedUrlPath();
+                return;
+            }
+            if (Array.isArray(fix.customParams) && fix.customParams.length) {
+                // Written to both sources this page can reach without disturbing anything else.
+                // The URL source is deliberately not touched: adding a query parameter rewrites
+                // the address bar, which is itself a targeting input that the URL rules read.
+                fix.customParams.forEach(param => {
+                    try { window[param.name] = param.value; } catch (err) { /* non-writable global */ }
+                    document.cookie = `${encodeURIComponent(param.name)}=${encodeURIComponent(param.value)}; path=/`;
+                });
+                const summary = fix.customParams.map(p => `${p.name}="${p.value}"`).join(', ');
+                writeLog(`🔧 Applied fix: set custom param ${summary} as a window variable and a cookie.`, 'success');
+                refreshOnsiteLifecycleStateValues();
+                if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
+                    window.KAMPYLE_ONSITE_SDK.updatePageView();
+                }
+                toast(`${fix.label} — done. Asked the SDK to re-evaluate targeting.`, 'success');
+                renderFormTargetingRulesMatrix();
                 return;
             }
             if (!fix.key) return;
