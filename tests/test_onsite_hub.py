@@ -275,6 +275,74 @@ def test_one_click_fix_actually_makes_the_form_appear(page):
     assert page.evaluate(EMBEDDED_TONE) != "block"
 
 
+SUBMITTED_QUARANTINE = """() => {
+    const f = (readPublishedFormRegistryFromSdk()||[]).find(x => String(x.formId) === '67209');
+    const r = decodeTargetingRulesForForm(f).find(x => x.name === 'DontInviteOnSubmitted');
+    return r ? {verdict: r.verdict, fix: r.fix} : null;
+}"""
+
+
+def test_submitted_date_quarantine_offers_a_working_one_click_fix(page):
+    """The invitation is suppressed for 2 days after a submission. The matrix showed that but
+    offered nothing, so a tester had to go find SUBMITTED_DATE in the Lifecycle panel by hand —
+    the one rule most likely to be blocking them right after they tested a submission."""
+    inject(page)
+    page.evaluate("() => localStorage.setItem('SUBMITTED_DATE', String(Date.now()))")
+    page.evaluate("renderFormTargetingRulesMatrix()")
+
+    blocked = page.evaluate(SUBMITTED_QUARANTINE)
+    assert blocked and blocked["verdict"] == "block", "setup: a fresh submit must quarantine it"
+    assert blocked["fix"], "a blocking quarantine rule must offer a fix"
+
+    # Click the button a tester clicks, not the function behind it.
+    clicked = page.evaluate("""() => {
+        const b = [...document.querySelectorAll('.form-verdict-fix')].find(x => /back-date/i.test(x.innerText));
+        if (!b) return null;
+        const label = b.innerText.trim();
+        b.click();
+        return label;
+    }""")
+    assert clicked, "the fix must render as a clickable button in the matrix"
+
+    page.wait_for_function("""() => {
+        const f = (readPublishedFormRegistryFromSdk()||[]).find(x => String(x.formId) === '67209');
+        const r = decodeTargetingRulesForForm(f).find(x => x.name === 'DontInviteOnSubmitted');
+        return r && r.verdict === 'pass';
+    }""", timeout=15000)
+
+    # Back-dated past the window rather than cleared: clearing would prove "this never happened",
+    # which is a different rule from "the window expires".
+    age_days = page.evaluate(
+        "() => (Date.now() - Number(localStorage.getItem('SUBMITTED_DATE'))) / 86400000")
+    assert age_days > 2, f"must land outside the 2-day window, got {age_days:.2f} days"
+
+
+def test_quarantine_and_session_cap_fixes_are_offered_for_rules_this_property_does_not_configure(page):
+    """DECLINED_DATE and the once-per-session cap are decoded from config this property doesn't
+    set (no form declares `declined`, and inviteOncePerSession is false), so there is no live form
+    to watch flip. Driven through the decoder with synthetic config instead — honest unit coverage
+    rather than a ground-truth claim the property can't support."""
+    inject(page)
+    result = page.evaluate("""() => {
+        const apply = (form, ruleName) => {
+            const before = decodeTargetingRulesForForm(form).find(r => r.name === ruleName);
+            if (!before || !before.fix) return {verdict: before && before.verdict, fix: null};
+            localStorage.setItem(before.fix.key, before.fix.value);
+            const after = decodeTargetingRulesForForm(form).find(r => r.name === ruleName);
+            return {verdict: before.verdict, fixLabel: before.fix.label, after: after.verdict};
+        };
+        localStorage.setItem('DECLINED_DATE', String(Date.now()));
+        localStorage.setItem('kampyleInvitePresented', 'true');
+        return {
+            declined: apply({onSiteData: {declined: {days: '3'}}}, 'DontInviteOnDeclined'),
+            perSession: apply({onSiteData: {kampyleInvitePerSession: {inviteOncePerSession: 'true'}}},
+                              'InvitePerSession'),
+        };
+    }""")
+    assert result["declined"]["verdict"] == "block" and result["declined"]["after"] == "pass", result
+    assert result["perSession"]["verdict"] == "block" and result["perSession"]["after"] == "pass", result
+
+
 def test_url_rule_is_evaluated_consistently_and_simulation_satisfies_it(page):
     """Regression: the Targeting Matrix hardcoded 'info' for URL rules while the per-page panel
     evaluated them, so the two panels disagreed about the same rule."""

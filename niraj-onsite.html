@@ -5511,7 +5511,7 @@
 
         // Shared evaluator for the two date quarantine rules, which differ only in the storage
         // key they consult: a form stays suppressed until the configured window has elapsed.
-        function evaluateDateQuarantineRule(storageKey, quarantineDays, actionLabel) {
+        function evaluateDateQuarantineRule(storageKey, quarantineDays, actionLabel, fixLabel) {
             const storedEpoch = Number(localStorage.getItem(storageKey));
             if (!storedEpoch || !Number.isFinite(storedEpoch)) {
                 return { verdict: 'pass', explanation: `No ${storageKey} recorded, so the quarantine window has never started. Form remains eligible.` };
@@ -5519,7 +5519,16 @@
             const daysElapsed = (Date.now() - storedEpoch) / 86400000;
             if (daysElapsed < Number(quarantineDays)) {
                 const remaining = (Number(quarantineDays) - daysElapsed).toFixed(2);
-                return { verdict: 'block', explanation: `${actionLabel} ${daysElapsed.toFixed(2)} day(s) ago, inside the ${quarantineDays}-day window. Suppressed for another ${remaining} day(s).` };
+                return {
+                    verdict: 'block',
+                    explanation: `${actionLabel} ${daysElapsed.toFixed(2)} day(s) ago, inside the ${quarantineDays}-day window. Suppressed for another ${remaining} day(s).`,
+                    reason: `${actionLabel.toLowerCase()} ${daysElapsed.toFixed(2)} day(s) ago and it stays suppressed for ${quarantineDays} day(s)`,
+                    // Back-dated one day beyond the window rather than cleared. Clearing would
+                    // test "this never happened", which is a different rule; back-dating is what
+                    // proves the window itself expires, which is the thing being validated.
+                    fix: { label: fixLabel, key: storageKey,
+                           value: String(Date.now() - (Number(quarantineDays) + 1) * 86400000) }
+                };
             }
             return { verdict: 'pass', explanation: `${actionLabel} ${daysElapsed.toFixed(2)} day(s) ago, past the ${quarantineDays}-day window. Form is eligible again.` };
         }
@@ -5577,24 +5586,34 @@
             }
 
             if (onSiteData.declined && onSiteData.declined.days) {
-                const evaluation = evaluateDateQuarantineRule('DECLINED_DATE', onSiteData.declined.days, 'Invitation was declined');
-                push('DontInviteOnDeclined', `${onSiteData.declined.days} day(s) after decline`, evaluation.verdict, evaluation.explanation, 'DECLINED_DATE');
+                const evaluation = evaluateDateQuarantineRule('DECLINED_DATE', onSiteData.declined.days, 'Invitation was declined',
+                    `Back-date decline past ${onSiteData.declined.days} day(s)`);
+                push('DontInviteOnDeclined', `${onSiteData.declined.days} day(s) after decline`, evaluation.verdict, evaluation.explanation,
+                    'DECLINED_DATE', evaluation.reason, evaluation.fix);
             }
 
             if (onSiteData.submitted && onSiteData.submitted.days) {
-                const evaluation = evaluateDateQuarantineRule('SUBMITTED_DATE', onSiteData.submitted.days, 'Feedback was submitted');
-                push('DontInviteOnSubmitted', `${onSiteData.submitted.days} day(s) after submit`, evaluation.verdict, evaluation.explanation, 'SUBMITTED_DATE');
+                const evaluation = evaluateDateQuarantineRule('SUBMITTED_DATE', onSiteData.submitted.days, 'Feedback was submitted',
+                    `Back-date submit past ${onSiteData.submitted.days} day(s)`);
+                push('DontInviteOnSubmitted', `${onSiteData.submitted.days} day(s) after submit`, evaluation.verdict, evaluation.explanation,
+                    'SUBMITTED_DATE', evaluation.reason, evaluation.fix);
             }
 
             if (onSiteData.kampyleInvitePerSession && typeof onSiteData.kampyleInvitePerSession.inviteOncePerSession !== 'undefined') {
                 const isCapped = String(onSiteData.kampyleInvitePerSession.inviteOncePerSession) === 'true';
                 const alreadyPresented = localStorage.getItem('kampyleInvitePresented') === 'true';
+                const cappedOut = isCapped && alreadyPresented;
                 push('InvitePerSession', isCapped ? 'once per session' : 'unlimited per session',
-                    isCapped && alreadyPresented ? 'block' : 'pass',
+                    cappedOut ? 'block' : 'pass',
                     isCapped
                         ? `Capped at one invitation per session and kampyleInvitePresented is currently ${alreadyPresented}.`
                         : 'No per-session invitation cap configured, so repeat invitations are permitted.',
-                    isCapped ? 'kampyleInvitePresented' : null);
+                    isCapped ? 'kampyleInvitePresented' : null,
+                    cappedOut ? 'an invitation has already been presented this session and it is capped at one' : null,
+                    // Written false rather than removed: the rule tests the flag against the
+                    // string 'true', so false and absent are equivalent to it, and writing keeps
+                    // the key visible in the Lifecycle State panel instead of making it vanish.
+                    cappedOut ? { label: 'Clear the invite-presented flag', key: 'kampyleInvitePresented', value: 'false' } : null);
             }
 
             if (onSiteData.kampyleInvitePercentageUsers && onSiteData.kampyleInvitePercentageUsers.prec) {
