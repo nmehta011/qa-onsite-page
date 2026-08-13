@@ -306,14 +306,22 @@
         .event-name-chip:hover { border-color: var(--analytics-orange); color: #fb923c; }
         .event-name-chip.chip-active { background: rgba(249, 115, 22, 0.18); border-color: var(--analytics-orange); color: #fb923c; }
 
-        .event-stream-box { min-height: 180px; max-height: 380px; overflow-y: auto; font-family: monospace; font-size: 0.82rem; padding: 5px; box-sizing: border-box; }
+        /* Taller than it was: with payloads now rendering at full height inside this single
+           scroller, 380px left almost no room to actually read one. */
+        .event-stream-box { min-height: 180px; max-height: 520px; overflow-y: auto; overscroll-behavior: contain; font-family: monospace; font-size: 0.82rem; padding: 5px; box-sizing: border-box; }
         .event-record { border-bottom: 1px solid #111827; padding: 7px 4px; }
         .event-record-head { display: flex; align-items: center; gap: 10px; cursor: pointer; flex-wrap: wrap; }
         .event-record-head:hover .event-record-name { color: #fdba74; }
         .event-record-name { color: #fb923c; font-weight: bold; flex: 1; min-width: 190px; }
         .event-record-time { color: #64748b; font-size: 0.75rem; }
         .event-disclosure-caret { color: #64748b; font-size: 0.7rem; width: 10px; }
-        .event-record-json { display: none; margin-top: 8px; background: #04060b; border: 1px solid #111827; border-radius: 6px; padding: 10px; color: #94a3b8; font-size: 0.75rem; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow-y: auto; }
+        /* No max-height and no overflow of its own. It used to cap at 260px with overflow-y:auto
+           while sitting inside .event-stream-box, which is itself a scroller -- so an expanded
+           payload showed 280px of ~770px and the rest was reachable only by scrolling a box nested
+           inside another box, which scroll-chaining makes almost impossible to hit. Rendering at
+           full height leaves exactly one scroll context (the stream box), so every line of the
+           payload is reachable by scrolling normally. */
+        .event-record-json { display: none; margin-top: 8px; background: #04060b; border: 1px solid #111827; border-radius: 6px; padding: 10px; color: #94a3b8; font-size: 0.75rem; white-space: pre-wrap; word-break: break-word; }
         .event-record.record-expanded .event-record-json { display: block; }
 
         .badge-sdkbus { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
@@ -5261,9 +5269,29 @@
         // reported as unjudgeable rather than failed. Without this the audit manufactures a
         // blocker every time a tester opens a form -- which then reaches the status bar,
         // collectAllCurrentFindings() and the filed bug report.
+        //
+        // Deliberately does NOT call KAMPYLE_ONSITE_SDK.isSurveyDisplayed(). That method is not a
+        // passive getter: in the property's own generic*.js it is
+        //     isAnyInviteShown() || isAnyOtherFormAlreadyShown() ? true
+        //                                                       : (trigger("neb_sdkSurveyDisplayed"), false)
+        // so every call that returns false emits an analytics event, which the property records as
+        // `nebula_code_survey_displayed`. Polling it on a timer therefore pushed roughly 120 fake
+        // events a minute into the customer's real analytics and buried this app's own event
+        // stream. Measured 1:1 -- 10 calls produced exactly 10 events, while 30 reads of the form
+        // registry produced 0.
+        //
+        // The registry carries the same information without the side effect. An embedded form is
+        // excluded because rendering inline is not a modal: it never takes over the screen and
+        // never removes the feedback button from the tab order, which is the whole reason this
+        // check exists.
         function isFormModalCurrentlyOpen() {
             try {
-                return !!(window.KAMPYLE_ONSITE_SDK && window.KAMPYLE_ONSITE_SDK.isSurveyDisplayed());
+                return (readPublishedFormRegistryFromSdk() || []).some(form => {
+                    const state = form.state || {};
+                    if (state.inviteShown) return true;
+                    if (!state.shown) return false;
+                    return String(form.displayType || '').toLowerCase() !== 'embedded';
+                });
             } catch (err) {
                 return false;
             }

@@ -515,10 +515,14 @@ def test_open_form_modal_is_not_reported_as_a_keyboard_failure(page):
     # returned 'info' before this fix. Asserting on that frame would pass without ever exercising
     # the bug. If this state never settles the SDK's behaviour has changed and this test should
     # fail loudly rather than quietly prove nothing.
+    # Polls isFormModalCurrentlyOpen() rather than the SDK's isSurveyDisplayed() directly: that
+    # method emits a nebula_code_survey_displayed analytics event on every call that returns false,
+    # so a polling wait on it would pump hundreds of junk events into the property mid-test — and
+    # it would no longer be exercising the code path the app actually uses.
     page.wait_for_function("""() => {
         const b = locateFeedbackButtonElement();
         const ok = !!b && b.tabIndex === -1 && isElementCurrentlyVisible(b)
-                   && window.KAMPYLE_ONSITE_SDK.isSurveyDisplayed();
+                   && isFormModalCurrentlyOpen();
         if (!ok) { window.__modalStableSince = null; return false; }
         window.__modalStableSince = window.__modalStableSince || Date.now();
         return Date.now() - window.__modalStableSince >= 1000;
@@ -529,6 +533,39 @@ def test_open_form_modal_is_not_reported_as_a_keyboard_failure(page):
         return by['btn-reachable'].verdict;
     }""")
     assert reach == "info", "correct modal behaviour must not be reported as a failure"
+
+
+def test_modal_detection_does_not_emit_analytics_events(page):
+    """Regression: isFormModalCurrentlyOpen() used to call the SDK's isSurveyDisplayed(), which is
+    not a passive getter — when nothing is showing it fires neb_sdkSurveyDisplayed, recorded by the
+    property as `nebula_code_survey_displayed`. Because this app polls modal state on a timer, that
+    pushed ~120 fabricated events per minute into the customer's real analytics and buried this
+    app's own event stream (it hit its 1000-event cap in about a minute).
+
+    Measured 1:1 at the time — 10 calls to isSurveyDisplayed() produced exactly 10 events, while 30
+    reads of the form registry produced none. A QA tool must not contaminate the data it exists to
+    observe, so modal state now comes from the registry."""
+    inject(page)
+
+    def code_survey_count():
+        return page.evaluate("""() => {
+            const src = (typeof collectedAnalyticsEventsCacheList !== 'undefined')
+                ? collectedAnalyticsEventsCacheList : [];
+            return src.filter(e => (e.eventName || (e.payload && e.payload.eventName))
+                                   === 'nebula_code_survey_displayed').length;
+        }""")
+
+    before = code_survey_count()
+    page.evaluate("() => { for (let i = 0; i < 40; i++) isFormModalCurrentlyOpen(); }")
+    page.wait_for_timeout(2500)
+    assert code_survey_count() == before, \
+        "polling modal state must not emit analytics events into the property"
+
+    # The app's own timers must stay quiet too, not just direct calls.
+    idle_start = code_survey_count()
+    page.wait_for_timeout(6000)
+    drift = code_survey_count() - idle_start
+    assert drift == 0, f"app emitted {drift} nebula_code_survey_displayed event(s) while idle"
 
     leaked = [f for f in page.evaluate("() => collectAllCurrentFindings()")
               if f["severity"] == "block" and "keyboard-reachable" in f["title"]]
