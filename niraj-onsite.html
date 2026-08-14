@@ -2919,7 +2919,22 @@
                     : `${visibleRecords.length}/${collectedSdkBusEventsCacheList.length}`;
 
             if (collectedSdkBusEventsCacheList.length === 0) {
-                stream.innerHTML = buildActionableEmptyState('Awaiting native SDK lifecycle broadcasts. Inject a property embed to arm the bus tap.');
+                // Three genuinely different reasons this can be empty, and telling them apart is
+                // the whole value: no property injected yet, the property has the broadcast
+                // provision switched off (in which case nothing the tester does will ever populate
+                // this), or it is armed and simply waiting for a form to do something. It
+                // previously always said "inject a property embed", which sent testers to re-do
+                // something they had already done and hid the real cause.
+                const provisions = readOnsiteProvisionsMap();
+                const broadcastEnabled = provisions ? provisions.customEventsBroadcast === true : null;
+                stream.innerHTML =
+                    !window.KAMPYLE_ONSITE_SDK
+                        ? buildActionableEmptyState('Awaiting native SDK lifecycle broadcasts. Inject a property embed to arm the bus tap.')
+                    : broadcastEnabled === false
+                        ? buildTeachingEmptyState('🚫', 'customEventsBroadcast is switched off for this property',
+                            'The SDK only emits these lifecycle broadcasts when the <b>customEventsBroadcast</b> provision is enabled, so this panel stays empty no matter what you trigger. Nothing is wrong with the embed or this page — the provision has to be turned on for the property itself. <b>Live Analytics Events</b> above is unaffected and still captures everything the SDK sends over the network.')
+                        : buildTeachingEmptyState('📡', 'Bus tap is armed and listening',
+                            'These fire the moment the SDK reaches each lifecycle stage, so nothing appears until a form or invitation actually does something. Trigger one — use <b>Show a form on demand</b> in Setup, or satisfy a form\'s targeting so it appears on its own.');
                 return;
             }
             if (visibleRecords.length === 0) {
@@ -3223,12 +3238,33 @@
             const counterBadge = document.getElementById('provisions-counter-badge');
             if (counterBadge) counterBadge.innerText = `${enabledKeys.length} of ${Object.keys(provisions).length}`;
             writeLog(`Configuration Sync: Extracted ${enabledKeys.length} enabled provisions out of ${Object.keys(provisions).length} total flags (source: ${e.detail.source || 'network manifest'}).`, 'success');
+
+            // The SDK bus panel's empty state depends on customEventsBroadcast, and it only
+            // renders when a broadcast arrives — which never happens when that provision is off.
+            // Re-render it here so the panel explains itself the moment provisions are known
+            // instead of leaving the pre-injection placeholder on screen indefinitely.
+            if (typeof renderFilteredSdkBusEventStream === 'function') renderFilteredSdkBusEventStream();
         });
 
         // The provisions map is not always delivered as a standalone onsiteData request — on this
         // property it ships inlined inside the generic bundle. Polling the SDK's own memory store
         // is therefore the reliable extraction path, with the network listener kept as a fallback.
         let onsiteProvisionsAlreadyRendered = false;
+        // Provisions gate entire SDK behaviours, so a panel sitting empty because a provision is
+        // switched off should say exactly that instead of implying the tester did something wrong.
+        // Read live from the SDK's own memory store — the same source the extraction poll below
+        // uses — so it stays correct even when the manifest lands after a panel first rendered.
+        function readOnsiteProvisionsMap() {
+            try {
+                if (window.KAMPYLE_DATA && typeof KAMPYLE_DATA.getMemoryData === 'function' &&
+                    window.KAMPYLE_CONSTANT && KAMPYLE_CONSTANT.MEMORY_DATA_FIELDS) {
+                    const dataJson = KAMPYLE_DATA.getMemoryData(KAMPYLE_CONSTANT.MEMORY_DATA_FIELDS.DATA_JSON);
+                    if (dataJson && dataJson.provisions) return dataJson.provisions;
+                }
+            } catch (err) { /* SDK not ready yet */ }
+            return null;
+        }
+
         function attemptRuntimeProvisionsMemoryExtraction() {
             if (onsiteProvisionsAlreadyRendered) return;
             try {
@@ -5688,6 +5724,10 @@
 
         function decodeTargetingRulesForForm(form) {
             const rules = [];
+            // Forms come and go on a shared QA property, so a caller can legitimately hand this a
+            // form that has since been unpublished (a lookup by id returning undefined). Returning
+            // an empty rule list beats throwing and taking the whole panel down with it.
+            if (!form) return rules;
             const onSiteData = form.onSiteData || {};
             // sourceKey names the stored value this verdict was actually computed from. It is
             // declared at the point of use and left out when a value is read but does not

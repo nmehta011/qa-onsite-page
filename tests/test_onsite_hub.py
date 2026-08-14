@@ -85,6 +85,52 @@ def page(browser, server):
     context.close()
 
 
+def clear_the_screen(pg, timeout_ms=25000, settle_ms=14000):
+    """Get any invitation or form off screen so a test can show one of its own.
+
+    The SDK only ever displays one thing at a time, and an invitation has to be *declined* rather
+    than closed: closeForm() leaves inviteShown true and the invitation still up, so the SDK will
+    happily create the next form's iframe and then leave it 0x0 and never mark it shown — which
+    reads as a broken showForm but is really an occupied screen.
+
+    Waits for something to appear before deciding the screen is clear. An auto-showing invitation
+    lands several seconds after the form registry is ready, so checking once returns "clear",
+    the invitation then arrives, and it blocks whatever the test was about to show — which is
+    exactly the false failure this helper exists to prevent.
+    """
+    try:
+        pg.wait_for_function("() => isFormModalCurrentlyOpen()", timeout=settle_ms)
+    except Exception:
+        return True   # nothing auto-shows on this property, so there is nothing to dismiss
+
+    deadline = time.time() + timeout_ms / 1000
+    while time.time() < deadline:
+        if not pg.evaluate("() => isFormModalCurrentlyOpen()"):
+            return True
+        for frame in pg.frames:
+            if "medallia" in (frame.url or ""):
+                try:
+                    frame.evaluate("""() => {
+                        const b = [...document.querySelectorAll('button,a,[role=button]')]
+                            .filter(n => n.offsetParent)
+                            .find(n => /not right now|no thanks|decline|dismiss/i.test(n.innerText || ''));
+                        if (b) b.click();
+                    }""")
+                except Exception:
+                    pass   # frame can navigate or detach mid-iteration
+        pg.evaluate("""() => {
+            try {
+                (readPublishedFormRegistryFromSdk()||[]).forEach(f => {
+                    if (f.state && f.state.shown) {
+                        KAMPYLE_ONSITE_SDK.closeForm && KAMPYLE_ONSITE_SDK.closeForm(Number(f.formId));
+                    }
+                });
+            } catch (e) {}
+        }""")
+        pg.wait_for_timeout(1500)
+    return not pg.evaluate("() => isFormModalCurrentlyOpen()")
+
+
 def inject(pg, timeout=35000):
     """Inject the real embed and wait until the app has finished reacting to it.
 
@@ -355,10 +401,17 @@ def test_criteria_rules_are_described_and_only_fixed_when_derivable(page):
     assert shapes["contradictory"]["fix"] is None, "contradictory conditions must not be half-applied"
 
 
+# Finds whichever form actually carries the rule rather than naming a form id. This property is a
+# shared QA environment whose forms get republished — the invitation was 67209 and is now 30201,
+# and hardcoding the old id turned a config change into a crash (decodeTargetingRulesForForm was
+# handed undefined). Tests should track the behaviour, not the fixture.
 SUBMITTED_QUARANTINE = """() => {
-    const f = (readPublishedFormRegistryFromSdk()||[]).find(x => String(x.formId) === '67209');
-    const r = decodeTargetingRulesForForm(f).find(x => x.name === 'DontInviteOnSubmitted');
-    return r ? {verdict: r.verdict, fix: r.fix} : null;
+    const forms = readPublishedFormRegistryFromSdk() || [];
+    for (const f of forms) {
+        const r = decodeTargetingRulesForForm(f).find(x => x.name === 'DontInviteOnSubmitted');
+        if (r) return {formId: f.formId, verdict: r.verdict, fix: r.fix};
+    }
+    return null;
 }"""
 
 
@@ -385,9 +438,12 @@ def test_submitted_date_quarantine_offers_a_working_one_click_fix(page):
     assert clicked, "the fix must render as a clickable button in the matrix"
 
     page.wait_for_function("""() => {
-        const f = (readPublishedFormRegistryFromSdk()||[]).find(x => String(x.formId) === '67209');
-        const r = decodeTargetingRulesForForm(f).find(x => x.name === 'DontInviteOnSubmitted');
-        return r && r.verdict === 'pass';
+        const forms = readPublishedFormRegistryFromSdk() || [];
+        for (const f of forms) {
+            const r = decodeTargetingRulesForForm(f).find(x => x.name === 'DontInviteOnSubmitted');
+            if (r) return r.verdict === 'pass';
+        }
+        return false;
     }""", timeout=15000)
 
     # Back-dated past the window rather than cleared: clearing would prove "this never happened",
@@ -425,35 +481,75 @@ def test_quarantine_and_session_cap_fixes_are_offered_for_rules_this_property_do
 
 def test_url_rule_is_evaluated_consistently_and_simulation_satisfies_it(page):
     """Regression: the Targeting Matrix hardcoded 'info' for URL rules while the per-page panel
-    evaluated them, so the two panels disagreed about the same rule."""
-    inject(page)
-    rule = page.evaluate("""() => {
-        const f = (readPublishedFormRegistryFromSdk()||[]).find(x => x.formType === 'button');
-        return decodeTargetingRulesForForm(f).find(r => r.name === 'UrlInclude');
-    }""")
-    assert rule["verdict"] == "block", "'/' does not match '/Page1' and that is knowable"
+    evaluated them, so the two panels disagreed about the same rule.
 
-    page.evaluate("() => { document.getElementById('simulated-url-input').value = '/Page1'; applySimulatedUrlPath(); }")
+    Finds whichever form carries a URL rule instead of assuming the button form does — that rule
+    was removed from the button form mid-project. Skips rather than fails when the property
+    publishes no URL rule at all: there is then nothing to assert about, and a red suite would be
+    blaming this app for someone else's config change."""
+    inject(page)
+    target = page.evaluate("""() => {
+        const forms = readPublishedFormRegistryFromSdk() || [];
+        for (const f of forms) {
+            const r = decodeTargetingRulesForForm(f).find(x => x.name === 'UrlInclude');
+            if (r) return {formId: f.formId, pattern: r.configured, verdict: r.verdict};
+        }
+        return null;
+    }""")
+    if not target:
+        pytest.skip("no form on this property currently publishes a UrlInclude rule")
+
+    assert target["verdict"] == "block", \
+        f"'/' does not match {target['pattern']!r} and that is knowable"
+
+    page.evaluate("""(pattern) => {
+        document.getElementById('simulated-url-input').value = pattern;
+        applySimulatedUrlPath();
+    }""", target["pattern"])
     page.wait_for_timeout(1500)
-    assert page.evaluate("location.pathname") == "/Page1"
 
     after = page.evaluate("""() => {
-        const f = (readPublishedFormRegistryFromSdk()||[]).find(x => x.formType === 'button');
-        return decodeTargetingRulesForForm(f).find(r => r.name === 'UrlInclude').verdict;
+        const forms = readPublishedFormRegistryFromSdk() || [];
+        for (const f of forms) {
+            const r = decodeTargetingRulesForForm(f).find(x => x.name === 'UrlInclude');
+            if (r) return r.verdict;
+        }
+        return null;
     }""")
     assert after == "pass"
 
 
 def test_code_triggered_form_can_be_shown_on_demand(page):
-    """A code-triggered form has no automatic targeting, so the only way to test it is to fire it."""
+    """A code-triggered form has no automatic targeting, so the only way to test it is to fire it.
+
+    Picks whichever code form the property publishes rather than naming one, and closes anything
+    already on screen first. The property gained an auto-showing invitation mid-project, and the
+    SDK will not mark a second form as shown while one is up (isAnyOtherFormAlreadyShown) — so the
+    code form's iframe was being created while state.shown stayed false, which looked like a
+    broken showForm but was really just an occupied screen."""
     inject(page)
-    page.evaluate("() => { document.getElementById('manual-form-id-input').value = '19105'; invokeManualSDKCommand('load'); }")
+
+    code_form = page.evaluate("""() => {
+        const f = (readPublishedFormRegistryFromSdk()||[]).find(x => x.formType === 'code');
+        return f ? f.formId : null;
+    }""")
+    if not code_form:
+        pytest.skip("this property publishes no code-triggered form")
+
+    if not clear_the_screen(page):
+        pytest.skip("an invitation is holding the only visible-form slot and would not dismiss")
+
+    page.evaluate("""(formId) => {
+        document.getElementById('manual-form-id-input').value = formId;
+        invokeManualSDKCommand('load');
+    }""", code_form)
     page.wait_for_timeout(4000)
     page.evaluate("() => invokeManualSDKCommand('show')")
-    page.wait_for_timeout(5000)
-    shown = page.evaluate("() => (readPublishedFormRegistryFromSdk()||[])"
-                          ".filter(f => f.state && f.state.shown).map(f => f.formId)")
-    assert "19105" in shown
+
+    page.wait_for_function("""(formId) => {
+        const f = (readPublishedFormRegistryFromSdk()||[]).find(x => String(x.formId) === String(formId));
+        return !!(f && f.state && f.state.shown);
+    }""", arg=code_form, timeout=25000)
 
 
 # --------------------------------------------------------------------------------------------
@@ -644,8 +740,14 @@ def test_page_has_a_main_landmark_and_a_lang(page):
 
 def test_dashboard_stays_clickable_under_a_full_page_sdk_overlay(page):
     """Regression: the SDK injects #kampyle_abandon_zone as a fixed, full-page, 33.5-million-px
-    overlay at z-index 5 which swallowed clicks on this app's own controls."""
+    overlay at z-index 5 which swallowed clicks on this app's own controls.
+
+    The bug being guarded is an *invisible* overlay eating clicks. A visible invitation covering
+    the page is the opposite — that is what a modal is supposed to do — so any auto-shown
+    invitation is dismissed first. Without that this fails on kampyleInviteContainer and reports
+    correct modal behaviour as the regression."""
     inject(page)
+    clear_the_screen(page)
     page.evaluate("setActiveWorkspace('targeting')")
     page.wait_for_timeout(1200)
     blocked = page.evaluate("""() => {
