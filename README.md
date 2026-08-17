@@ -44,6 +44,24 @@ serves it as plain text. Pick one of these instead:
 > Every image and the video are embedded directly in the HTML and the PDF, so both files work
 > standalone — no folder of assets to keep alongside them.
 
+<details>
+<summary><strong>Hosting the HTML yourself (S3, or any static bucket)</strong></summary>
+
+The guide declares `<meta charset="utf-8">`, so it renders correctly even when a server sends no
+charset — which is what S3 does by default. If you upload it and see `â€"` where an em dash
+should be, or `Â½` in "3½-minute", the file was uploaded with the wrong `Content-Type`. Set it
+explicitly:
+
+```bash
+aws s3 cp docs/onsite-hub-guide.html s3://your-bucket/onsite-hub-guide.html \
+  --content-type "text/html; charset=utf-8"
+```
+
+Do the same for `docs/index.html`. The mp4 wants `--content-type "video/mp4"` so it streams
+rather than downloads.
+
+</details>
+
 ---
 
 ## ▶️ Running the tool

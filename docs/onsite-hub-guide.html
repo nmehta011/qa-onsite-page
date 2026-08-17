@@ -1,3 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- charset is deliberately the first thing in head. The browser's encoding sniff only scans the
+     first 1024 bytes, and without a declaration it falls back to a locale default anywhere the
+     server omits `; charset=utf-8` from the Content-Type header. S3 omits it, which is why every
+     em dash (UTF-8 E2 80 94) rendered as "a EUR quote" mojibake and every 1/2 as "A 1/2" there
+     while looking fine locally. The bytes were always valid UTF-8; the document just never said
+     so. Keep this above the title, which itself contains non-ASCII. -->
 <title>Onsite Validation Hub — Team Guide</title>
 <style>
   :root {
@@ -281,6 +292,8 @@
     }
   }
 </style>
+</head>
+<body>
 
 <div class="shell">
 
@@ -1121,3 +1134,6 @@
   drifts from what's described here, trust what's on your screen and treat this doc as due for an
   update.
 </footer>
+
+</body>
+</html>
