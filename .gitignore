@@ -1,0 +1,10 @@
+# macOS Finder metadata — created constantly, never wanted in the repo.
+.DS_Store
+.DS_Store?
+._*
+
+# Python bytecode and test caches from qa-server.py and the pytest suite.
+# (.pytest_cache also self-ignores, but it is listed so a clean clone is unambiguous.)
+__pycache__/
+*.py[cod]
+.pytest_cache/
