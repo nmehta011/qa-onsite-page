@@ -239,6 +239,47 @@
 
   a:focus-visible, [tabindex]:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+  /* ---------- print / PDF ----------
+     Forces the light palette regardless of the viewer's theme: a dark-themed PDF is unreadable
+     printed and enormous on screen. Drops the sticky sidebar (a fixed-position nav has no meaning
+     on paper) and keeps figures, callouts and table rows from splitting across a page break. */
+  @media print {
+    :root {
+      --ground:#FFFFFF; --panel:#FFFFFF; --panel-alt:#F4F6F8;
+      --rule:#D7DEE6; --rule-strong:#B6C0CC;
+      --ink:#10161F; --ink-soft:#3F4A57; --ink-faint:#66727F;
+      --accent:#0A5F8C; --accent-soft:#EAF3F8;
+      --accent2:#5B21B6; --accent2-soft:#F1ECFB;
+      --pass:#0B6B3A; --pass-soft:#E8F5ED;
+      --block:#A81E14; --block-soft:#FBEAE8;
+      --watch:#8A5A00; --watch-soft:#FBF1DF;
+      --shadow: none;
+    }
+    @page { margin: 14mm 12mm; }
+    body { background:#fff; font-size: 10.5pt; line-height: 1.5; }
+    .sidebar { display: none; }
+    .shell { display: block; max-width: none; }
+    main { padding: 0; }
+    .hero { padding: 0 0 18px; border-bottom: 2px solid var(--ink); }
+    section.doc { padding: 20px 0; break-inside: auto; }
+    h1.hero-title { font-size: 26pt; }
+    h2 { font-size: 15pt; break-after: avoid; }
+    h3 { font-size: 11.5pt; break-after: avoid; }
+    p, li { orphans: 3; widows: 3; }
+    figure.shot, .callout, .recipe, .ws-card, .tw { break-inside: avoid; }
+    figure.shot { max-width: 100%; box-shadow: none; }
+    figure.shot img { max-height: 165mm; object-fit: contain; }
+    tr, .lg-pill, .hstat { break-inside: avoid; }
+    a { text-decoration: none; }
+    /* A <video> prints as an empty box, so swap in a printed pointer to where it lives. */
+    .video-frame video { display: none; }
+    .video-frame::after {
+      content: "▶  The walkthrough video is not playable in a PDF — open docs/onsite-hub-walkthrough.mp4 in the repository, or the web version of this guide.";
+      display: block; padding: 20px 22px; font-size: 10pt; color: var(--ink-soft);
+      background: var(--panel-alt); border-bottom: 1px solid var(--rule);
+    }
+  }
 </style>
 
 <div class="shell">
