@@ -108,25 +108,56 @@
         .header-text p { margin: 0; color: var(--text-muted); }
 
         /* QA Suite Grid Framework */
+        /* The Setup panels differ enormously in height -- the parameter list is several times
+           taller than the URL simulator -- so the default `stretch` was padding three short
+           panels out to the tallest one's height and leaving voids inside them. `align-items:
+           start` lets every panel be exactly as tall as its own content. */
         .qa-suite-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 25px;
+            grid-template-columns: minmax(0, 1fr);
+            align-items: start;
+            gap: 22px;
             margin-bottom: 25px;
+        }
+
+        /* Two independent columns, not one grid shared by all four panels.
+           Row-spanning was tried first and looked wrong: a grid distributes a spanning item's
+           height across the rows it covers, so the very tall parameters panel inflated the row
+           its short neighbours sat in and left a dead band above the panel below them. Giving
+           the short panels their own nested grid decouples the two, so each column's rows are
+           sized only by what is actually in that column. */
+        @media (min-width: 1024px) {
+            .qa-suite-grid { grid-template-columns: minmax(340px, 0.9fr) minmax(0, 1.1fr); }
+        }
+
+        .suite-secondary-column { display: grid; gap: 22px; align-items: start; }
+        @media (min-width: 1320px) {
+            /* Wide enough for the two compact tools to sit side by side, with the settings panel
+               running full width beneath them where its controls can tile two-up. */
+            .suite-secondary-column { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .suite-secondary-column > [data-suite-panel="zoom"] { grid-column: 1 / -1; }
         }
 
         .suite-panel {
             background: #0d1527;
             border: 1px solid var(--panel-border);
             border-radius: 12px;
-            padding: 24px;
+            padding: 22px;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
         }
 
-        .suite-panel h4 { margin: 0 0 12px 0; color: #38bdf8; font-size: 1.1rem; }
-        .suite-description { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px; line-height: 1.4; }
+        .suite-panel h4 { margin: 0 0 10px 0; color: #38bdf8; font-size: 1.05rem; }
+        .suite-description { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px; line-height: 1.45; }
+
+        /* One consistent rhythm between a panel's blocks, replacing the per-element margin-top
+           values that were being hand-tuned differently in each panel. */
+        .zoom-panel-controls { display: grid; gap: 15px; align-items: start; }
+        @media (min-width: 1320px) {
+            /* This panel runs the full width of the secondary column there, so its controls tile
+               rather than running as one narrow strip down the middle of a very wide box. */
+            .zoom-panel-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 22px; }
+        }
 
         .factory-row {
             display: grid;
@@ -214,6 +245,72 @@
         .badge-var { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
         .badge-cookie { background: rgba(236, 72, 153, 0.2); color: #f472b6; }
         .badge-provisions { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+
+        /* --- Runtime exceptions --- */
+        .exception-entry { border: 1px solid #1e293b; border-left: 3px solid #334155; border-radius: 8px; padding: 10px 12px; margin-bottom: 9px; background: #070a12; }
+        /* An SDK-thrown exception is the one a tester has to act on, so it is the only row that
+           carries a colour of its own. */
+        .exception-entry-sdk { border-left-color: var(--danger-red); background: rgba(239, 68, 68, 0.05); }
+        .exception-entry-blocked { border-left-color: #fbbf24; }
+        .exception-head { display: flex; align-items: center; gap: 8px; cursor: pointer; flex-wrap: wrap; }
+        .exception-kind { font-size: 0.74rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; }
+        .exception-count { font-size: 0.72rem; font-weight: bold; color: #fbbf24; background: rgba(251, 191, 36, 0.14); padding: 1px 7px; border-radius: 10px; }
+        .exception-time { font-size: 0.72rem; color: #64748b; margin-left: auto; }
+        .exception-toggle { color: #64748b; font-size: 0.8rem; }
+        .exception-message { font-family: monospace; font-size: 0.82rem; color: #e2e8f0; margin-top: 7px; word-break: break-word; }
+        .exception-frame { font-family: monospace; font-size: 0.73rem; color: #64748b; margin-top: 4px; word-break: break-all; }
+        .exception-detail { margin-top: 10px; border-top: 1px solid #1e293b; padding-top: 10px; }
+        .exception-note { font-size: 0.76rem; color: #94a3b8; line-height: 1.5; margin-bottom: 5px; }
+        .exception-stack { font-family: monospace; font-size: 0.72rem; color: #7dd3fc; background: #04060b; border: 1px solid #111827; border-radius: 6px; padding: 9px; margin: 7px 0 0 0; white-space: pre-wrap; word-break: break-all; max-height: 220px; overflow-y: auto; }
+
+        /* --- Property custom-parameter registry --- */
+        .property-params-block { background: #070a12; border: 1px solid #1e293b; border-radius: 8px; padding: 12px; margin-bottom: 14px; }
+        .property-params-status { font-size: 0.8rem; color: var(--text-muted); line-height: 1.45; }
+        .property-params-status.is-error { color: #fbbf24; }
+        .param-fetch-btn { background: transparent; border: 1px solid #3b4f7c; color: #7dd3fc; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+        .param-fetch-btn:hover:not(:disabled) { background: rgba(14, 165, 233, 0.15); border-color: #0ea5e9; }
+        .param-fetch-btn:disabled { opacity: 0.5; cursor: default; }
+        .property-params-filter-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+        .property-params-filter-row .suite-input { height: 30px; font-size: 0.8rem; padding: 0 10px; }
+        .property-params-only-unset { display: flex; align-items: center; gap: 5px; font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; cursor: pointer; }
+        .property-params-only-unset input { width: 14px; height: 14px; accent-color: #0ea5e9; cursor: pointer; }
+        .property-params-list { max-height: 340px; overflow-y: auto; margin-top: 6px; }
+        .property-param-row { border-top: 1px solid #111827; padding: 7px 2px; }
+        .property-param-row:first-child { border-top: none; }
+        /* Wraps rather than truncates: a long parameter name used to squeeze the live value down
+           to "not s…", hiding the one thing on the row that changes. When both cannot fit, the
+           value drops to its own right-aligned line instead. */
+        .property-param-head { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+        .property-param-head-live { margin-left: auto; font-family: monospace; font-size: 0.76rem; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+        .property-params-empty-filter { color: #64748b; font-size: 0.8rem; padding: 10px 2px; }
+        .property-param-name { color: #ffffff; font-weight: 600; font-size: 0.87rem; }
+        .property-param-type { color: #64748b; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.4px; }
+        .property-param-identifier { background: rgba(234, 179, 8, 0.15); color: #facc15; }
+        /* The key the SDK actually reads. Surfaced on its own line because it legitimately
+           differs from the display name, and writing the display name instead is silent. */
+        .property-param-key { font-family: monospace; font-size: 0.74rem; color: #64748b; margin-top: 3px; word-break: break-all; }
+        .property-param-key b { color: #94a3b8; font-weight: 600; }
+        .live-set { color: #34d399; }
+        .live-unset { color: #64748b; }
+        .live-broken { color: #fbbf24; }
+        .property-param-warning { font-size: 0.75rem; color: #fbbf24; margin-top: 3px; line-height: 1.35; }
+        .property-param-controls { display: flex; gap: 7px; margin-top: 6px; }
+        .property-param-controls .suite-input, .property-param-controls select { height: 32px; padding: 0 10px; font-size: 0.82rem; flex: 1; min-width: 0; }
+        .property-param-set-btn { background: var(--sdk-purple); border: none; color: #fff; font-size: 0.78rem; padding: 0 13px; border-radius: 6px; cursor: pointer; height: 32px; flex-shrink: 0; }
+        .property-param-set-btn:hover { filter: brightness(1.15); }
+        .property-param-clear-btn { background: transparent; border: 1px solid #334155; color: #94a3b8; font-size: 0.78rem; padding: 0 10px; border-radius: 6px; cursor: pointer; height: 32px; flex-shrink: 0; }
+        .property-param-clear-btn:hover { border-color: var(--danger-red); color: #ff6b6b; }
+        .property-params-actions { display: flex; gap: 8px; margin-top: 11px; }
+        .property-params-actions button { flex: 1; height: 34px; font-size: 0.8rem; }
+        .property-params-actions .purge-all-params-btn { color: #94a3b8; }
+        .property-params-actions .purge-all-params-btn:hover { color: #ff6b6b; }
+        .manual-param-details { border: 1px solid #1e293b; border-radius: 8px; padding: 0 12px; margin-bottom: 4px; }
+        .manual-param-details[open] { padding-bottom: 12px; }
+        .manual-param-details > summary { cursor: pointer; padding: 10px 0; font-size: 0.8rem; font-weight: bold; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; list-style: none; }
+        .manual-param-details > summary::-webkit-details-marker { display: none; }
+        .manual-param-details > summary::before { content: '▸ '; color: #475569; }
+        .manual-param-details[open] > summary::before { content: '▾ '; }
+        .manual-param-details > summary:hover { color: #94a3b8; }
         .badge-analytics { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
 
         .sdk-console-stream {
@@ -1111,27 +1208,267 @@
             }
         })();
 
+        // --- 5c3. RUNTIME EXCEPTION CAPTURE & ATTRIBUTION ---
+        // An exception thrown inside the Medallia bundle is an integration defect, and until now
+        // it was invisible: window.onerror flattened it to one string, kept only the basename of
+        // the file, threw the stack away entirely, and filed it under failed network requests.
+        // A tester could not tell an SDK crash from a bug in this tool, and neither was reported
+        // as a finding anywhere.
+        //
+        // Blame is decided from the stack rather than the reported source. Cross-origin scripts
+        // report `source` as the loading document for security reasons, so trusting it alone
+        // attributes half the SDK's errors to this page; the stack still carries the real frames.
+        const capturedRuntimeExceptions = [];
+        const RUNTIME_EXCEPTION_CAP = 200;
+
+        const RUNTIME_EXCEPTION_ORIGINS = {
+            sdk:     { label: 'SDK', pill: 'pill-danger',
+                       note: 'Thrown inside the Medallia bundle — an integration defect worth reporting to Medallia.' },
+            hub:     { label: 'This tool', pill: 'pill-warn',
+                       note: 'Thrown by the validation hub itself, not by the property under test.' },
+            blocked: { label: 'Cross-origin', pill: 'pill-warn',
+                       note: 'The browser withheld this error\'s message, file and stack because it came from a script served by another origin — the standard "Script error." case. Almost certainly the injected SDK: a script served from this page\'s own origin would have reported its details in full.' },
+            unknown: { label: 'Unattributed', pill: 'pill-sdk',
+                       note: 'No stack frame identified the source.' }
+        };
+
+        // The browser deliberately hides everything about an uncaught error raised inside a
+        // cross-origin script: message becomes "Script error.", source is empty and there is no
+        // stack. Guessing an origin from that is impossible, so it is reported as its own
+        // category rather than filed under a blame this app cannot actually support.
+        function isOpaqueCrossOriginError(details) {
+            const message = String(details.message || '');
+            return details.kind === 'uncaught'
+                && !details.stack
+                && (/^script error\.?$/i.test(message.trim()) || !details.source);
+        }
+
+        function attributeRuntimeExceptionSource(stack, source) {
+            const haystack = `${stack || ''}\n${source || ''}`;
+            for (const origin of knownSdkOrigins) {
+                if (haystack.includes(origin)) return 'sdk';
+            }
+            // Falls back to the filename the SDK bundle is always served under, so an error that
+            // arrives before any origin has been registered is still attributed correctly.
+            if (/\/(generic|embed)\d*\.js|kampyle|medallia/i.test(haystack)) return 'sdk';
+            // Anything left that still produced a readable stack ran in this document. A
+            // cross-origin script's uncaught error never gets this far -- the browser blanks it
+            // out entirely, which isOpaqueCrossOriginError catches first -- so a usable stack
+            // here means the page's own code, including the `<anonymous>` frames Chrome reports
+            // for inline and dynamically-created scripts.
+            if (haystack.includes(window.location.origin) || haystack.includes('<anonymous>')) return 'hub';
+            return 'unknown';
+        }
+
+        // The first stack frame that is not this handler — what a developer actually wants to
+        // read first, and what makes two occurrences of the same error identical.
+        function extractLeadingStackFrame(stack) {
+            const frames = String(stack || '').split('\n').map(line => line.trim()).filter(Boolean);
+            const frame = frames.find(line => /^(at |.*@)/.test(line)) || frames[1] || '';
+            // The leading "at " is dropped so callers can compose their own prefix without
+            // producing "at at Ri (...)".
+            return frame.replace(/^at\s+/, '').slice(0, 200);
+        }
+
+        function recordRuntimeException(details) {
+            const message = String(details.message || 'Unknown error').slice(0, 400);
+            const stack = String(details.stack || '');
+            const origin = isOpaqueCrossOriginError(details)
+                ? 'blocked'
+                : attributeRuntimeExceptionSource(stack, details.source);
+            const frame = extractLeadingStackFrame(stack) ||
+                (details.source ? `${details.source}:${details.lineno || 0}:${details.colno || 0}` : '');
+
+            // Grouped by what makes two occurrences the same defect. An SDK error on a timer can
+            // fire hundreds of times; without this it buries every other finding in the panel.
+            const signature = `${details.kind}::${message}::${frame}`;
+            const existing = capturedRuntimeExceptions.find(entry => entry.signature === signature);
+            if (existing) {
+                existing.count++;
+                existing.lastSeenAt = Date.now();
+            } else {
+                if (capturedRuntimeExceptions.length >= RUNTIME_EXCEPTION_CAP) capturedRuntimeExceptions.shift();
+                capturedRuntimeExceptions.push({
+                    signature, message, stack, frame, origin,
+                    kind: details.kind,
+                    source: details.source || null,
+                    lineno: details.lineno || null,
+                    colno: details.colno || null,
+                    count: 1,
+                    firstSeenAt: Date.now(),
+                    lastSeenAt: Date.now(),
+                    // Whether the property was already running tells you instantly whether this
+                    // is a page bug or something the injected SDK brought with it.
+                    afterInjection: !!window.KAMPYLE_ONSITE_SDK,
+                    expanded: false
+                });
+                writeLog(`🧨 ${RUNTIME_EXCEPTION_ORIGINS[origin].label} exception: ${message}`, origin === 'sdk' ? 'warn' : 'warn');
+            }
+            renderRuntimeExceptionsPanel();
+        }
+
+        // Called from the guards around SDK entry points. An exception this app catches is still
+        // an SDK defect -- arguably a more interesting one, because catching it is what stops a
+        // tester ever seeing it.
+        function recordCaughtSdkException(err, contextLabel) {
+            recordRuntimeException({
+                kind: 'sdk-call',
+                message: `${contextLabel}: ${err && err.message ? err.message : err}`,
+                stack: (err && err.stack) || '',
+                source: null
+            });
+        }
+
+        const RUNTIME_EXCEPTION_KIND_LABELS = {
+            'uncaught': 'Uncaught error',
+            'rejection': 'Unhandled promise rejection',
+            'sdk-call': 'Threw out of an SDK call'
+        };
+
+        function countSdkAttributedExceptions() {
+            return capturedRuntimeExceptions
+                .filter(entry => entry.origin === 'sdk')
+                .reduce((total, entry) => total + entry.count, 0);
+        }
+
+        function renderRuntimeExceptionsPanel() {
+            const container = document.getElementById('exceptions-container');
+            const summary = document.getElementById('exceptions-summary');
+            const badge = document.getElementById('exceptions-counter-badge');
+            if (!container) return;
+
+            const total = capturedRuntimeExceptions.reduce((sum, entry) => sum + entry.count, 0);
+            const sdkTotal = countSdkAttributedExceptions();
+            const blockedTotal = capturedRuntimeExceptions
+                .filter(entry => entry.origin === 'blocked')
+                .reduce((sum, entry) => sum + entry.count, 0);
+            if (badge) badge.innerText = String(total);
+
+            if (summary) {
+                if (!total) {
+                    summary.className = 'status-pill pill-success';
+                    summary.innerText = 'None captured';
+                } else if (sdkTotal) {
+                    summary.className = 'status-pill pill-danger';
+                    summary.innerText = `${sdkTotal} from the SDK`;
+                } else if (blockedTotal) {
+                    summary.className = 'status-pill pill-warn';
+                    summary.innerText = `${blockedTotal} hidden by the browser`;
+                } else {
+                    summary.className = 'status-pill pill-warn';
+                    summary.innerText = `${total} captured`;
+                }
+            }
+
+            if (!capturedRuntimeExceptions.length) {
+                container.innerHTML = '<div class="no-rules-notice">No exceptions captured. Anything thrown by the page or by the injected SDK will be listed here with its stack.</div>';
+                return;
+            }
+
+            // Most recent first, but anything blamed on the SDK outranks it: that is the row a
+            // tester is meant to act on.
+            const rank = entry => (entry.origin === 'sdk' ? 0 : entry.origin === 'blocked' ? 1 : 2);
+            const ordered = [...capturedRuntimeExceptions].sort((a, b) =>
+                rank(a) !== rank(b) ? rank(a) - rank(b) : b.lastSeenAt - a.lastSeenAt);
+
+            container.innerHTML = ordered.map(entry => {
+                const meta = RUNTIME_EXCEPTION_ORIGINS[entry.origin];
+                const when = new Date(entry.lastSeenAt).toLocaleTimeString();
+                const location = entry.source
+                    ? `${escapeMarkupForSafeRender(entry.source)}:${entry.lineno || 0}:${entry.colno || 0}`
+                    : '';
+                return `
+                    <div class="exception-entry${entry.origin === 'sdk' ? ' exception-entry-sdk' : ''}${entry.origin === 'blocked' ? ' exception-entry-blocked' : ''}">
+                        <div class="exception-head" data-exception-signature="${escapeMarkupForSafeRender(entry.signature)}">
+                            <span class="status-pill ${meta.pill}">${meta.label}</span>
+                            <span class="exception-kind">${RUNTIME_EXCEPTION_KIND_LABELS[entry.kind] || entry.kind}</span>
+                            ${entry.count > 1 ? `<span class="exception-count">×${entry.count}</span>` : ''}
+                            <span class="exception-time">${escapeMarkupForSafeRender(when)}</span>
+                            <span class="exception-toggle">${entry.expanded ? '▾' : '▸'}</span>
+                        </div>
+                        <div class="exception-message">${escapeMarkupForSafeRender(entry.message)}</div>
+                        ${entry.frame ? `<div class="exception-frame">${escapeMarkupForSafeRender(entry.frame)}</div>` : ''}
+                        ${entry.expanded ? `
+                            <div class="exception-detail">
+                                <div class="exception-note">${escapeMarkupForSafeRender(meta.note)}</div>
+                                <div class="exception-note">${entry.afterInjection ? 'Happened while a property was loaded.' : 'Happened before any property was injected — so the SDK cannot be the cause.'}</div>
+                                ${location ? `<div class="exception-note">Reported at ${location}</div>` : ''}
+                                <pre class="exception-stack">${escapeMarkupForSafeRender(entry.stack || 'No stack was provided by the browser for this error.')}</pre>
+                            </div>` : ''}
+                    </div>`;
+            }).join('');
+
+            container.querySelectorAll('[data-exception-signature]').forEach(head => {
+                head.onclick = () => {
+                    const match = capturedRuntimeExceptions.find(e => e.signature === head.dataset.exceptionSignature);
+                    if (match) { match.expanded = !match.expanded; renderRuntimeExceptionsPanel(); }
+                };
+            });
+        }
+
+        function clearCapturedRuntimeExceptions() {
+            capturedRuntimeExceptions.length = 0;
+            renderRuntimeExceptionsPanel();
+            writeLog('Runtime exception list cleared.', 'info');
+        }
+
+        function downloadRuntimeExceptionsAsCSV() {
+            if (!capturedRuntimeExceptions.length) { toast('No exceptions captured yet — nothing to export.'); return; }
+
+            const escapeCsvCell = value => `"${String(value === null || value === undefined ? '' : value).replace(/"/g, '""')}"`;
+            let csv = ['Blame', 'Kind', 'Count', 'First Seen', 'Last Seen', 'After Injection', 'Message', 'Frame', 'Stack']
+                .map(escapeCsvCell).join(',') + '\n';
+            capturedRuntimeExceptions.forEach(entry => {
+                csv += [
+                    RUNTIME_EXCEPTION_ORIGINS[entry.origin].label,
+                    RUNTIME_EXCEPTION_KIND_LABELS[entry.kind] || entry.kind,
+                    entry.count,
+                    new Date(entry.firstSeenAt).toISOString(),
+                    new Date(entry.lastSeenAt).toISOString(),
+                    entry.afterInjection ? 'yes' : 'no',
+                    entry.message,
+                    entry.frame,
+                    (entry.stack || '').replace(/\n/g, ' | ')
+                ].map(escapeCsvCell).join(',') + '\n';
+            });
+
+            const blob = new Blob([appendBuildStampToCsv(csv)], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute('download', 'Runtime_Exceptions.csv');
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            writeLog('CSV Export Engine Complete: Downloaded captured runtime exceptions.', 'success');
+        }
+
         // =========================================================================
         // 🛑 GLOBAL BROWSER CONSOLE RUNTIME ERROR INTERCEPTOR
         // =========================================================================
         // Catches uncaught syntax errors or unhandled script rejections and pipes 
         // them seamlessly into the red diagnostic error console panel.
+        // These used to flatten the error to one string and dispatch it as a *network* error,
+        // which put script crashes in the "Failed network requests" panel and discarded the
+        // stack -- the only thing that says which script actually threw. They now feed the
+        // Runtime Exceptions panel, which keeps the stack and attributes the blame; the network
+        // panel is left to report genuine network failures, which is what it is named after.
         window.onerror = function(message, source, lineno, colno, error) {
-            const fileName = source ? source.split('/').pop() : 'inline_script';
-            const structuredMessage = `Console Error ➔ ${message} (at ${fileName}:${lineno}:${colno})`;
-            
-            // Dispatch to the exact same rendering network pipeline
-            window.dispatchEvent(new CustomEvent('qa_network_error', { 
-                detail: { status: 'CRASH', type: 'JS_ERR', url: structuredMessage } 
-            }));
+            recordRuntimeException({
+                kind: 'uncaught',
+                message: String(message),
+                stack: (error && error.stack) || '',
+                source, lineno, colno
+            });
             return false; // Let the error still print to the native devtools console
         };
 
         window.addEventListener('unhandledrejection', function(event) {
-            const structuredMessage = `Unhandled Promise Rejection ➔ ${event.reason}`;
-            window.dispatchEvent(new CustomEvent('qa_network_error', { 
-                detail: { status: 'REJECT', type: 'ASYNC_ERR', url: structuredMessage } 
-            }));
+            const reason = event.reason;
+            recordRuntimeException({
+                kind: 'rejection',
+                message: (reason && reason.message) ? reason.message : String(reason),
+                stack: (reason && reason.stack) || '',
+                source: null
+            });
         });
         
         // =========================================================================
@@ -1579,10 +1916,31 @@
 
         <div class="qa-suite-grid">
             
-            <div class="suite-panel">
+            <div class="suite-panel" data-suite-panel="parameters">
                 <h4>🎯 Custom parameters & variables</h4>
-                <div class="suite-description">Add a URL parameter or JavaScript variable that the SDK can target on. Each one is applied the moment you add it.</div>
-                
+                <div class="suite-description">Every custom parameter configured on the injected property is listed below with the key the SDK really reads and its current live value — type a value and it is applied straight away. You can still add an ad-hoc parameter by hand underneath.</div>
+
+                <div class="property-params-block">
+                    <div class="dashboard-header-row">
+                        <div class="dashboard-title">This property's parameters</div>
+                        <button id="property-params-fetch-btn" class="param-fetch-btn" onclick="refreshPropertyCustomParamRegistry(true)">↻ Fetch</button>
+                    </div>
+                    <div id="property-params-status" class="property-params-status">Inject a property above to list the custom parameters it is configured with.</div>
+                    <div id="property-params-filter-row" class="property-params-filter-row" style="display:none;">
+                        <input type="text" id="property-params-filter" class="suite-input" placeholder="Filter by name…" oninput="renderPropertyCustomParamRegistryList()">
+                        <label class="property-params-only-unset"><input type="checkbox" id="property-params-only-unset" onchange="renderPropertyCustomParamRegistryList()"> Only unset</label>
+                    </div>
+                    <div id="property-params-list" class="property-params-list"></div>
+                    <div id="property-params-actions" class="property-params-actions" style="display:none;">
+                        <button onclick="applyEveryFilledPropertyCustomParam()">Set every filled value</button>
+                        <button class="purge-all-params-btn" onclick="clearPropertyCustomParamInputs()">Clear inputs</button>
+                    </div>
+                </div>
+
+                <details class="manual-param-details">
+                    <summary>Add a parameter by hand</summary>
+                    <div class="suite-description" style="margin-bottom:12px;">For a parameter that isn't configured on the property yet — or any URL parameter, variable or cookie you want to fake.</div>
+
                 <div class="factory-row">
                     <div class="input-block">
                         <label>Target</label>
@@ -1615,6 +1973,7 @@
                 </div>
                 
                 <button onclick="commitFactoryParameterElement()" style="width: 100%; margin-top: 15px;">➕ Add Parameter Trigger</button>
+                </details>
 
                 <div class="registered-dashboard">
                     <div class="dashboard-header-row">
@@ -1627,7 +1986,8 @@
                 </div>
             </div>
 
-            <div class="suite-panel">
+            <div class="suite-secondary-column">
+            <div class="suite-panel" data-suite-panel="show-form">
                 <h4>💻 Show a form on demand</h4>
                 <div class="suite-description">Skip the wait. Pick any published form and make it appear now, without satisfying its targeting rules first — the only way to test a code-triggered form, and the fastest way to check any other one.</div>
 
@@ -1654,7 +2014,7 @@
                 </div>
             </div>
 
-            <div class="suite-panel">
+            <div class="suite-panel" data-suite-panel="simulate-url">
                 <h4>🔗 Simulate a URL</h4>
                 <div class="suite-description">Forms can be targeted to specific pages by URL. This app's pages are tabs, so the address never changes and URL rules could never be satisfied. This rewrites the address bar (no reload, nothing is lost) so those rules can finally be tested.</div>
 
@@ -1671,11 +2031,12 @@
                 <div id="simulated-url-status" class="suite-description" style="margin-top:12px;" role="status"></div>
             </div>
 
-            <div class="suite-panel">
+            <div class="suite-panel" data-suite-panel="zoom">
                 <h4>⚙️ Zoom, presets & injection delay</h4>
                 <div class="suite-description">Save embed snippets you reuse, zoom the page to check the widget at different sizes, and add a delay before injecting.</div>
-                
-                <div class="input-block" style="margin-top:15px;">
+
+                <div class="zoom-panel-controls">
+                <div class="input-block">
                     <label>Page zoom</label>
                     <div class="zoom-controls-row">
                         <button onclick="modifyViewportScaleMatrix(-10)" style="background:#1e293b; padding:0 10px; height:28px;">➖</button>
@@ -1700,13 +2061,13 @@
                     </div>
                 </div>
 
-                <div class="input-group" style="margin-top: 15px; background: #070a12; padding: 10px; border-radius: 6px; border: 1px solid #111827;">
+                <div class="input-group" style="background: #070a12; padding: 10px; border-radius: 6px; border: 1px solid #111827;">
                     <label style="font-weight: bold; font-size: 0.75rem; color:var(--text-muted); display: block; margin-bottom: 2px; text-transform:uppercase;">Delay before injecting: <span id="latency-val" style="color:#0ea5e9;">0ms</span></label>
                     <div id="telemetry-network-profile" style="font-size: 0.75rem; color: var(--accent-green); font-weight: 600;">⚡ No delay — inject immediately</div>
                     <input type="range" id="latency-slider" min="0" max="3000" step="250" value="0" style="width:100%; margin-top:5px;" oninput="processLatencyTelemetryChange()">
                 </div>
 
-                <div class="input-group" style="margin-top: 15px; background: #070a12; padding: 10px; border-radius: 6px; border: 1px solid #111827;">
+                <div class="input-group" style="background: #070a12; padding: 10px; border-radius: 6px; border: 1px solid #111827;">
                     <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 0.78rem; color: #cbd5e1;">
                         <input type="checkbox" class="arm-capture-toggle-input" onchange="persistArmCaptureBeforeInjectPreference(this)" style="margin-top: 2px;">
                         <span>🎨 Arm colour capture before injecting
@@ -1714,6 +2075,8 @@
                         </span>
                     </label>
                 </div>
+                </div>
+            </div>
             </div>
         </div>
 
@@ -2197,6 +2560,25 @@
             <div id="journey-log-container" style="margin-top:12px;">
                 <div class="no-rules-notice">Journey has not been run yet. Inject a property first so rule changes can be observed. <button class="rule-source-link" onclick="focusPropertyInjectorOnActivePage()">Jump to injector</button></div>
             </div>
+        </div>
+
+        <div class="diag-panel" data-panel-key="exceptions" style="margin-top:25px;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:230px;">🧨 Runtime Exceptions [<span id="exceptions-counter-badge" style="color:var(--danger-red);">0</span>]</h4>
+                <span id="exceptions-summary" class="status-pill pill-success">None captured</span>
+                <button class="lifecycle-btn panel-collapse-btn" onclick="togglePanelCollapsed('exceptions')">▾ Collapse</button>
+                <button class="lifecycle-btn" onclick="downloadRuntimeExceptionsAsCSV()">📥 Export CSV</button>
+                <button class="lifecycle-btn btn-purge" onclick="clearCapturedRuntimeExceptions()">Clear</button>
+            </div>
+            <div class="collapsed-summary" data-panel-summary style="display:none;"></div>
+            <p data-panel-body style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                Every uncaught error, unhandled promise rejection and exception thrown out of an SDK call — with the stack
+                kept and the blame assigned. An exception raised <strong>inside the Medallia bundle</strong> is an
+                integration defect and is labelled as one: previously these were flattened to a single line, filed under
+                failed network requests, and indistinguishable from a bug in this tool. Repeats are grouped with a count,
+                so an error firing on a timer reads as one row instead of burying everything else.
+            </p>
+            <div data-panel-body id="exceptions-container" style="margin-top:14px;"></div>
         </div>
 
         <div class="diag-panel" style="margin-top:25px;">
@@ -3353,6 +3735,7 @@
         // so a tighter loop would fight with clicks landing on the card headers.
         setInterval(renderFormTargetingRulesMatrix, 1500);
         setInterval(refreshManualFormPicker, 1500);
+        setInterval(refreshPropertyCustomParamLiveValues, 2000);
         setInterval(() => ensureAccessibleNamesOnControls(), 2000);
         setInterval(renderPageTargetingSummary, 1500);
         setInterval(checkLayoutCollisions, 1500);
@@ -5635,14 +6018,18 @@
         //
         // The SDK reads a parameter's live value through fetchCPValue, which resolves exactly
         // three sources: `var` (a window property, dot-paths supported), `url` (a query
-        // parameter) and `cookie`, defaulting to `var` when the source is unset. Which one a
-        // given parameter uses lives in the onsite configuration behind getCustomParamById, and
-        // that is NOT exposed on any SDK global -- confirmed by probing every KAMPYLE_* object.
-        // So this writes the window property and the cookie, which covers the default and the
-        // common case, and says plainly that a URL-sourced parameter is not covered rather than
-        // reporting a fix that quietly did nothing. Verified against a real rule: setting
-        // window.test made the embedded form render; cookie and URL alone did not, because that
-        // parameter is var-sourced.
+        // parameter) and `cookie`, defaulting to `var` when the source is unset.
+        //
+        // This fix writes the window property and the cookie, covering the default and the common
+        // case, and says plainly that a URL-sourced parameter is not covered rather than reporting
+        // a fix that quietly did nothing. Verified against a real rule: setting window.test made
+        // the embedded form render; cookie and URL alone did not, because that parameter is
+        // var-sourced.
+        //
+        // An earlier note here said each parameter's configured source is not exposed anywhere.
+        // That is no longer true -- see PROPERTY CUSTOM-PARAMETER REGISTRY above, which reads the
+        // real source for every parameter. This fix could be narrowed to write only the correct
+        // one; it is left broad for now because writing both is harmless and already proven.
         const CRITERIA_CONDITION_LABELS = {
             equals: 'equals', doesnotequal: 'does not equal', contains: 'contains',
             doesnotcontain: 'does not contain', startswith: 'starts with', endswith: 'ends with',
@@ -5891,7 +6278,7 @@
                 // blocked state above, which is the honest place to read it from.
                 push('GenericRule', description, 'info',
                     criteriaFix
-                        ? `Rule engine condition: ${description}. Evaluated by the SDK against the live parameter value, which this page cannot read for certain — the parameter's configured source (window variable, URL parameter or cookie) is not exposed by the SDK. The fix sets a satisfying value as a window variable and a cookie, which covers the SDK's default source; if this parameter reads from a URL query parameter instead, set it in the Custom Parameters panel.`
+                        ? `Rule engine condition: ${description}. Evaluated by the SDK against the live parameter value. The fix sets a satisfying value as a window variable and a cookie, which covers the SDK's default source; if this parameter reads from a URL query parameter instead, set it from the property parameter list in the Custom Parameters panel, which knows each parameter's real source.`
                         : `Rule engine condition: ${description}. No one-click fix is offered: a satisfying value cannot be derived from this combination of conditions (a regex or datetime comparison, a non-custom-parameter field, or two conditions on the same parameter that contradict each other).`,
                     null,
                     null,
@@ -6017,14 +6404,25 @@
                 // The URL source is deliberately not touched: adding a query parameter rewrites
                 // the address bar, which is itself a targeting input that the URL rules read.
                 fix.customParams.forEach(param => {
-                    try { window[param.name] = param.value; } catch (err) { /* non-writable global */ }
+                    try { assignNestedWindowProperty(param.name, param.value); } catch (err) { /* non-writable global */ }
                     document.cookie = `${encodeURIComponent(param.name)}=${encodeURIComponent(param.value)}; path=/`;
+                    // Registered in the same stores the parameter panel uses. Without this the
+                    // fix wrote a value nothing else knew about: it never appeared in
+                    // "Parameters you've added", Purge All could not clear it, and — worst — the
+                    // repro link left it out, so the link handed to a developer reproduced the
+                    // blocked state rather than the fixed one.
+                    virtualGlobalVariables[param.name] = { val: param.value, type: 'Text' };
+                    const existingCookie = virtualSessionCookies.find(cookie => cookie.key === param.name);
+                    if (existingCookie) existingCookie.val = param.value;
+                    else virtualSessionCookies.push({ key: param.name, type: 'Text', val: param.value });
                 });
                 const summary = fix.customParams.map(p => `${p.name}="${p.value}"`).join(', ');
                 writeLog(`🔧 Applied fix: set custom param ${summary} as a window variable and a cookie.`, 'success');
+                renderActiveParametersDashboardList();
                 refreshOnsiteLifecycleStateValues();
                 if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
-                    window.KAMPYLE_ONSITE_SDK.updatePageView();
+                    try { window.KAMPYLE_ONSITE_SDK.updatePageView(); }
+                    catch (err) { recordCaughtSdkException(err, 'KAMPYLE_ONSITE_SDK.updatePageView()'); }
                 }
                 toast(`${fix.label} — done. Asked the SDK to re-evaluate targeting.`, 'success');
                 renderFormTargetingRulesMatrix();
@@ -6920,6 +7318,7 @@
             'Journey Automation': 'targeting',
             'Live Analytics Events Tracking': 'activity',
             'Native SDK Custom Event Bus': 'activity',
+            'Runtime Exceptions': 'activity',
             'Activity log': 'activity',
             'Unified Session Timeline': 'activity',
             'Performance & Core Web Vitals': 'activity',
@@ -7021,6 +7420,7 @@
                 injected: !!window.KAMPYLE_ONSITE_SDK,
                 propertyId: null, formCount: 0, blockedForms: 0, shownForms: 0,
                 networkErrors: document.querySelectorAll('#network-error-stream-box .network-err-entry').length,
+                sdkExceptions: countSdkAttributedExceptions(),
                 submissions: capturedSubmissionTraces.filter(t => t.isComplete).length,
                 designMismatches: 0, designChecked: 0,
                 contrastFailures: 0, contrastChecked: 0,
@@ -7171,6 +7571,21 @@
             if (networkErrorEntries.length) {
                 lines.push('## Network errors');
                 networkErrorEntries.forEach(entry => lines.push(`- ${entry}`));
+                lines.push('');
+            }
+
+            // Ranked so an SDK-thrown exception is the first thing read: it is the one finding
+            // here that is a defect in the property rather than an observation about it.
+            if (capturedRuntimeExceptions.length) {
+                lines.push('## Runtime exceptions');
+                const rank = entry => (entry.origin === 'sdk' ? 0 : entry.origin === 'blocked' ? 1 : 2);
+                [...capturedRuntimeExceptions]
+                    .sort((a, b) => rank(a) - rank(b) || b.lastSeenAt - a.lastSeenAt)
+                    .forEach(entry => {
+                        lines.push(`- **${RUNTIME_EXCEPTION_ORIGINS[entry.origin].label}** — ${entry.message}` +
+                                   `${entry.count > 1 ? ` (seen ${entry.count}x)` : ''}`);
+                        if (entry.frame) lines.push(`  - at ${entry.frame}`);
+                    });
                 lines.push('');
             }
 
@@ -7333,7 +7748,63 @@
             const fixtureState = getHostileLayoutState();
             if (Object.keys(fixtureState).length) url.searchParams.set('qa_fixtures', compressToUrlParam(JSON.stringify(fixtureState)));
 
+            // Custom parameters decide whether a form shows at all, so a link without them could
+            // reproduce the opposite of the thing being reported. They were missing entirely:
+            // the base URL is rebuilt from location.href minus its query, which also discarded
+            // the URL-sourced parameters that had just been written into the address bar.
+            const simulatedParameters = collectSimulatedParameterState();
+            if (simulatedParameters) url.searchParams.set('qa_params', compressToUrlParam(JSON.stringify(simulatedParameters)));
+
+            // Only when it differs from the default, so an ordinary link stays short.
+            if (getConsentState() !== 'denied') url.searchParams.set('qa_consent', getConsentState());
+
             return url.toString();
+        }
+
+        function collectSimulatedParameterState() {
+            const state = {};
+            if (Object.keys(virtualQueriesObject).length) state.url = virtualQueriesObject;
+            if (Object.keys(virtualGlobalVariables).length) state.var = virtualGlobalVariables;
+            if (virtualSessionCookies.length) state.cookie = virtualSessionCookies;
+            return Object.keys(state).length ? state : null;
+        }
+
+        // Reading the three stores back is not enough on its own: the values have to be written
+        // where the SDK actually looks for them again.
+        //
+        // Two things were missing. Cookies were never rewritten -- they survived an ordinary
+        // reload only because the browser still held them, so a repro link opened on another
+        // machine restored the row in the dashboard while the cookie itself did not exist. And
+        // URL-sourced parameters never made it back into the address bar, which is the only
+        // place the SDK's getUrlParam can see them.
+        function restoreSimulatedParametersFromStorage() {
+            const read = (key, fallback) => {
+                const raw = sessionStorage.getItem(key);
+                if (!raw) return fallback;
+                try { return JSON.parse(raw); } catch (err) { return fallback; }
+            };
+            virtualQueriesObject = read('qa_saved_url_obj', virtualQueriesObject);
+            virtualGlobalVariables = read('qa_saved_var_obj', virtualGlobalVariables);
+            virtualSessionCookies = read('qa_saved_cookie_arr', virtualSessionCookies);
+
+            // assignNestedWindowProperty, not window[key]: a parameter's source name may be a dot
+            // path, which a flat assignment would create as a literal key nothing reads.
+            Object.keys(virtualGlobalVariables).forEach(key => {
+                assignNestedWindowProperty(key, virtualGlobalVariables[key].val);
+            });
+            virtualSessionCookies.forEach(cookie => {
+                document.cookie = `${cookie.key}=${encodeURIComponent(cookie.val)}; path=/; max-age=3600;`;
+            });
+
+            renderActiveParametersDashboardList();
+        }
+
+        // Deliberately not folded into restoreSimulatedParametersFromStorage: rewriting the
+        // address bar replaces the whole path, and the deep-link route is recovered from
+        // location.pathname further down this same handler. Doing it there erased /page3 before
+        // anything had read it. This runs once the route is settled.
+        function syncRestoredUrlParametersIntoAddressBar() {
+            if (Object.keys(virtualQueriesObject).length) updateActiveBrowserAddressBarQueryString(false);
         }
 
         function copyReproPermalinkToClipboard() {
@@ -7348,7 +7819,7 @@
                 return;
             }
             navigator.clipboard.writeText(link)
-                .then(() => { toast('Repro link copied — opening it reproduces this script, lifecycle state and fixtures.', 'success'); writeLog('Repro permalink copied to clipboard.', 'success'); })
+                .then(() => { toast('Repro link copied — opening it reproduces this script, lifecycle state, custom parameters and fixtures.', 'success'); writeLog('Repro permalink copied to clipboard.', 'success'); })
                 .catch(err => { toast(`Clipboard write rejected: ${err.message}`); writeLog(`Clipboard write rejected: ${err.message}`, 'warn'); });
         }
 
@@ -7379,7 +7850,25 @@
                 try { localStorage.setItem(HOSTILE_LAYOUT_STORAGE_KEY, decompressFromUrlParam(fixturesParam)); applied = true; }
                 catch (err) { writeLog(`❌ Repro link's fixtures parameter could not be read: ${err.message}`, 'warn'); }
             }
-            if (applied) writeLog('Repro link detected: restoring script, lifecycle state and fixtures from the shared URL.', 'success');
+            // Written into the same sessionStorage keys the normal restore path already reads,
+            // rather than applied here, so there is one restore path rather than two that can
+            // drift apart.
+            const parametersParam = params.get('qa_params');
+            if (parametersParam) {
+                try {
+                    const restored = JSON.parse(decompressFromUrlParam(parametersParam));
+                    if (restored.url) sessionStorage.setItem('qa_saved_url_obj', JSON.stringify(restored.url));
+                    if (restored.var) sessionStorage.setItem('qa_saved_var_obj', JSON.stringify(restored.var));
+                    if (restored.cookie) sessionStorage.setItem('qa_saved_cookie_arr', JSON.stringify(restored.cookie));
+                    applied = true;
+                } catch (err) { writeLog(`❌ Repro link's parameters could not be read: ${err.message}`, 'warn'); }
+            }
+            const consentParam = params.get('qa_consent');
+            if (consentParam === 'granted' || consentParam === 'denied') {
+                localStorage.setItem(CONSENT_STATE_STORAGE_KEY, consentParam);
+                applied = true;
+            }
+            if (applied) writeLog('Repro link detected: restoring script, lifecycle state, custom parameters and fixtures from the shared URL.', 'success');
             return applied;
         }
 
@@ -8074,7 +8563,19 @@
             const framesUsed = new Set(Array.from(capturedIssueEvidence.values()).map(e => e.frameId).filter(Boolean));
             lines.push(`- Screenshots: ${framesUsed.size || 'none'}${framesUsed.size ? ' (in the evidence pack HTML, each labelled with the issue it belongs to)' : ' — arm colour capture or start a recording to enable automatic screenshots'}`);
             lines.push(`- Screen recording: ${bugReportRecordingBlob ? `attached (${(bugReportRecordingBlob.size / 1048576).toFixed(2)} MB .webm)` : 'not recorded'}`);
-            lines.push(`- Repro link (restores this exact script, lifecycle state and fixtures): ${buildReproPermalink()}`);
+            lines.push(`- Repro link (restores this exact script, lifecycle state, custom parameters and fixtures): ${buildReproPermalink()}`);
+
+            if (capturedRuntimeExceptions.length) {
+                lines.push('');
+                lines.push('## Runtime exceptions');
+                [...capturedRuntimeExceptions]
+                    .sort((a, b) => (a.origin === 'sdk') === (b.origin === 'sdk') ? 0 : (a.origin === 'sdk' ? -1 : 1))
+                    .forEach(entry => {
+                        lines.push(`- **${RUNTIME_EXCEPTION_ORIGINS[entry.origin].label}** — ${entry.message}` +
+                                   `${entry.count > 1 ? ` (seen ${entry.count}x)` : ''}` +
+                                   `${entry.frame ? `\n  - at ${entry.frame}` : ''}`);
+                    });
+            }
             lines.push('');
             lines.push('_Generated by the Onsite Validation Hub. All evidence was produced locally in the browser._');
 
@@ -8362,10 +8863,11 @@
                 }
             }
 
+            if (s.sdkExceptions) chips.push(chip('chip-alert', 'SDK errors', s.sdkExceptions, '#exceptions-container'));
             if (s.networkErrors) chips.push(chip('chip-alert', 'Errors', s.networkErrors, '#network-error-stream-box'));
 
             bar.innerHTML = chips.join('') + '<span class="status-spacer"></span>' +
-                `<span class="status-chip chip-idle" data-action="copy-repro-link" role="button" tabindex="0" title="Copy a link that reproduces this exact script, lifecycle state and fixtures">🔗 Copy Repro Link</span>` +
+                `<span class="status-chip chip-idle" data-action="copy-repro-link" role="button" tabindex="0" title="Copy a link that reproduces this exact script, lifecycle state, custom parameters and fixtures">🔗 Copy Repro Link</span>` +
                 `<span class="status-chip chip-idle" data-action="copy-session-report" role="button" tabindex="0" title="Copy a pasteable summary of this session">📋 Copy Report</span>` +
                 `<span class="status-chip chip-idle" data-action="file-bug-report" role="button" tabindex="0" title="Gather every finding, the steps you took and all captured evidence into one pasteable bug report">🐞 Report Bug</span>` +
                 `<span class="status-chip chip-idle" data-jump="#log-stream-box" role="button" tabindex="0">Activity log</span>`;
@@ -9130,6 +9632,612 @@
             }
         }
 
+        // --- 9b. PROPERTY CUSTOM-PARAMETER REGISTRY ---
+        // Every parameter configured on the injected property, listed with the key the SDK
+        // actually reads and its current live value, so a tester sets real values instead of
+        // retyping names out of the Medallia admin UI and hoping they match.
+        //
+        // Three sources, tried in order, because the two cheap ones each have a failure mode:
+        //   1. The property's own onsiteData JSON. The embed exposes its URL through
+        //      KAMPYLE_EMBED.getOnsiteDataLocation() and the CDN serves it with
+        //      `access-control-allow-origin: *`, so a page fetch works. Preferred: it is the
+        //      same file the SDK itself reads, it costs no SDK API surface, and it stays quiet.
+        //   2. window.CUSTOM_PARAMETERS.getAllCustomParams(). Registered unconditionally at SDK
+        //      init. Used only as a fallback because the SDK wraps every one of these methods in
+        //      a "will be deprecated" console.warn -- which this hub captures and would spray
+        //      across the log panel -- and because that warning is a real removal notice.
+        //   3. Failing both, the custom-param names already decoded out of the forms' targeting
+        //      rules. Incomplete (it only sees parameters some rule mentions) and it cannot know
+        //      the source, so those rows ask for one.
+        //
+        // Earlier comments in this file state the source is "NOT exposed on any SDK global".
+        // That probe covered KAMPYLE_* only; the registry lives under CUSTOM_PARAMETERS and
+        // MDIGITAL.CONFIGURATION, which is why it was missed.
+        let propertyCustomParamRegistry = [];
+        let propertyCustomParamRegistryOrigin = null;
+        let propertyCustomParamFetchInFlight = false;
+        let propertyCustomParamAnswerIsDefinitive = false;
+        // Kept outside the rendered DOM so a re-render (a fetch, or a live-value refresh) never
+        // throws away a value the tester is halfway through typing.
+        const propertyCustomParamDraftValues = {};
+
+        const PROPERTY_PARAM_SOURCE_LABELS = { var: 'var', url: 'url', cookie: 'cookie' };
+
+        function normalisePropertyCustomParamSource(source) {
+            const key = String(source == null ? '' : source).trim().toLowerCase();
+            return PROPERTY_PARAM_SOURCE_LABELS[key] ? key : null;
+        }
+
+        // Mirrors the SDK's getNestedPropertyValue: a parameter's source name may be a dot path
+        // ("user.profile.tier"), not just a bare global.
+        function readNestedWindowPropertyValue(path) {
+            const segments = String(path || '').split('.');
+            let cursor = window;
+            for (const segment of segments) {
+                if (cursor === null || cursor === undefined || typeof cursor !== 'object' && typeof cursor !== 'function') return undefined;
+                cursor = cursor[segment];
+            }
+            return cursor;
+        }
+
+        function assignNestedWindowProperty(path, value) {
+            const segments = String(path || '').split('.');
+            const leaf = segments.pop();
+            let cursor = window;
+            for (const segment of segments) {
+                if (cursor[segment] === null || typeof cursor[segment] !== 'object') cursor[segment] = {};
+                cursor = cursor[segment];
+            }
+            cursor[leaf] = value;
+        }
+
+        function deleteNestedWindowProperty(path) {
+            const segments = String(path || '').split('.');
+            const leaf = segments.pop();
+            let cursor = window;
+            for (const segment of segments) {
+                if (cursor === null || typeof cursor !== 'object') return;
+                cursor = cursor[segment];
+            }
+            if (cursor && typeof cursor === 'object') delete cursor[leaf];
+        }
+
+        function readCookieValueByName(name) {
+            const match = document.cookie.split('; ').find(entry => entry.slice(0, entry.indexOf('=')) === name);
+            if (!match) return undefined;
+            try { return decodeURIComponent(match.slice(match.indexOf('=') + 1)); }
+            catch (err) { return match.slice(match.indexOf('=') + 1); }
+        }
+
+        // The raw value the SDK's fetchCPValue would read, before any casting. Reimplemented here
+        // rather than called through CUSTOM_PARAMETERS.fetchCPValue so refreshing the list stays
+        // silent in the console; the three branches are the SDK's own, verified against the
+        // bundle (var -> nested window property, url -> query parameter, cookie -> cookie).
+        function readRawPropertyCustomParamValue(param) {
+            const key = param.sourceName;
+            switch (param.source) {
+                case 'var': return readNestedWindowPropertyValue(key);
+                case 'url': {
+                    const found = new URLSearchParams(window.location.search).get(key);
+                    return found === null ? undefined : found;
+                }
+                case 'cookie': return readCookieValueByName(key);
+                default: return undefined;
+            }
+        }
+
+        // The SDK casts a raw value by the parameter's configured type and hands null to the rule
+        // engine when the cast fails, so a value that "looks set" on the page can still be
+        // invisible to targeting. Both of the SDK's casting paths (castCPValue and the older
+        // getSafeCustomParamVal) agree on these rules, so the difference is not modelled.
+        //
+        // The Datetime branch is the one that catches people out: a string is cast with
+        // Number()/parseInt(), and a *number* is rejected outright because it is neither a string
+        // nor a Date. Epoch milliseconds as a string is the only encoding both paths accept.
+        function castPropertyCustomParamValueLikeSdk(raw, type) {
+            if (raw === undefined || raw === null || raw === '') return null;
+            switch (String(type || '').toLowerCase()) {
+                case 'text':
+                    return typeof raw === 'string' ? raw : null;
+                case 'number':
+                    return raw !== '' && !(typeof raw !== 'number' && isNaN(Number(raw))) ? Number(raw) : null;
+                case 'boolean':
+                    if (raw === true || raw === false) return raw;
+                    if (raw === 'true') return true;
+                    if (raw === 'false') return false;
+                    return null;
+                case 'datetime':
+                    if (typeof raw === 'string') return Number(raw) || null;
+                    if (raw instanceof Date) return isNaN(raw.getTime()) ? null : raw.getTime();
+                    return null;
+                default:
+                    return null;
+            }
+        }
+
+        // Turns what the tester typed into a value the SDK will cast back to exactly that. URL
+        // parameters and cookies can only ever hold strings, so those are encoded as text the
+        // SDK's cast understands; a variable can hold a real number or boolean, which reads
+        // better in the console when someone goes looking. Datetime is the exception noted above
+        // and stays a string everywhere.
+        function encodePropertyCustomParamValueForSdk(typedValue, type, source) {
+            const text = String(typedValue == null ? '' : typedValue).trim();
+            if (!text) return { error: 'Enter a value first.' };
+            const wantsString = source !== 'var';
+
+            switch (String(type || '').toLowerCase()) {
+                case 'number': {
+                    if (isNaN(Number(text))) return { error: `"${text}" is not a number, and the SDK would read this parameter as empty.` };
+                    return { value: wantsString ? text : Number(text) };
+                }
+                case 'boolean': {
+                    const lowered = text.toLowerCase();
+                    if (lowered !== 'true' && lowered !== 'false') return { error: 'A Boolean parameter accepts only true or false.' };
+                    return { value: wantsString ? lowered : lowered === 'true' };
+                }
+                case 'datetime': {
+                    // Accepts either the datetime-local picker's output or a pasted epoch.
+                    const epoch = /^\d+$/.test(text) ? Number(text) : new Date(text).getTime();
+                    if (!epoch || isNaN(epoch)) return { error: `"${text}" is not a date the SDK can read. Pick a date, or paste epoch milliseconds.` };
+                    return { value: String(epoch), note: new Date(epoch).toLocaleString() };
+                }
+                default:
+                    return { value: text };
+            }
+        }
+
+        function buildPropertyCustomParamRecord(raw, origin) {
+            const uniqueName = String(raw.unique_name == null ? '' : raw.unique_name).trim();
+            if (!uniqueName) return null;
+            return {
+                id: raw.id == null ? null : raw.id,
+                uniqueName,
+                type: String(raw.type || 'Text'),
+                source: normalisePropertyCustomParamSource(raw.source),
+                // The key the SDK reads is source_name, which is free to differ from the display
+                // name and often does. Falling back to the display name is a guess, and the row
+                // says so rather than presenting it as fact.
+                sourceName: String(raw.source_name || uniqueName).trim() || uniqueName,
+                sourceNameIsAssumed: !raw.source_name,
+                isIdentifier: raw.is_identifier === true,
+                origin
+            };
+        }
+
+        async function readPropertyCustomParamsFromOnsiteDataJson() {
+            if (!window.KAMPYLE_EMBED || typeof window.KAMPYLE_EMBED.getOnsiteDataLocation !== 'function') return null;
+            let url;
+            try { url = window.KAMPYLE_EMBED.getOnsiteDataLocation(); } catch (err) { return null; }
+            if (!url) return null;
+            // Not `no-store`: the configuration file's name carries a build timestamp, so a
+            // republished property is a different URL and the cached copy can never be stale.
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`the property's configuration file answered ${response.status}`);
+            const config = await response.json();
+            return Array.isArray(config.customParams) ? config.customParams : [];
+        }
+
+        function readPropertyCustomParamsFromSdkGlobal() {
+            if (!window.CUSTOM_PARAMETERS || typeof window.CUSTOM_PARAMETERS.getAllCustomParams !== 'function') return null;
+            try {
+                const params = window.CUSTOM_PARAMETERS.getAllCustomParams();
+                return Array.isArray(params) ? params : null;
+            } catch (err) { return null; }
+        }
+
+        // Last resort: names lifted from the forms' own targeting rules. These carry no source or
+        // type, so they are typed as Text and rendered with a source picker.
+        function readPropertyCustomParamNamesFromTargetingRules() {
+            const registry = readPublishedFormRegistryFromSdk();
+            if (!registry) return null;
+            const names = new Set();
+            registry.forEach(form => {
+                const rule = form.onSiteData && form.onSiteData.genericRule;
+                if (!rule) return;
+                collectCriteriaFromRuleGroup(rule).forEach(criterion => {
+                    if (criterion.fieldOrigin !== 'customParam') return;
+                    const name = String(criterion.fieldName || '').trim();
+                    if (name) names.add(name);
+                });
+            });
+            return names.size ? [...names].map(name => ({ unique_name: name, type: 'Text', source: null, source_name: name })) : null;
+        }
+
+        async function refreshPropertyCustomParamRegistry(userInitiated) {
+            if (propertyCustomParamFetchInFlight) return;
+            const statusEl = document.getElementById('property-params-status');
+            const button = document.getElementById('property-params-fetch-btn');
+            if (!statusEl) return;
+
+            if (!window.KAMPYLE_ONSITE_SDK && !window.KAMPYLE_EMBED) {
+                propertyCustomParamRegistry = [];
+                propertyCustomParamRegistryOrigin = null;
+                renderPropertyCustomParamRegistryList();
+                statusEl.className = 'property-params-status';
+                statusEl.textContent = 'Inject a property above to list the custom parameters it is configured with.';
+                if (userInitiated) toast('No property is loaded yet — inject one first.', 'warn');
+                return;
+            }
+
+            propertyCustomParamFetchInFlight = true;
+            if (button) { button.disabled = true; button.textContent = '↻ Fetching…'; }
+
+            let rawParams = null;
+            let origin = null;
+            let failureDetail = null;
+            // Set once an authoritative source has answered, so the retry loop behind an
+            // automatic fetch stops instead of re-asking a property that genuinely has none.
+            propertyCustomParamAnswerIsDefinitive = false;
+            try {
+                rawParams = await readPropertyCustomParamsFromOnsiteDataJson();
+                if (rawParams) { origin = "the property's configuration file"; propertyCustomParamAnswerIsDefinitive = true; }
+            } catch (err) {
+                failureDetail = err.message;
+            }
+            if (!rawParams || !rawParams.length) {
+                const fromGlobal = readPropertyCustomParamsFromSdkGlobal();
+                if (fromGlobal && fromGlobal.length) { rawParams = fromGlobal; origin = 'the loaded SDK'; }
+            }
+            if (!rawParams || !rawParams.length) {
+                const fromRules = readPropertyCustomParamNamesFromTargetingRules();
+                if (fromRules) { rawParams = fromRules; origin = 'the forms’ targeting rules'; }
+            }
+
+            propertyCustomParamFetchInFlight = false;
+            if (button) { button.disabled = false; button.textContent = '↻ Fetch'; }
+
+            if (!rawParams) {
+                propertyCustomParamRegistry = [];
+                propertyCustomParamRegistryOrigin = null;
+                renderPropertyCustomParamRegistryList();
+                statusEl.className = 'property-params-status is-error';
+                statusEl.textContent = failureDetail
+                    ? `Could not read this property's parameters — ${failureDetail}. Add what you need by hand below.`
+                    : 'Could not read this property’s parameters. The SDK may still be starting — try Fetch again in a moment.';
+                if (userInitiated) toast('Could not read this property’s custom parameters.', 'warn');
+                return;
+            }
+
+            propertyCustomParamRegistry = rawParams
+                .map(raw => buildPropertyCustomParamRecord(raw, origin))
+                .filter(Boolean)
+                .sort((a, b) => a.uniqueName.localeCompare(b.uniqueName, undefined, { sensitivity: 'base' }));
+            propertyCustomParamRegistryOrigin = origin;
+
+            renderPropertyCustomParamRegistryList();
+            statusEl.className = 'property-params-status';
+            if (!propertyCustomParamRegistry.length) {
+                statusEl.textContent = 'This property has no custom parameters configured. Add one by hand below to test with.';
+            } else {
+                statusEl.textContent = `${propertyCustomParamRegistry.length} parameter${propertyCustomParamRegistry.length === 1 ? '' : 's'} configured on this property, read from ${origin}.`;
+                if (userInitiated) writeLog(`Read ${propertyCustomParamRegistry.length} custom parameter(s) from ${origin}.`, 'success');
+            }
+        }
+
+        // Split in two so the common case stays on one line with the name: `inline` is the short
+        // value shown on the right of the heading, `warning` is the full-width explanation that
+        // only appears when there is genuinely something wrong. Cramming the explanation into the
+        // inline slot truncated it to uselessness.
+        function describeLivePropertyCustomParamValue(param) {
+            if (!param.source) return { inline: '<span class="live-unset">source unknown</span>', warning: '' };
+            const raw = readRawPropertyCustomParamValue(param);
+            if (raw === undefined || raw === null || raw === '') {
+                return { inline: '<span class="live-unset">not set</span>', warning: '', isUnset: true };
+            }
+            const cast = castPropertyCustomParamValueLikeSdk(raw, param.type);
+            const shown = escapeMarkupForSafeRender(typeof raw === 'string' ? raw : JSON.stringify(raw));
+            // A value that is present on the page but casts to null is the failure mode worth
+            // shouting about: the tester sees it set and the rule engine sees nothing.
+            if (cast === null) {
+                return {
+                    inline: `<span class="live-broken">${shown}</span>`,
+                    warning: `⚠ Set on the page, but the SDK reads this as empty — that is not a valid ${escapeMarkupForSafeRender(param.type)} value.`
+                };
+            }
+            const rendered = param.type.toLowerCase() === 'datetime'
+                ? `${shown} (${escapeMarkupForSafeRender(new Date(cast).toLocaleString())})`
+                : shown;
+            return { inline: `<span class="live-set">${rendered}</span>`, warning: '' };
+        }
+
+        // Rows are addressed by their index in the full registry, never by their position in the
+        // filtered view, so filtering can never point Set at a different parameter.
+        function listVisiblePropertyCustomParamIndexes() {
+            const filterField = document.getElementById('property-params-filter');
+            const onlyUnsetBox = document.getElementById('property-params-only-unset');
+            const needle = String(filterField && filterField.value || '').trim().toLowerCase();
+            const onlyUnset = !!(onlyUnsetBox && onlyUnsetBox.checked);
+            return propertyCustomParamRegistry.reduce((visible, param, index) => {
+                const matchesName = !needle
+                    || param.uniqueName.toLowerCase().includes(needle)
+                    || param.sourceName.toLowerCase().includes(needle);
+                if (matchesName && (!onlyUnset || describeLivePropertyCustomParamValue(param).isUnset)) visible.push(index);
+                return visible;
+            }, []);
+        }
+
+        function buildPropertyCustomParamValueControl(param, index) {
+            const draft = propertyCustomParamDraftValues[param.uniqueName] || '';
+            const id = `property-param-input-${index}`;
+            const label = `Value for ${escapeMarkupForSafeRender(param.uniqueName)}`;
+            if (param.type.toLowerCase() === 'boolean') {
+                return `<select id="${id}" class="suite-input" aria-label="${label}">
+                            <option value=""${draft === '' ? ' selected' : ''}>— choose —</option>
+                            <option value="true"${draft === 'true' ? ' selected' : ''}>true</option>
+                            <option value="false"${draft === 'false' ? ' selected' : ''}>false</option>
+                        </select>`;
+            }
+            if (param.type.toLowerCase() === 'datetime') {
+                return `<input id="${id}" type="datetime-local" class="suite-input" aria-label="${label}" value="${escapeMarkupForSafeRender(draft)}">`;
+            }
+            const placeholder = param.type.toLowerCase() === 'number' ? 'e.g. 42' : 'e.g. premium';
+            return `<input id="${id}" type="text" class="suite-input" aria-label="${label}" placeholder="${placeholder}" value="${escapeMarkupForSafeRender(draft)}">`;
+        }
+
+        // Whatever is in the inputs right now, saved before anything is rebuilt.
+        //
+        // The oninput handler alone was not enough. A re-render replaces the input elements, and
+        // anything typed into the old element between the last event and the rebuild went with
+        // it -- so a fetch or a live-value tick landing mid-keystroke silently emptied the field
+        // the tester was using. Reading the DOM here cannot miss a value the way an event can.
+        function capturePropertyCustomParamDraftsFromDom() {
+            document.querySelectorAll('#property-params-list .property-param-row').forEach(row => {
+                const param = propertyCustomParamRegistry[Number(row.dataset.registryIndex)];
+                const field = row.querySelector('.suite-input');
+                if (param && field) propertyCustomParamDraftValues[param.uniqueName] = field.value;
+            });
+        }
+
+        function renderPropertyCustomParamRegistryList() {
+            const list = document.getElementById('property-params-list');
+            const actions = document.getElementById('property-params-actions');
+            if (!list) return;
+
+            capturePropertyCustomParamDraftsFromDom();
+            const focusedField = document.activeElement;
+            const focusedFieldId = focusedField && list.contains(focusedField) ? focusedField.id : null;
+            let caretPosition = null;
+            try { caretPosition = focusedFieldId ? focusedField.selectionStart : null; }
+            catch (err) { caretPosition = null; }   // a <select> has no selectionStart
+            const filterRow = document.getElementById('property-params-filter-row');
+            if (!propertyCustomParamRegistry.length) {
+                list.innerHTML = '';
+                if (actions) actions.style.display = 'none';
+                if (filterRow) filterRow.style.display = 'none';
+                return;
+            }
+            if (actions) actions.style.display = 'flex';
+            // The filter only earns its space once the list is long enough to need it.
+            if (filterRow) filterRow.style.display = propertyCustomParamRegistry.length > 5 ? 'flex' : 'none';
+
+            const visibleIndexes = listVisiblePropertyCustomParamIndexes();
+            if (!visibleIndexes.length) {
+                list.dataset.signature = '';
+                list.innerHTML = '<div class="property-params-empty-filter">No parameter matches that filter.</div>';
+                return;
+            }
+
+            // Only which rows are on screen. Every row is built with a slot for its live value
+            // and a slot for its warning, so a value appearing, changing or turning out to be
+            // unreadable is updated in place and never rebuilds anything.
+            //
+            // This is not just a repaint optimisation. Rebuilding on a value change replaced the
+            // input elements roughly once a second, and anything typed into the old element in
+            // that window went with it -- reliably enough to fail under load and to lose a
+            // tester's input in exactly the moment they were using the panel.
+            const signature = visibleIndexes.join('|');
+            if (list.dataset.signature === signature) {
+                refreshPropertyCustomParamLiveValues();
+                return;
+            }
+            list.dataset.signature = signature;
+
+            list.innerHTML = visibleIndexes.map(index => {
+                const param = propertyCustomParamRegistry[index];
+                const sourceControl = param.source
+                    ? `<span class="badge badge-${param.source}">${param.source}</span>`
+                    : `<select id="property-param-source-${index}" class="qa-select" aria-label="Where ${escapeMarkupForSafeRender(param.uniqueName)} is read from" style="height:22px; font-size:0.7rem; padding:0 22px 0 8px;">
+                           <option value="var">var</option><option value="url">url</option><option value="cookie">cookie</option>
+                       </select>`;
+                // Only worth the line when it tells the tester something they could get wrong.
+                const keyHint = param.source && (param.sourceName !== param.uniqueName || param.sourceName.includes('.'))
+                    ? `<div class="property-param-key">reads <b>${escapeMarkupForSafeRender(
+                          param.source === 'var' ? `window.${param.sourceName}`
+                          : param.source === 'url' ? `?${param.sourceName}=` : `cookie ${param.sourceName}`)}</b></div>`
+                    : '';
+                const live = describeLivePropertyCustomParamValue(param);
+                return `
+                    <div class="property-param-row" data-registry-index="${index}">
+                        <div class="property-param-head">
+                            ${sourceControl}
+                            <span class="property-param-name">${escapeMarkupForSafeRender(param.uniqueName)}</span>
+                            <span class="property-param-type">${escapeMarkupForSafeRender(param.type)}</span>
+                            ${param.isIdentifier ? '<span class="badge property-param-identifier">identifier</span>' : ''}
+                            <span class="property-param-head-live">${live.inline}</span>
+                        </div>
+                        ${keyHint}
+                        <div class="property-param-warning"${live.warning ? '' : ' hidden'}>${live.warning}</div>
+                        <div class="property-param-controls">
+                            ${buildPropertyCustomParamValueControl(param, index)}
+                            <button class="property-param-set-btn" data-param-index="${index}" aria-label="Set ${escapeMarkupForSafeRender(param.uniqueName)}">Set</button>
+                            <button class="property-param-clear-btn" data-unset-index="${index}" aria-label="Unset ${escapeMarkupForSafeRender(param.uniqueName)}" title="Remove this parameter's value">Unset</button>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            list.querySelectorAll('[data-param-index]').forEach(button => {
+                button.onclick = () => applyPropertyCustomParamFromRow(Number(button.dataset.paramIndex), true);
+            });
+            list.querySelectorAll('[data-unset-index]').forEach(button => {
+                button.onclick = () => unsetPropertyCustomParamFromRow(Number(button.dataset.unsetIndex));
+            });
+            visibleIndexes.forEach(index => {
+                const param = propertyCustomParamRegistry[index];
+                const field = document.getElementById(`property-param-input-${index}`);
+                if (!field) return;
+                field.oninput = field.onchange = () => { propertyCustomParamDraftValues[param.uniqueName] = field.value; };
+                field.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); applyPropertyCustomParamFromRow(index, true); } };
+            });
+            restoreFocusAfterPropertyCustomParamRebuild(focusedFieldId, caretPosition);
+        }
+
+        // A rebuild that genuinely has to happen still must not feel like one: the field the
+        // tester was in gets the focus and the caret back.
+        function restoreFocusAfterPropertyCustomParamRebuild(fieldId, caretPosition) {
+            if (!fieldId) return;
+            const field = document.getElementById(fieldId);
+            if (!field) return;
+            field.focus();
+            if (caretPosition !== null && typeof field.setSelectionRange === 'function') {
+                try { field.setSelectionRange(caretPosition, caretPosition); }
+                catch (err) { /* selection is not supported on every input type */ }
+            }
+        }
+
+        function resolvePropertyCustomParamRowSource(param, index) {
+            if (param.source) return param.source;
+            const picker = document.getElementById(`property-param-source-${index}`);
+            return normalisePropertyCustomParamSource(picker && picker.value) || 'var';
+        }
+
+        // Writes through the same three stores the manual factory uses, so a fetched parameter
+        // appears in "Parameters you've added", survives a reload and is removed by Purge All --
+        // rather than becoming a second, invisible kind of parameter.
+        function writePropertyCustomParamValue(param, source, value) {
+            const key = param.sourceName;
+            if (source === 'url') {
+                virtualQueriesObject[key] = { val: value, type: param.type };
+            } else if (source === 'var') {
+                assignNestedWindowProperty(key, value);
+                virtualGlobalVariables[key] = { val: value, type: param.type };
+            } else if (source === 'cookie') {
+                document.cookie = `${key}=${encodeURIComponent(value)}; path=/; max-age=3600;`;
+                const existing = virtualSessionCookies.find(cookie => cookie.key === key);
+                if (existing) { existing.val = value; existing.type = param.type; }
+                else virtualSessionCookies.push({ key, type: param.type, val: value });
+            }
+        }
+
+        function applyPropertyCustomParamFromRow(index, announce) {
+            const param = propertyCustomParamRegistry[index];
+            const field = document.getElementById(`property-param-input-${index}`);
+            if (!param || !field) return false;
+
+            const source = resolvePropertyCustomParamRowSource(param, index);
+            const encoded = encodePropertyCustomParamValueForSdk(field.value, param.type, source);
+            if (encoded.error) {
+                if (announce) toast(`${param.uniqueName}: ${encoded.error}`, 'warn');
+                return false;
+            }
+
+            writePropertyCustomParamValue(param, source, encoded.value);
+            delete propertyCustomParamDraftValues[param.uniqueName];
+
+            const written = source === 'var' ? `window.${param.sourceName}`
+                : source === 'url' ? `?${param.sourceName}` : `cookie ${param.sourceName}`;
+            writeLog(`Set custom parameter ${param.uniqueName} = ${encoded.value} via ${written}.`, 'success');
+            if (announce) {
+                toast(`${param.uniqueName} set to ${encoded.note || encoded.value}.`, 'info');
+                renderActiveParametersDashboardList();
+                updateActiveBrowserAddressBarQueryString(true);
+                renderPropertyCustomParamRegistryList();
+            }
+            return true;
+        }
+
+        function unsetPropertyCustomParamFromRow(index) {
+            const param = propertyCustomParamRegistry[index];
+            if (!param) return;
+            const source = resolvePropertyCustomParamRowSource(param, index);
+            const key = param.sourceName;
+
+            if (source === 'url') delete virtualQueriesObject[key];
+            else if (source === 'var') { deleteNestedWindowProperty(key); delete virtualGlobalVariables[key]; }
+            else if (source === 'cookie') {
+                document.cookie = `${key}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;`;
+                virtualSessionCookies = virtualSessionCookies.filter(cookie => cookie.key !== key);
+            }
+
+            propertyCustomParamDraftValues[param.uniqueName] = '';
+            writeLog(`Unset custom parameter ${param.uniqueName}.`, 'info');
+            renderActiveParametersDashboardList();
+            updateActiveBrowserAddressBarQueryString(true);
+            renderPropertyCustomParamRegistryList();
+        }
+
+        // One pass over every row that has something typed in it, then a single re-evaluation --
+        // setting ten parameters one at a time would fire ten updatePageView() calls and let the
+        // SDK judge a half-populated rule set on the way through.
+        function applyEveryFilledPropertyCustomParam() {
+            let applied = 0;
+            let rejected = 0;
+            // Only the rows on screen: silently applying a value hidden behind a filter would
+            // change targeting in a way the tester cannot see.
+            listVisiblePropertyCustomParamIndexes().forEach(index => {
+                const field = document.getElementById(`property-param-input-${index}`);
+                if (!field || !String(field.value).trim()) return;
+                if (applyPropertyCustomParamFromRow(index, false)) applied++; else rejected++;
+            });
+
+            renderActiveParametersDashboardList();
+            updateActiveBrowserAddressBarQueryString(true);
+            renderPropertyCustomParamRegistryList();
+
+            if (!applied && !rejected) { toast('Type a value into at least one parameter first.', 'warn'); return; }
+            if (rejected) {
+                toast(`Set ${applied} parameter(s); ${rejected} had a value the SDK could not read.`, 'warn');
+                writeLog(`Bulk set: ${applied} applied, ${rejected} rejected for a bad value.`, 'warn');
+            } else {
+                toast(`Set ${applied} parameter${applied === 1 ? '' : 's'} on this property.`, 'info');
+            }
+        }
+
+        // The configuration lands asynchronously after the SDK global appears, and how long it
+        // takes depends on the network, so this retries until the list is non-empty instead of
+        // guessing a single delay. It stops on the first success and gives up quietly -- a
+        // property with genuinely no custom parameters is a normal outcome, not an error.
+        let automaticPropertyCustomParamFetchToken = null;
+        function scheduleAutomaticPropertyCustomParamFetch() {
+            clearInterval(automaticPropertyCustomParamFetchToken);
+            let attemptsRemaining = 8;
+            const attempt = async () => {
+                attemptsRemaining--;
+                await refreshPropertyCustomParamRegistry(false);
+                if (propertyCustomParamAnswerIsDefinitive || propertyCustomParamRegistry.length || attemptsRemaining <= 0) {
+                    clearInterval(automaticPropertyCustomParamFetchToken);
+                    automaticPropertyCustomParamFetchToken = null;
+                }
+            };
+            automaticPropertyCustomParamFetchToken = setInterval(attempt, 600);
+            attempt();
+        }
+
+        function clearPropertyCustomParamInputs() {
+            propertyCustomParamRegistry.forEach(param => { propertyCustomParamDraftValues[param.uniqueName] = ''; });
+            renderPropertyCustomParamRegistryList();
+        }
+
+        // A parameter can be changed by anything on the page -- the manual factory, a repro link,
+        // a rule fix, the tester's own console -- so the live column is refreshed on a timer.
+        // Only the value cell is rewritten, never the whole row, because re-rendering an input
+        // the tester has focused would drop their caret mid-word.
+        function refreshPropertyCustomParamLiveValues() {
+            if (!propertyCustomParamRegistry.length) return;
+            const list = document.getElementById('property-params-list');
+            if (!list || !list.offsetParent) return;   // panel not on screen -- nothing to update
+            list.querySelectorAll('.property-param-row').forEach(row => {
+                const param = propertyCustomParamRegistry[Number(row.dataset.registryIndex)];
+                const cell = row.querySelector('.property-param-head-live');
+                if (!param || !cell) return;
+                const live = describeLivePropertyCustomParamValue(param);
+                if (cell.innerHTML !== live.inline) cell.innerHTML = live.inline;
+                const warningEl = row.querySelector('.property-param-warning');
+                if (!warningEl) return;
+                if (warningEl.innerHTML !== live.warning) warningEl.innerHTML = live.warning;
+                warningEl.hidden = !live.warning;
+            });
+        }
+
         // --- 10. PARAMETERS MANAGEMENT MATRIX ENGINE ---
         function commitFactoryParameterElement() {
             const target = document.getElementById('param-target-type').value;
@@ -9150,7 +10258,13 @@
                     break;
                 case 'Datetime':
                     if (!rawValue) { toast("Please select a target Date-Time sequence metric."); return; }
-                    validatedFinalValue = new Date(rawValue).toISOString();
+                    // Epoch milliseconds as a *string*, not an ISO date. The SDK casts a Datetime
+                    // parameter with Number()/parseInt() on strings and rejects anything that is
+                    // neither a string nor a Date, so an ISO string cast to null and a raw number
+                    // cast to null too -- either way the rule engine saw an empty parameter while
+                    // this panel reported the date as set.
+                    validatedFinalValue = String(new Date(rawValue).getTime());
+                    if (validatedFinalValue === 'NaN') { toast("That date could not be read. Pick it again."); return; }
                     break;
                 case 'Random':
                     if (rawValue === 'rand_str') validatedFinalValue = Math.random().toString(36).substring(2, 7).toUpperCase();
@@ -9194,7 +10308,10 @@
             });
 
             Object.keys(virtualGlobalVariables).forEach(key => {
-                createDashboardDOMRow(listContainer, 'var', key, virtualGlobalVariables[key].val, virtualGlobalVariables[key].type, () => { delete window[key]; delete virtualGlobalVariables[key]; });
+                // deleteNestedWindowProperty rather than `delete window[key]`: a parameter whose
+                // source name is a dot path lives on a nested object, and the flat delete was a
+                // silent no-op that left the value in place while the row disappeared.
+                createDashboardDOMRow(listContainer, 'var', key, virtualGlobalVariables[key].val, virtualGlobalVariables[key].type, () => { deleteNestedWindowProperty(key); delete virtualGlobalVariables[key]; });
             });
 
             virtualSessionCookies.forEach(cookieObj => {
@@ -9265,7 +10382,17 @@
             const queryBuild = queryParams.toString() ? "?" + queryParams.toString() : "";
             history.replaceState({ page: activePage }, '', baseFileLink + queryBuild);
             if (forceEvaluateSDK && window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
-                window.KAMPYLE_ONSITE_SDK.updatePageView();
+                // updatePageView() re-runs targeting inside the SDK, and the SDK can throw out of
+                // it while its invitation element is mid-teardown (observed as a TypeError inside
+                // generic*.js). Unguarded, that exception propagates back into whichever caller
+                // asked for the re-evaluation and abandons the rest of its work -- a parameter
+                // would be written but the panel never re-rendered. The other updatePageView()
+                // calls in this file are already wrapped this way.
+                try {
+                    window.KAMPYLE_ONSITE_SDK.updatePageView();
+                } catch (err) {
+                    recordCaughtSdkException(err, 'KAMPYLE_ONSITE_SDK.updatePageView()');
+                }
             }
         }
 
@@ -9357,6 +10484,11 @@
                         `✓ Property ${propertyId ? escapeMarkupForSafeRender(propertyId) + ' ' : ''}loaded and running (took ${(sdkReadyElapsedMs / 1000).toFixed(1)}s).`,
                         codeSnippet);
                     writeLog(`✓ SDK initialised in ${sdkReadyElapsedMs}ms${propertyId ? ` (property ${propertyId})` : ''}.`, 'success');
+                    // The custom-parameter list is not populated at the moment the SDK global
+                    // appears -- the property's configuration is still in flight and lands a few
+                    // hundred milliseconds later, so fetching here would read an empty list.
+                    // Retried a few times rather than fetched once, then left alone.
+                    scheduleAutomaticPropertyCustomParamFetch();
                     return;
                 }
                 if (Date.now() - startedAt > SDK_INIT_TIMEOUT_MS) {
@@ -9496,6 +10628,9 @@
         // --- 13. INITIALIZATION BOOTSTRAPPERS ---
         window.addEventListener('DOMContentLoaded', () => {
             writeLog("Sandbox execution hub online. Core proxy network intercepts active.", 'info');
+            // Event-driven, not polled: recordRuntimeException re-renders when something
+            // arrives. This first call is only here to paint the empty state.
+            renderRuntimeExceptionsPanel();
 
             // Before anything else reads session/local storage: a repro link's script and
             // lifecycle state have to be in place before the saved-script auto-inject and the
@@ -9543,12 +10678,7 @@
                 writeLog(`Device emulation profile active: ${activeDeviceEmulationProfile.label}. SDK should classify this session as "${activeDeviceEmulationProfile.expectedDevice}".`, 'warn');
             }
 
-            if (sessionStorage.getItem('qa_saved_url_obj')) virtualQueriesObject = JSON.parse(sessionStorage.getItem('qa_saved_url_obj'));
-            if (sessionStorage.getItem('qa_saved_var_obj')) virtualGlobalVariables = JSON.parse(sessionStorage.getItem('qa_saved_var_obj'));
-            if (sessionStorage.getItem('qa_saved_cookie_arr')) virtualSessionCookies = JSON.parse(sessionStorage.getItem('qa_saved_cookie_arr'));
-            Object.keys(virtualGlobalVariables).forEach(k => { window[k] = virtualGlobalVariables[k].val; });
-            
-            renderActiveParametersDashboardList();
+            restoreSimulatedParametersFromStorage();
 
             // Restores the active scenario page on a deep link or reload. The route arrives either
             // as a rewritten path (/page3, on a host that rewrites) or as a query parameter
@@ -9564,6 +10694,8 @@
                 const restoredLink = document.getElementById(`nav-${restoredRoute}`);
                 if (restoredLink) restoredLink.classList.add('active-nav');
             }
+
+            syncRestoredUrlParametersIntoAddressBar();
 
             const hotReloadActiveRoute = sessionStorage.getItem('qa_hot_reload_active_route');
             if (hotReloadActiveRoute) {

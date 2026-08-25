@@ -151,6 +151,35 @@ def inject(pg, timeout=35000):
         timeout=timeout)
 
 
+def skip_if_this_domain_is_not_allow_listed(pg):
+    """Skip a test that needs a form to actually render, when the property forbids this domain.
+
+    A Medallia property carries a domain allow-list (`domainsConfiguration`). When
+    `allDomainsAllowed` is false and the page's host is not on the list, the SDK loads and
+    reports its whole configuration normally but never renders a form — so a test that waits for
+    one times out after 25s with nothing explaining why. That is a property setting, not a
+    regression, and it is outside this suite's control: the list is edited in Medallia, and the
+    host here is localhost.
+
+    Read from the property's own configuration rather than hardcoded, so this stops skipping by
+    itself the moment the domain is allow-listed.
+    """
+    config = pg.evaluate("""async () => {
+        try {
+            const res = await fetch(window.KAMPYLE_EMBED.getOnsiteDataLocation());
+            return (await res.json()).domainsConfiguration || null;
+        } catch (err) { return null; }
+    }""")
+    if not config or config.get("allDomainsAllowed"):
+        return
+    host = pg.evaluate("() => window.location.hostname")
+    allowed = config.get("domainsNames") or []
+    matches = any(host == d or (d.startswith("*.") and host.endswith(d[1:])) for d in allowed)
+    if not matches:
+        pytest.skip(f"property 165099 allow-lists {allowed} and this page is on {host}, "
+                    f"so the SDK will never render a form here")
+
+
 # --------------------------------------------------------------------------------------------
 # Trust: the app must never claim success it hasn't verified.
 # --------------------------------------------------------------------------------------------
@@ -301,6 +330,7 @@ def test_one_click_fix_actually_makes_the_form_appear(page):
     verdict stopped saying 'block'. The app agreeing with itself proves nothing about the page,
     so this now waits on the SDK reporting the form shown."""
     inject(page)
+    skip_if_this_domain_is_not_allow_listed(page)
     page.evaluate("setActiveWorkspace('targeting')")
 
     assert page.evaluate(EMBEDDED_TONE) == "block"
@@ -339,6 +369,7 @@ def test_rule_engine_criteria_offers_a_working_one_click_fix(page):
     the configuration naming which is not exposed on any SDK global, so the fix writes the window
     variable and the cookie. Confirmed against this rule: window.test is what it reads."""
     inject(page)
+    skip_if_this_domain_is_not_allow_listed(page)
     # Clear the visit rule so the criteria condition is the remaining dependency.
     page.evaluate("() => commitLifecycleStorageWrite('kampyleUserSessionsCount', '9', 'test setup')")
 
@@ -771,7 +802,7 @@ def test_no_workspace_panel_is_orphaned_by_a_heading_rename(page):
         });
         return o;
     }""")
-    assert sum(counts.values()) == 22, f"expected 22 assigned panels, got {counts}"
+    assert sum(counts.values()) == 23, f"expected 23 assigned panels, got {counts}"
 
 
 def test_no_uncaught_errors_during_a_full_session(page):
@@ -780,3 +811,334 @@ def test_no_uncaught_errors_during_a_full_session(page):
         page.evaluate(f"setActiveWorkspace('{workspace}')")
         page.wait_for_timeout(800)
     assert page.errors == []
+
+
+# --------------------------------------------------------------------------------------------
+# The property's own custom-parameter registry.
+#
+# Before this, the only way to set a custom parameter was to type its name by hand. That is
+# quietly error-prone: the name shown in the Medallia admin UI (unique_name) is not necessarily
+# the key the SDK reads (source_name), the source is per-parameter, and each type has a format
+# the SDK will reject silently. Every test here pins one of those.
+# --------------------------------------------------------------------------------------------
+
+def open_parameter_registry(pg, timeout=35000):
+    """Inject, switch to Setup and wait for the property's parameters to be listed.
+
+    clear_the_screen() is not optional here. This property auto-shows an invitation, and the
+    SDK's invitation iframe takes focus when it appears — so anything typed into the panel goes
+    into the iframe instead of the field, and the value silently never lands. That is SDK
+    behaviour, not a hub defect (the hub already warns about it: "A form is open, so it owns the
+    keyboard"), but it makes every test that types into this panel fail depending on when the
+    invitation happens to arrive.
+    """
+    inject(pg, timeout=timeout)
+    clear_the_screen(pg)
+    pg.evaluate("setActiveWorkspace('config')")
+    pg.wait_for_function(
+        "() => document.querySelectorAll('.property-param-row').length > 0", timeout=timeout)
+
+
+def registry_index(pg, unique_name):
+    return pg.evaluate(
+        "(n) => propertyCustomParamRegistry.findIndex(p => p.uniqueName === n)", unique_name)
+
+
+def set_parameter(pg, unique_name, typed_value):
+    """Fill a row and press its Set button.
+
+    Clicked through JS rather than pg.click(): this property auto-shows an invitation whose
+    iframe can sit over the panel, and Playwright then refuses the click as intercepted. That is
+    an SDK overlay, not a hub defect — it has its own test — and it would make every test here
+    intermittently fail for an unrelated reason.
+    """
+    i = registry_index(pg, unique_name)
+    assert i >= 0, f"{unique_name} is not in this property's parameter registry"
+    field = f"#property-param-input-{i}"
+    if pg.eval_on_selector(field, "e => e.tagName") == "SELECT":
+        pg.select_option(field, typed_value)   # a Boolean parameter offers true/false, not free text
+    else:
+        pg.fill(field, typed_value)
+        landed = pg.eval_on_selector(field, "e => e.value")
+        assert landed == typed_value, (
+            f"typing into {unique_name} did not land (field holds {landed!r}); "
+            f"focus is on {pg.evaluate('() => document.activeElement && document.activeElement.id')!r}")
+    pg.evaluate(f"() => document.querySelector(\"button[data-param-index='{i}']\").click()")
+    pg.wait_for_timeout(400)
+    return i
+
+
+def sdk_reads(pg, unique_name):
+    """What the SDK itself now resolves for a parameter — the only oracle that matters."""
+    return pg.evaluate("""(n) => {
+        const p = window.CUSTOM_PARAMETERS.getAllCustomParams().find(x => x.unique_name === n);
+        if (!p) return '__missing__';
+        return window.CUSTOM_PARAMETERS.getCustomParamValue(
+            {name: p.source_name, type: p.type, source: p.source});
+    }""", unique_name)
+
+
+def test_registry_lists_the_key_the_sdk_reads_not_just_the_display_name(page):
+    """unique_name is what a tester sees in the admin UI; source_name is what the SDK reads, and
+    they are free to differ (this property has TextURL_Qfield -> window.textURLQ_field). Typing
+    the display name sets a key nothing looks at and fails silently, which is the whole reason
+    this panel exists."""
+    open_parameter_registry(page)
+    params = page.evaluate(
+        "() => propertyCustomParamRegistry.map(p => "
+        "({u: p.uniqueName, s: p.source, sn: p.sourceName, t: p.type}))")
+    assert len(params) >= 10, f"expected this property's full parameter list, got {params}"
+    assert {p["s"] for p in params} <= {"var", "url", "cookie"}
+    assert {p["t"] for p in params} <= {"Text", "Number", "Boolean", "Datetime"}
+
+    divergent = [p for p in params if p["u"] != p["sn"]]
+    assert divergent, "expected at least one parameter whose read key differs from its name"
+    # and the divergence has to be on screen, not merely in memory
+    assert page.evaluate(
+        "(sn) => [...document.querySelectorAll('.property-param-key')]"
+        ".some(e => e.innerText.includes(sn))", divergent[0]["sn"])
+
+
+@pytest.mark.parametrize("unique_name,typed", [
+    ("test", "hello-text"),            # var    / Text
+    ("NumCP", "42"),                   # var    / Number
+    ("Bool", "true"),                  # var    / Boolean
+    ("TextURL_Qfield", "diverged"),    # var    / Text, read key differs from the display name
+    ("CP2", "77"),                     # url    / Number
+    ("CP3", "false"),                  # cookie / Boolean
+    ("TextCookiefield", "ck"),         # cookie / Text
+])
+def test_a_value_set_here_is_the_value_the_sdk_reads(page, unique_name, typed):
+    """The panel is only worth anything if the SDK agrees. Asserting that the hub wrote *a* value
+    somewhere proves nothing — this asks the SDK's own resolver, across all three sources."""
+    open_parameter_registry(page)
+    set_parameter(page, unique_name, typed)
+
+    got = sdk_reads(page, unique_name)
+    expected = {"true": True, "false": False}.get(typed, typed)
+    if str(typed).lstrip("-").isdigit():
+        expected = float(typed)
+        assert got is not None and float(got) == expected
+    else:
+        assert got == expected, f"{unique_name}: SDK read {got!r}, expected {expected!r}"
+
+
+def test_datetime_is_written_as_epoch_millis_so_the_sdk_can_read_it(page):
+    """Regression: a Datetime parameter was written as an ISO string. The SDK casts a Datetime
+    with Number()/parseInt() on strings and rejects anything that is neither a string nor a Date,
+    so an ISO string and a raw number both cast to null — the panel showed the date as set while
+    the rule engine saw an empty parameter."""
+    open_parameter_registry(page)
+    set_parameter(page, "datetimevar", "2026-03-04T05:06")
+
+    got = sdk_reads(page, "datetimevar")
+    assert isinstance(got, (int, float)) and got > 0, f"SDK read {got!r}, expected epoch millis"
+    assert got == page.evaluate("() => new Date('2026-03-04T05:06').getTime()")
+
+
+def test_a_value_the_sdk_cannot_read_is_reported_rather_than_shown_as_set(page):
+    """A value present on the page but rejected by the SDK's cast is the worst failure mode: the
+    tester sees it set and targeting sees nothing. The row has to say so."""
+    open_parameter_registry(page)
+    page.evaluate("() => { window.NumCP = 'not-a-number'; refreshPropertyCustomParamLiveValues(); }")
+    page.wait_for_timeout(600)
+
+    warnings = page.evaluate(
+        "() => [...document.querySelectorAll('.property-param-warning')].map(e => e.innerText)")
+    assert any("reads this as empty" in w for w in warnings), warnings
+    assert sdk_reads(page, "NumCP") is None
+
+
+def test_filtering_never_points_set_at_a_different_parameter(page):
+    """Rows are addressed by their index in the full registry. If Set used the row's position in
+    the filtered view instead, filtering would silently write to the wrong parameter."""
+    open_parameter_registry(page)
+    expected_index = registry_index(page, "CP2")
+    page.fill("#property-params-filter", "cp2")
+    page.wait_for_timeout(300)
+
+    rows = page.evaluate(
+        "() => [...document.querySelectorAll('.property-param-row')].map(r => r.dataset.registryIndex)")
+    assert rows == [str(expected_index)], f"filter showed {rows}, expected only {expected_index}"
+    set_parameter(page, "CP2", "77")
+    assert float(sdk_reads(page, "CP2")) == 77
+
+
+def test_bulk_apply_ignores_parameters_hidden_by_the_filter(page):
+    """"Set every filled value" must mean every value the tester can see. Applying a draft hidden
+    behind a filter would change targeting with no visible cause."""
+    open_parameter_registry(page)
+    page.evaluate("() => { propertyCustomParamDraftValues['test'] = 'should-not-apply'; }")
+    visible = registry_index(page, "CP1")
+    page.fill("#property-params-filter", "cp1")
+    page.wait_for_timeout(300)
+    page.fill(f"#property-param-input-{visible}", "visible-one")
+    page.evaluate(
+        "() => [...document.querySelectorAll('#property-params-actions button')][0].click()")
+    page.wait_for_timeout(600)
+
+    assert sdk_reads(page, "CP1") == "visible-one"
+    assert page.evaluate("() => window.test === undefined"), "a hidden draft was applied"
+
+
+def test_parameters_set_here_join_the_shared_dashboard_and_are_purged_with_it(page):
+    """A fetched parameter has to go through the same stores as a hand-added one, or it becomes a
+    second invisible kind of parameter that Purge All does not clear and a reload does not keep."""
+    open_parameter_registry(page)
+    set_parameter(page, "test", "in-dashboard")
+    set_parameter(page, "CP3", "true")
+
+    listed = page.evaluate(
+        "() => [...document.querySelectorAll('.dashboard-item')].map(e => e.innerText)")
+    assert any("test" in row for row in listed), listed
+    assert any("CP3" in row for row in listed), listed
+
+    page.evaluate("() => clearAllSimulatedParameters()")
+    page.wait_for_timeout(400)
+    assert page.evaluate("() => window.test === undefined")
+    assert sdk_reads(page, "test") is None
+
+
+# --------------------------------------------------------------------------------------------
+# Repro permalink: a link has to reproduce the state that decides the outcome.
+# --------------------------------------------------------------------------------------------
+
+def test_repro_link_carries_the_custom_parameters_that_decide_the_outcome(page, browser):
+    """Regression: the link was built from `location.href.split('?')[0]`, which threw away the
+    query string and never re-added the parameters — so it dropped every var/cookie parameter
+    *and* the URL-sourced ones it had just written into the address bar. Since a custom parameter
+    is frequently the whole reason a form does or does not show, the link could reproduce the
+    opposite of the thing being reported.
+
+    Opened in a brand-new context, not a reload: a reload passes trivially because the browser
+    still holds the cookies and the window variables, which is exactly what hid the cookie half
+    of this bug.
+    """
+    open_parameter_registry(page)
+    set_parameter(page, "test", "repro-var")
+    set_parameter(page, "CP2", "55")
+    set_parameter(page, "TextCookiefield", "repro-cookie")
+    page.evaluate("setConsentState('granted')")
+
+    link = page.evaluate("() => buildReproPermalink()")
+    assert "qa_params" in link, f"the link carries no parameters: {link}"
+    assert "qa_consent=granted" in link
+
+    fresh = browser.new_context(viewport={"width": 1440, "height": 900})
+    try:
+        other = fresh.new_page()
+        other.goto(link)
+        other.wait_for_function("() => !!window.KAMPYLE_ONSITE_SDK", timeout=35000)
+        other.wait_for_function(
+            "() => window.CUSTOM_PARAMETERS "
+            "&& window.CUSTOM_PARAMETERS.getCustomParamValueByUniqueName('test') === 'repro-var'",
+            timeout=20000)
+        # Read back through the SDK's own resolver, once per source, because each is restored a
+        # different way: a window property, a cookie write, and the address bar.
+        assert other.evaluate("() => CUSTOM_PARAMETERS.getCustomParamValueByUniqueName('test')") == "repro-var"
+        assert other.evaluate("() => CUSTOM_PARAMETERS.getCustomParamValueByUniqueName('TextCookiefield')") == "repro-cookie"
+        assert other.evaluate("() => CUSTOM_PARAMETERS.getCustomParamValueByUniqueName('CP2')") == 55
+        assert other.evaluate("() => getConsentState()") == "granted"
+    finally:
+        fresh.close()
+
+
+def test_repro_link_does_not_destroy_a_deep_linked_route(page):
+    """Restoring URL parameters rewrites the address bar, and the deep-link route is recovered
+    from location.pathname in the same handler — doing the rewrite first erased /page3 before
+    anything had read it."""
+    page.goto(BASE + "page3", wait_until="domcontentloaded")
+    page.wait_for_function("() => document.querySelectorAll('#workspace-bar .workspace-tab').length > 0",
+                           timeout=15000)
+    assert page.evaluate("() => document.getElementById('page3').classList.contains('active')"), \
+        "the deep-linked page was lost during restore"
+
+
+# --------------------------------------------------------------------------------------------
+# Runtime exceptions: an error thrown inside the SDK is a finding, not a network failure.
+# --------------------------------------------------------------------------------------------
+
+SDK_STACK = ("TypeError\\n    at Ri (https://resources.digital-cloud-qa-web.medallia.com"
+             "/websites/165099/onsite/generic1787233851548.js:0:162396)")
+
+
+def test_an_exception_thrown_out_of_an_sdk_call_is_blamed_on_the_sdk(page):
+    """Regression: window.onerror flattened every error to one string, kept only the file's
+    basename, discarded the stack entirely and dispatched it as a *network* error — so an
+    exception thrown inside the Medallia bundle was indistinguishable from a bug in this tool and
+    was reported as a finding nowhere. Encountered for real: updatePageView() throws a TypeError
+    out of generic*.js while its invitation is being torn down."""
+    inject(page)
+    page.evaluate("""() => {
+        const err = new TypeError("Cannot read properties of null (reading 'style')");
+        err.stack = %s;
+        recordCaughtSdkException(err, 'KAMPYLE_ONSITE_SDK.updatePageView()');
+    }""" % repr(SDK_STACK).replace("\\\\n", "\\n"))
+
+    entries = page.evaluate("() => capturedRuntimeExceptions.map(e => ({o: e.origin, m: e.message}))")
+    sdk = [e for e in entries if e["o"] == "sdk"]
+    assert sdk, f"the SDK was not blamed for its own exception: {entries}"
+    assert "updatePageView" in sdk[0]["m"]
+    assert page.evaluate("() => countSdkAttributedExceptions()") >= 1
+
+    # and it has to be visible without going looking for it
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.status-chip')].some(c => c.innerText.includes('SDK errors'))",
+        timeout=6000)
+    assert "## Runtime exceptions" in page.evaluate("() => buildSessionReportMarkdown()")
+
+
+def test_a_cross_origin_script_error_is_reported_as_hidden_not_blamed_on_the_tool(page):
+    """The browser blanks out an uncaught error raised inside a cross-origin script — message
+    becomes "Script error.", no source, no stack. Guessing an owner from that is impossible, so
+    it gets its own category. Blaming the tool would be wrong and blaming the SDK would be a
+    claim this app cannot support.
+
+    onerror is invoked with the argument shape the browser actually passes, rather than by
+    loading a real cross-origin script. That shape was confirmed by hand against a genuine
+    cross-origin script that throws at runtime (served from 127.0.0.1 while the page was on
+    localhost). It cannot be reproduced from within this suite: qa-server rewrites unknown paths
+    to the app's HTML, and a cross-origin *parse* error fires no onerror at all — only a runtime
+    throw does — so the fixture would need a second server serving real JavaScript purely to
+    re-observe a browser behaviour this test is not the thing verifying.
+    """
+    page.evaluate("() => window.onerror('Script error.', '', 0, 0, null)")
+
+    blocked = page.evaluate("() => capturedRuntimeExceptions.find(e => e.origin === 'blocked')")
+    assert blocked, page.evaluate("() => capturedRuntimeExceptions.map(e => e.origin)")
+    assert page.evaluate("() => countSdkAttributedExceptions()") == 0, \
+        "an unattributable error was counted as an SDK defect"
+    # the panel has to say why it knows nothing, rather than showing an empty row
+    page.evaluate("() => { capturedRuntimeExceptions[0].expanded = true; renderRuntimeExceptionsPanel(); }")
+    assert "withheld" in page.inner_text("#exceptions-container")
+
+
+def test_repeated_exceptions_are_grouped_rather_than_flooding_the_panel(page):
+    """An SDK error on a timer can fire hundreds of times. Ungrouped it buries every other
+    finding, which is how a panel meant to surface problems ends up hiding them."""
+    for _ in range(3):
+        page.evaluate("""() => {
+            const err = new TypeError('the same failure again');
+            err.stack = 'TypeError\\n    at sameFrame (http://localhost/x.js:1:1)';
+            recordCaughtSdkException(err, 'KAMPYLE_ONSITE_SDK.updatePageView()');
+        }""")
+        page.wait_for_timeout(120)
+
+    matching = page.evaluate(
+        "() => capturedRuntimeExceptions.filter(e => e.message.includes('the same failure again'))")
+    assert len(matching) == 1, f"expected one grouped row, got {len(matching)}"
+    assert matching[0]["count"] == 3
+
+
+def test_script_errors_no_longer_land_in_the_failed_network_requests_panel(page):
+    """They were dispatched as network errors, which put script crashes under a heading about
+    the network and inflated the network-error count the status bar reports."""
+    page.evaluate("""() => { const s = document.createElement('script');
+        s.textContent = "setTimeout(function hubFrame(){ window.__nope.x = 1; }, 10);";
+        document.body.appendChild(s); }""")
+    page.wait_for_function("() => capturedRuntimeExceptions.length > 0", timeout=8000)
+
+    assert page.evaluate(
+        "() => document.querySelectorAll('#network-error-stream-box .network-err-entry').length") == 0
+    assert page.evaluate("() => capturedRuntimeExceptions[0].origin") == "hub", \
+        "the page's own error should be attributed to this tool"
