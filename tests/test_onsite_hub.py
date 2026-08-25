@@ -1142,3 +1142,42 @@ def test_script_errors_no_longer_land_in_the_failed_network_requests_panel(page)
         "() => document.querySelectorAll('#network-error-stream-box .network-err-entry').length") == 0
     assert page.evaluate("() => capturedRuntimeExceptions[0].origin") == "hub", \
         "the page's own error should be attributed to this tool"
+
+
+def test_setting_a_parameter_from_the_panel_makes_a_gated_form_appear(page):
+    """The whole point of the parameter list, end to end: pick the parameter a form's rule names,
+    type a value, and the form renders.
+
+    Every other test here proves a link in that chain — the registry is read, the right key is
+    written, the SDK resolves it. This proves the chain itself, which is the only claim a tester
+    actually cares about. It needs a form to genuinely render, so it is gated on the same domain
+    allow-list check as the other two.
+    """
+    open_parameter_registry(page)
+    skip_if_this_domain_is_not_allow_listed(page)
+    clear_the_screen(page)
+
+    embedded_rule = page.evaluate("""() => {
+        const f = (readPublishedFormRegistryFromSdk()||[]).find(x => x.formType === 'embedded');
+        return f && f.onSiteData && f.onSiteData.genericRule
+            ? collectCriteriaFromRuleGroup(f.onSiteData.genericRule)
+                .filter(c => c.fieldOrigin === 'customParam')
+                .map(c => ({name: c.fieldName, condition: c.condition, value: c.value}))
+            : [];
+    }""")
+    if not embedded_rule:
+        pytest.skip("the embedded form on this property carries no custom-parameter rule to satisfy")
+    assert page.evaluate(EMBEDDED_SHOWN) is False, "precondition: the form must start hidden"
+
+    # The count rule is satisfied directly — this test is about the parameter, and leaving another
+    # rule blocking would hide a working parameter behind an unrelated failure. Seeded high
+    # because the SDK increments the stored count on load before evaluating.
+    page.evaluate("() => localStorage.setItem('kampyleUserSessionsCount', '5')")
+
+    criterion = embedded_rule[0]
+    set_parameter(page, criterion["name"], criterion["value"])
+
+    page.wait_for_function(EMBEDDED_SHOWN, timeout=25000)
+    assert page.evaluate(
+        "(n) => CUSTOM_PARAMETERS.getCustomParamValueByUniqueName(n)", criterion["name"]
+    ) == criterion["value"]
