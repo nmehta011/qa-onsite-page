@@ -252,6 +252,19 @@
            carries a colour of its own. */
         .exception-entry-sdk { border-left-color: var(--danger-red); background: rgba(239, 68, 68, 0.05); }
         .exception-entry-blocked { border-left-color: #fbbf24; }
+
+        /* --- Diagnostics findings --- */
+        .diag-finding { border: 1px solid #1e293b; border-left: 3px solid #334155; border-radius: 8px; padding: 10px 12px; margin-bottom: 9px; background: #070a12; }
+        .diag-finding-blocker { border-left-color: var(--danger-red); background: rgba(239, 68, 68, 0.05); }
+        .diag-finding-warning { border-left-color: #fbbf24; }
+        .diag-finding-info { border-left-color: #334155; }
+        .diag-finding-head { display: flex; align-items: center; gap: 8px; cursor: pointer; flex-wrap: wrap; }
+        .diag-finding-title { font-size: 0.9rem; font-weight: 600; color: #e2e8f0; }
+        .diag-finding-source { font-size: 0.72rem; color: #64748b; margin-left: auto; font-family: monospace; }
+        .diag-finding-message { font-family: monospace; font-size: 0.78rem; color: #94a3b8; margin-top: 6px; word-break: break-word; }
+        .diag-finding-explanation { font-size: 0.83rem; color: #cbd5e1; line-height: 1.55; margin-bottom: 8px; }
+        .diag-finding-fix { font-size: 0.83rem; color: #7dd3fc; line-height: 1.55; background: rgba(14, 165, 233, 0.07); border-left: 2px solid #0ea5e9; padding: 7px 10px; border-radius: 0 6px 6px 0; }
+        .diag-finding-fix b { color: #38bdf8; }
         .exception-head { display: flex; align-items: center; gap: 8px; cursor: pointer; flex-wrap: wrap; }
         .exception-kind { font-size: 0.74rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; }
         .exception-count { font-size: 0.72rem; font-weight: bold; color: #fbbf24; background: rgba(251, 191, 36, 0.14); padding: 1px 7px; border-radius: 10px; }
@@ -1304,7 +1317,7 @@
                 });
                 writeLog(`🧨 ${RUNTIME_EXCEPTION_ORIGINS[origin].label} exception: ${message}`, origin === 'sdk' ? 'warn' : 'warn');
             }
-            renderRuntimeExceptionsPanel();
+            renderDiagnosticsPanel();
         }
 
         // Called from the guards around SDK entry points. An exception this app catches is still
@@ -1331,115 +1344,402 @@
                 .reduce((total, entry) => total + entry.count, 0);
         }
 
-        function renderRuntimeExceptionsPanel() {
-            const container = document.getElementById('exceptions-container');
-            const summary = document.getElementById('exceptions-summary');
-            const badge = document.getElementById('exceptions-counter-badge');
+        // --- DIAGNOSTIC FINDINGS: EVERY SIGNAL, EXPLAINED ---
+        // Five sources feed one list: exceptions this app caught or the browser reported, what
+        // the SDK wrote to the console, the SDK's own error channel, failed network requests,
+        // and checks derived from comparing the property's configuration against what is
+        // actually true of this page.
+        //
+        // The derived checks are the ones that matter most, and they are the reason this is not
+        // simply a console mirror. Some failures emit nothing at all -- a domain block does
+        // console.error once, during init, before anything here is guaranteed to be listening --
+        // so a panel that only forwards captured output would still miss them. Recomputing from
+        // configuration catches those regardless of what was or was not captured in time.
+        //
+        // Severity is about consequence, not log level: `blocker` means no form can render,
+        // whatever else looks healthy.
+        const DIAGNOSTIC_SEVERITY_RANK = { blocker: 0, warning: 1, info: 2 };
+
+        // Matched against a message, most specific first. `explain` returns the plain-English
+        // reading; returning null means the rule does not apply after all and matching continues.
+        const DIAGNOSTIC_SIGNATURES = [
+            {
+                match: /domain was blocked|onsite origin domain is not allowed/i,
+                severity: 'blocker',
+                title: 'Forms will never render on this host',
+                explain: () => {
+                    const config = lastKnownDomainsConfiguration;
+                    const allowed = config && Array.isArray(config.domainsNames) && config.domainsNames.length
+                        ? config.domainsNames.join(', ')
+                        : 'a list configured in Medallia';
+                    return `This property only allows its forms to run on ${allowed}, and this page is on ` +
+                           `${window.location.hostname}. The SDK still loads, still publishes its form registry ` +
+                           `and still reports targeting verdicts, so nothing else looks wrong — but no form will ` +
+                           `ever be shown here.`;
+                },
+                fix: 'Add this hostname to the property’s allowed domains in Medallia, or run the test on a hostname that is already allowed.'
+            },
+            {
+                match: /invalid custom parameter type/i,
+                severity: 'warning',
+                title: 'A custom parameter has an unusable type',
+                explain: () => 'The SDK does not recognise the type this parameter is configured with, so it resolves ' +
+                               'to empty no matter what value is set. Any targeting rule that reads it can never match.',
+                fix: 'Check the parameter’s type in the property configuration — the SDK accepts Text, Number, Boolean and Datetime.'
+            },
+            {
+                match: /not valid url|invalid url in validatekampyledomain/i,
+                severity: 'warning',
+                title: 'A URL in the property configuration could not be parsed',
+                explain: () => 'The SDK rejected a URL it was configured with. Anything depending on it — a domain ' +
+                               'check or a URL targeting rule — will not behave as configured.',
+                fix: 'Check the URL and domain fields in the property configuration for a typo or a missing scheme.'
+            },
+            {
+                match: /should not use this method if the provision csp rules is on/i,
+                severity: 'warning',
+                title: 'An SDK method was called that the CSP provision forbids',
+                explain: () => 'This property has the CSP-rules provision enabled, which makes the called method ' +
+                               'unsupported. Its effect is undefined rather than merely deprecated.',
+                fix: 'Report this to Medallia with the stack below — reaching it usually means the SDK took a path its own provisions rule out.'
+            },
+            {
+                match: /will be deprecated/i,
+                severity: 'info',
+                title: 'A deprecated SDK API was called',
+                explain: () => 'Something on this page reached the SDK through an interface Medallia has marked for ' +
+                               'removal. Harmless today; it will stop working in a future SDK release.',
+                fix: null
+            }
+        ];
+
+        // Captured whenever the property's configuration is read, so an explanation can quote the
+        // real allow-list rather than describing one in the abstract.
+        let lastKnownDomainsConfiguration = null;
+
+        function explainDiagnosticMessage(message) {
+            for (const signature of DIAGNOSTIC_SIGNATURES) {
+                if (!signature.match.test(message)) continue;
+                const explanation = signature.explain();
+                if (explanation) return { ...signature, explanation };
+            }
+            return null;
+        }
+
+        // A configuration-derived check, independent of anything the SDK happened to log. This is
+        // what makes the domain case reliable: the console.error fires once during init and can
+        // land before the capture is listening, but the configuration is readable at any time.
+        function buildDerivedDomainFinding() {
+            const config = lastKnownDomainsConfiguration;
+            if (!config || config.allDomainsAllowed !== false) return null;
+            const allowed = Array.isArray(config.domainsNames) ? config.domainsNames : [];
+            const host = window.location.hostname;
+            const isAllowed = allowed.some(entry => {
+                const domain = String(entry || '').trim().toLowerCase();
+                if (!domain) return false;
+                // The configuration uses a leading `*.` for subdomain wildcards.
+                return domain.startsWith('*.')
+                    ? host === domain.slice(2) || host.endsWith(domain.slice(1))
+                    : host === domain;
+            });
+            if (isAllowed) return null;
+            const signature = DIAGNOSTIC_SIGNATURES[0];
+            return {
+                severity: 'blocker',
+                source: 'Property config',
+                title: signature.title,
+                message: `${host} is not in this property's allowed domains`,
+                explanation: signature.explain(),
+                fix: signature.fix,
+                count: 1,
+                lastSeenAt: Date.now(),
+                detail: `allowed: ${allowed.join(', ') || '(none listed)'}`
+            };
+        }
+
+        function buildDiagnosticFindings() {
+            const findings = [];
+            const push = finding => { if (finding) findings.push(finding); };
+
+            // Derived first: it is the only source that cannot have missed its moment.
+            push(buildDerivedDomainFinding());
+
+            capturedSdkErrorEvents.forEach(entry => {
+                const explained = explainDiagnosticMessage(entry.message);
+                push({
+                    severity: explained ? explained.severity : 'blocker',
+                    source: 'SDK error channel',
+                    title: explained ? explained.title : 'The SDK reported an error',
+                    message: entry.message,
+                    explanation: explained ? explained.explanation
+                        : 'The SDK raised this through its own error channel, which it uses for structural failures rather than ordinary problems.',
+                    fix: explained ? explained.fix : null,
+                    count: entry.count, lastSeenAt: entry.lastSeenAt
+                });
+            });
+
+            capturedSdkConsoleMessages.forEach(entry => {
+                const explained = explainDiagnosticMessage(entry.message);
+                // Unrecognised console output from this app itself is not a finding about the
+                // property, and listing it would bury the things that are.
+                if (!explained && entry.origin === 'hub') return;
+                push({
+                    severity: explained ? explained.severity : (entry.level === 'error' ? 'warning' : 'info'),
+                    source: `console.${entry.level}`,
+                    title: explained ? explained.title : `The SDK logged a ${entry.level}`,
+                    message: entry.message,
+                    explanation: explained ? explained.explanation : null,
+                    fix: explained ? explained.fix : null,
+                    count: entry.count, lastSeenAt: entry.lastSeenAt, stack: entry.stack
+                });
+            });
+
+            capturedRuntimeExceptions.forEach(entry => {
+                const meta = RUNTIME_EXCEPTION_ORIGINS[entry.origin];
+                push({
+                    // Serious, but not a blocker by the definition used here. An exception out of
+                    // an SDK call may or may not stop a form rendering, and calling it a blocker
+                    // when it might not be drains the word of the meaning that makes it useful.
+                    // `blocker` is reserved for what can be *shown* to prevent rendering.
+                    severity: 'warning',
+                    source: meta.label === 'SDK' ? 'Exception in the SDK' : `Exception (${meta.label.toLowerCase()})`,
+                    title: RUNTIME_EXCEPTION_KIND_LABELS[entry.kind] || entry.kind,
+                    message: entry.message,
+                    explanation: meta.note,
+                    fix: null,
+                    count: entry.count, lastSeenAt: entry.lastSeenAt,
+                    stack: entry.stack, frame: entry.frame
+                });
+            });
+
+            // Read from the store the raw network panel uses, so the two can never disagree.
+            capturedNetworkErrorEvents.forEach(entry => {
+                if (entry.type === 'JS_ERR' || entry.type === 'ASYNC_ERR') return;   // now their own finding
+                const isSdkResource = [...knownSdkOrigins].some(origin => String(entry.url || '').includes(origin));
+                push({
+                    // Also not automatically a blocker: a failed analytics beacon costs a
+                    // reported event, a failed form fetch costs the form, and this cannot tell
+                    // them apart from the URL alone. The explanation says what is at risk instead
+                    // of the severity overstating it.
+                    severity: 'warning',
+                    source: `Network ${entry.status}`,
+                    title: isSdkResource ? 'An SDK resource failed to load' : 'A request failed',
+                    message: String(entry.url || '').slice(0, 300),
+                    explanation: isSdkResource
+                        ? 'This came from an origin the SDK is loading from, so part of the property did not arrive. Expect missing forms, missing configuration, or unreported analytics.'
+                        : null,
+                    fix: null,
+                    count: 1, lastSeenAt: entry.at
+                });
+            });
+
+            return findings.sort((a, b) =>
+                DIAGNOSTIC_SEVERITY_RANK[a.severity] - DIAGNOSTIC_SEVERITY_RANK[b.severity]
+                || b.lastSeenAt - a.lastSeenAt);
+        }
+
+        const DIAGNOSTIC_SEVERITY_META = {
+            blocker: { label: 'Blocker', pill: 'pill-danger', cls: 'diag-finding-blocker' },
+            warning: { label: 'Warning', pill: 'pill-warn',   cls: 'diag-finding-warning' },
+            info:    { label: 'Info',    pill: 'pill-sdk',    cls: 'diag-finding-info' }
+        };
+
+        const expandedDiagnosticFindings = {};
+
+        function renderDiagnosticsPanel() {
+            const container = document.getElementById('diagnostics-container');
+            const summary = document.getElementById('diagnostics-summary');
+            const badge = document.getElementById('diagnostics-counter-badge');
             if (!container) return;
 
-            const total = capturedRuntimeExceptions.reduce((sum, entry) => sum + entry.count, 0);
-            const sdkTotal = countSdkAttributedExceptions();
-            const blockedTotal = capturedRuntimeExceptions
-                .filter(entry => entry.origin === 'blocked')
-                .reduce((sum, entry) => sum + entry.count, 0);
-            if (badge) badge.innerText = String(total);
+            const findings = buildDiagnosticFindings();
+            const blockers = findings.filter(f => f.severity === 'blocker').length;
+            const warnings = findings.filter(f => f.severity === 'warning').length;
+            if (badge) badge.innerText = String(findings.length);
 
             if (summary) {
-                if (!total) {
-                    summary.className = 'status-pill pill-success';
-                    summary.innerText = 'None captured';
-                } else if (sdkTotal) {
+                if (blockers) {
                     summary.className = 'status-pill pill-danger';
-                    summary.innerText = `${sdkTotal} from the SDK`;
-                } else if (blockedTotal) {
+                    summary.innerText = `${blockers} blocking`;
+                } else if (warnings) {
                     summary.className = 'status-pill pill-warn';
-                    summary.innerText = `${blockedTotal} hidden by the browser`;
+                    summary.innerText = `${warnings} warning${warnings === 1 ? '' : 's'}`;
+                } else if (findings.length) {
+                    summary.className = 'status-pill pill-sdk';
+                    summary.innerText = `${findings.length} note${findings.length === 1 ? '' : 's'}`;
                 } else {
-                    summary.className = 'status-pill pill-warn';
-                    summary.innerText = `${total} captured`;
+                    summary.className = 'status-pill pill-success';
+                    summary.innerText = 'Nothing wrong';
                 }
             }
 
-            if (!capturedRuntimeExceptions.length) {
-                container.innerHTML = '<div class="no-rules-notice">No exceptions captured. Anything thrown by the page or by the injected SDK will be listed here with its stack.</div>';
+            if (!findings.length) {
+                container.innerHTML = '<div class="no-rules-notice">Nothing wrong so far. Console errors, failed requests, exceptions and anything the SDK reports through its own error channel will appear here, explained.</div>';
                 return;
             }
 
-            // Most recent first, but anything blamed on the SDK outranks it: that is the row a
-            // tester is meant to act on.
-            const rank = entry => (entry.origin === 'sdk' ? 0 : entry.origin === 'blocked' ? 1 : 2);
-            const ordered = [...capturedRuntimeExceptions].sort((a, b) =>
-                rank(a) !== rank(b) ? rank(a) - rank(b) : b.lastSeenAt - a.lastSeenAt);
-
-            container.innerHTML = ordered.map(entry => {
-                const meta = RUNTIME_EXCEPTION_ORIGINS[entry.origin];
-                const when = new Date(entry.lastSeenAt).toLocaleTimeString();
-                const location = entry.source
-                    ? `${escapeMarkupForSafeRender(entry.source)}:${entry.lineno || 0}:${entry.colno || 0}`
-                    : '';
+            container.innerHTML = findings.map((finding, index) => {
+                const meta = DIAGNOSTIC_SEVERITY_META[finding.severity];
+                // Keyed by content, not position, so expanding one row survives the next refresh
+                // rather than jumping to whichever finding took its place.
+                const key = `${finding.source}::${finding.title}::${finding.message}`.slice(0, 200);
+                const open = !!expandedDiagnosticFindings[key];
+                const hasDetail = finding.explanation || finding.fix || finding.stack || finding.detail;
                 return `
-                    <div class="exception-entry${entry.origin === 'sdk' ? ' exception-entry-sdk' : ''}${entry.origin === 'blocked' ? ' exception-entry-blocked' : ''}">
-                        <div class="exception-head" data-exception-signature="${escapeMarkupForSafeRender(entry.signature)}">
+                    <div class="diag-finding ${meta.cls}">
+                        <div class="diag-finding-head" data-finding-key="${escapeMarkupForSafeRender(key)}">
                             <span class="status-pill ${meta.pill}">${meta.label}</span>
-                            <span class="exception-kind">${RUNTIME_EXCEPTION_KIND_LABELS[entry.kind] || entry.kind}</span>
-                            ${entry.count > 1 ? `<span class="exception-count">×${entry.count}</span>` : ''}
-                            <span class="exception-time">${escapeMarkupForSafeRender(when)}</span>
-                            <span class="exception-toggle">${entry.expanded ? '▾' : '▸'}</span>
+                            <span class="diag-finding-title">${escapeMarkupForSafeRender(finding.title)}</span>
+                            ${finding.count > 1 ? `<span class="exception-count">\u00d7${finding.count}</span>` : ''}
+                            <span class="diag-finding-source">${escapeMarkupForSafeRender(finding.source)}</span>
+                            ${hasDetail ? `<span class="exception-toggle">${open ? '\u25be' : '\u25b8'}</span>` : ''}
                         </div>
-                        <div class="exception-message">${escapeMarkupForSafeRender(entry.message)}</div>
-                        ${entry.frame ? `<div class="exception-frame">${escapeMarkupForSafeRender(entry.frame)}</div>` : ''}
-                        ${entry.expanded ? `
+                        <div class="diag-finding-message">${escapeMarkupForSafeRender(finding.message)}</div>
+                        ${open && hasDetail ? `
                             <div class="exception-detail">
-                                <div class="exception-note">${escapeMarkupForSafeRender(meta.note)}</div>
-                                <div class="exception-note">${entry.afterInjection ? 'Happened while a property was loaded.' : 'Happened before any property was injected — so the SDK cannot be the cause.'}</div>
-                                ${location ? `<div class="exception-note">Reported at ${location}</div>` : ''}
-                                <pre class="exception-stack">${escapeMarkupForSafeRender(entry.stack || 'No stack was provided by the browser for this error.')}</pre>
+                                ${finding.explanation ? `<div class="diag-finding-explanation">${escapeMarkupForSafeRender(finding.explanation)}</div>` : ''}
+                                ${finding.fix ? `<div class="diag-finding-fix"><b>What to do:</b> ${escapeMarkupForSafeRender(finding.fix)}</div>` : ''}
+                                ${finding.detail ? `<div class="exception-note">${escapeMarkupForSafeRender(finding.detail)}</div>` : ''}
+                                ${finding.frame ? `<div class="exception-frame">at ${escapeMarkupForSafeRender(finding.frame)}</div>` : ''}
+                                ${finding.stack ? `<pre class="exception-stack">${escapeMarkupForSafeRender(finding.stack)}</pre>` : ''}
                             </div>` : ''}
                     </div>`;
             }).join('');
 
-            container.querySelectorAll('[data-exception-signature]').forEach(head => {
+            container.querySelectorAll('[data-finding-key]').forEach(head => {
                 head.onclick = () => {
-                    const match = capturedRuntimeExceptions.find(e => e.signature === head.dataset.exceptionSignature);
-                    if (match) { match.expanded = !match.expanded; renderRuntimeExceptionsPanel(); }
+                    const key = head.dataset.findingKey;
+                    expandedDiagnosticFindings[key] = !expandedDiagnosticFindings[key];
+                    renderDiagnosticsPanel();
                 };
             });
         }
 
-        function clearCapturedRuntimeExceptions() {
-            capturedRuntimeExceptions.length = 0;
-            renderRuntimeExceptionsPanel();
-            writeLog('Runtime exception list cleared.', 'info');
+        function countBlockingDiagnostics() {
+            return buildDiagnosticFindings().filter(f => f.severity === 'blocker').length;
         }
 
-        function downloadRuntimeExceptionsAsCSV() {
-            if (!capturedRuntimeExceptions.length) { toast('No exceptions captured yet — nothing to export.'); return; }
+        function clearCapturedDiagnostics() {
+            capturedRuntimeExceptions.length = 0;
+            capturedSdkConsoleMessages.length = 0;
+            capturedSdkErrorEvents.length = 0;
+            capturedNetworkErrorEvents = [];
+            // The raw network panel renders straight into the DOM and the status bar counts its
+            // rows, so emptying only the store would leave the two contradicting each other.
+            const networkStream = document.getElementById('network-error-stream-box');
+            if (networkStream) {
+                networkStream.innerHTML = '<div style="color:#64748b; font-style:italic; font-size:0.8rem;" id="empty-network-notice">No failed server connections captured. Network pipeline stable.</div>';
+            }
+            Object.keys(expandedDiagnosticFindings).forEach(key => delete expandedDiagnosticFindings[key]);
+            renderDiagnosticsPanel();
+            // A finding derived from configuration is not history and does not clear: the domain
+            // is still wrong after the list is emptied, so it reappears immediately. That is the
+            // intent -- Clear drops what has been *observed*, not what is still true.
+            writeLog('Diagnostics cleared. Configuration-derived findings remain, because they still apply.', 'info');
+        }
+
+        function downloadDiagnosticsAsCSV() {
+            const findings = buildDiagnosticFindings();
+            if (!findings.length) { toast('Nothing wrong so far — nothing to export.'); return; }
 
             const escapeCsvCell = value => `"${String(value === null || value === undefined ? '' : value).replace(/"/g, '""')}"`;
-            let csv = ['Blame', 'Kind', 'Count', 'First Seen', 'Last Seen', 'After Injection', 'Message', 'Frame', 'Stack']
+            let csv = ['Severity', 'Source', 'Title', 'Count', 'Last Seen', 'Message', 'Explanation', 'What To Do', 'Stack']
                 .map(escapeCsvCell).join(',') + '\n';
-            capturedRuntimeExceptions.forEach(entry => {
+            findings.forEach(finding => {
                 csv += [
-                    RUNTIME_EXCEPTION_ORIGINS[entry.origin].label,
-                    RUNTIME_EXCEPTION_KIND_LABELS[entry.kind] || entry.kind,
-                    entry.count,
-                    new Date(entry.firstSeenAt).toISOString(),
-                    new Date(entry.lastSeenAt).toISOString(),
-                    entry.afterInjection ? 'yes' : 'no',
-                    entry.message,
-                    entry.frame,
-                    (entry.stack || '').replace(/\n/g, ' | ')
+                    DIAGNOSTIC_SEVERITY_META[finding.severity].label,
+                    finding.source,
+                    finding.title,
+                    finding.count,
+                    new Date(finding.lastSeenAt).toISOString(),
+                    finding.message,
+                    finding.explanation || '',
+                    finding.fix || '',
+                    (finding.stack || '').replace(/\n/g, ' | ')
                 ].map(escapeCsvCell).join(',') + '\n';
             });
 
             const blob = new Blob([appendBuildStampToCsv(csv)], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.setAttribute('download', 'Runtime_Exceptions.csv');
+            link.setAttribute('download', 'Diagnostics.csv');
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
-            writeLog('CSV Export Engine Complete: Downloaded captured runtime exceptions.', 'success');
+            writeLog('CSV Export Engine Complete: Downloaded diagnostics.', 'success');
         }
+
+        // --- SDK CONSOLE CAPTURE ---
+        // The SDK says useful things on the console and this app was listening to none of it.
+        // The bundle has twenty console call sites and several are the only notice you get that
+        // something is structurally wrong -- "onsite origin domain is not allowed" being the one
+        // that costs the most time, because the SDK otherwise loads, publishes its whole form
+        // registry and reports targeting normally while never rendering anything.
+        //
+        // Patched at load rather than after injection. The domain check runs during SDK init, so
+        // anything that waits for a property to be present has already missed it.
+        //
+        // console.log is deliberately not captured: one call site in the bundle, and it is
+        // ordinary chatter rather than a signal.
+        const capturedSdkConsoleMessages = [];
+        const CONSOLE_CAPTURE_CAP = 300;
+
+        // The stack starts inside this file's own console wrapper, which is noise: the frame a
+        // developer wants is whoever called console.error, not the machinery that recorded it.
+        // The synthetic "Error" header goes too — nothing was actually thrown.
+        function trimConsoleCaptureFramesFromStack(stack) {
+            const lines = String(stack).split('\n');
+            let firstRealFrame = 0;
+            while (firstRealFrame < lines.length &&
+                   (/^\s*Error\s*$/.test(lines[firstRealFrame]) ||
+                    /trimConsoleCaptureFramesFromStack|captureConsoleMessage|console\.<computed>|at console\./.test(lines[firstRealFrame]))) {
+                firstRealFrame++;
+            }
+            return lines.slice(firstRealFrame).join('\n');
+        }
+
+        function captureConsoleMessage(level, args) {
+            // Composed the way the console would render it, so a message split across arguments
+            // still matches the signatures the explanation layer looks for.
+            const message = Array.from(args).map(value => {
+                if (typeof value === 'string') return value;
+                if (value instanceof Error) return value.message;
+                try { return JSON.stringify(value); } catch (err) { return String(value); }
+            }).join(' ').slice(0, 600);
+            if (!message.trim()) return;
+
+            // The call site, taken from a throwaway stack. console.error carries no origin of its
+            // own, and knowing whether the SDK or this app said something is most of the value.
+            let stack = '';
+            try { stack = trimConsoleCaptureFramesFromStack(new Error().stack || ''); }
+            catch (err) { /* stack is best-effort */ }
+            const origin = attributeRuntimeExceptionSource(stack, null);
+
+            const signature = `${level}::${message}`;
+            const existing = capturedSdkConsoleMessages.find(entry => entry.signature === signature);
+            if (existing) {
+                existing.count++;
+                existing.lastSeenAt = Date.now();
+                return;
+            }
+            if (capturedSdkConsoleMessages.length >= CONSOLE_CAPTURE_CAP) capturedSdkConsoleMessages.shift();
+            capturedSdkConsoleMessages.push({
+                signature, level, message, origin, stack,
+                count: 1, firstSeenAt: Date.now(), lastSeenAt: Date.now()
+            });
+        }
+
+        // Wrapped, never replaced: the original is always called, so DevTools still shows
+        // everything exactly as it did. A capture failure must not swallow a real message
+        // either, which is why the recording is the part inside the try.
+        ['error', 'warn'].forEach(level => {
+            const original = console[level];
+            if (typeof original !== 'function') return;
+            console[level] = function() {
+                try { captureConsoleMessage(level, arguments); }
+                catch (err) { /* never let capture break the page's own logging */ }
+                return original.apply(console, arguments);
+            };
+        });
 
         // =========================================================================
         // 🛑 GLOBAL BROWSER CONSOLE RUNTIME ERROR INTERCEPTOR
@@ -1502,6 +1802,27 @@
         }
 
         let capturedNetworkErrorEvents = [];
+
+        // --- THE SDK'S OWN ERROR CHANNEL ---
+        // Better than reading the console: the SDK reports structural failures through
+        // `triggerError`, which fires `neb_eventDispatcherError` on its dispatcher carrying an
+        // errorMessage that names the actual cause. The domain block, for instance, arrives as
+        // "<host> domain was blocked! domainsConfiguration: {...}" -- the console only says
+        // "onsite origin domain is not allowed".
+        //
+        // These already flowed through the event-bus tap, but landed in the raw event stream
+        // among every other event, unlabelled, and were reported as a finding nowhere.
+        const SDK_ERROR_CHANNEL_EVENT = 'neb_eventDispatcherError';
+        const capturedSdkErrorEvents = [];
+
+        function recordSdkErrorChannelEvent(eventName, data) {
+            if (String(eventName || '') !== SDK_ERROR_CHANNEL_EVENT) return;
+            const message = String((data && (data.errorMessage || data.message)) || '').slice(0, 600)
+                || 'The SDK reported an error with no message.';
+            const existing = capturedSdkErrorEvents.find(entry => entry.message === message);
+            if (existing) { existing.count++; existing.lastSeenAt = Date.now(); return; }
+            capturedSdkErrorEvents.push({ message, count: 1, firstSeenAt: Date.now(), lastSeenAt: Date.now() });
+        }
 
         // =========================================================================
         // ⚡ WEB VITALS OBSERVERS (feeds the Performance panel)
@@ -1804,6 +2125,7 @@
                 const originalDispatcherTrigger = KAMPYLE_EVENT_DISPATCHER.trigger;
                 KAMPYLE_EVENT_DISPATCHER.trigger = function(eventName, data) {
                     publishCapturedSdkCustomEvent('DISPATCHER', eventName, data);
+                    recordSdkErrorChannelEvent(eventName, data);
                     return originalDispatcherTrigger.apply(this, arguments);
                 };
                 sdkCustomEventBusTapState.dispatcher = true;
@@ -2562,23 +2884,24 @@
             </div>
         </div>
 
-        <div class="diag-panel" data-panel-key="exceptions" style="margin-top:25px;">
+        <div class="diag-panel" data-panel-key="diagnostics" style="margin-top:25px;">
             <div class="event-toolbar-row" style="border-bottom:1px solid #1e293b; padding-bottom:12px;">
-                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:230px;">🧨 Runtime Exceptions [<span id="exceptions-counter-badge" style="color:var(--danger-red);">0</span>]</h4>
-                <span id="exceptions-summary" class="status-pill pill-success">None captured</span>
-                <button class="lifecycle-btn panel-collapse-btn" onclick="togglePanelCollapsed('exceptions')">▾ Collapse</button>
-                <button class="lifecycle-btn" onclick="downloadRuntimeExceptionsAsCSV()">📥 Export CSV</button>
-                <button class="lifecycle-btn btn-purge" onclick="clearCapturedRuntimeExceptions()">Clear</button>
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:230px;">🩺 Diagnostics [<span id="diagnostics-counter-badge" style="color:var(--danger-red);">0</span>]</h4>
+                <span id="diagnostics-summary" class="status-pill pill-success">Nothing wrong</span>
+                <button class="lifecycle-btn panel-collapse-btn" onclick="togglePanelCollapsed('diagnostics')">▾ Collapse</button>
+                <button class="lifecycle-btn" onclick="downloadDiagnosticsAsCSV()">📥 Export CSV</button>
+                <button class="lifecycle-btn btn-purge" onclick="clearCapturedDiagnostics()">Clear</button>
             </div>
             <div class="collapsed-summary" data-panel-summary style="display:none;"></div>
             <p data-panel-body style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
-                Every uncaught error, unhandled promise rejection and exception thrown out of an SDK call — with the stack
-                kept and the blame assigned. An exception raised <strong>inside the Medallia bundle</strong> is an
-                integration defect and is labelled as one: previously these were flattened to a single line, filed under
-                failed network requests, and indistinguishable from a bug in this tool. Repeats are grouped with a count,
-                so an error firing on a timer reads as one row instead of burying everything else.
+                One place for everything going wrong, in plain English: what the SDK writes to the console, what it
+                reports through its own error channel, failed requests, uncaught exceptions, and checks derived from
+                comparing the property's configuration against this page. Where the cause is recognised you get the
+                reading and the fix, not the raw string — <strong>&ldquo;forms will never render on this host&rdquo;</strong>
+                rather than <code>onsite origin domain is not allowed</code>. Severity is about consequence, so a
+                <strong>Blocker</strong> means no form can appear however healthy everything else looks.
             </p>
-            <div data-panel-body id="exceptions-container" style="margin-top:14px;"></div>
+            <div data-panel-body id="diagnostics-container" style="margin-top:14px;"></div>
         </div>
 
         <div class="diag-panel" style="margin-top:25px;">
@@ -3744,6 +4067,7 @@
         setInterval(renderPerformancePanel, 2000);
         setInterval(renderFindingsHistoryPanel, 2000);
         setInterval(renderPiiScanPanel, 2000);
+        setInterval(renderDiagnosticsPanel, 2000);
         setInterval(renderConsentGatePanel, 1000);
         setInterval(renderAccessibilityAuditPanel, 2000);
         // Faster cadence than the render loop -- a brief invitation could open and close inside a
@@ -7318,7 +7642,7 @@
             'Journey Automation': 'targeting',
             'Live Analytics Events Tracking': 'activity',
             'Native SDK Custom Event Bus': 'activity',
-            'Runtime Exceptions': 'activity',
+            'Diagnostics': 'activity',
             'Activity log': 'activity',
             'Unified Session Timeline': 'activity',
             'Performance & Core Web Vitals': 'activity',
@@ -7421,6 +7745,7 @@
                 propertyId: null, formCount: 0, blockedForms: 0, shownForms: 0,
                 networkErrors: document.querySelectorAll('#network-error-stream-box .network-err-entry').length,
                 sdkExceptions: countSdkAttributedExceptions(),
+                blockingDiagnostics: countBlockingDiagnostics(),
                 submissions: capturedSubmissionTraces.filter(t => t.isComplete).length,
                 designMismatches: 0, designChecked: 0,
                 contrastFailures: 0, contrastChecked: 0,
@@ -8863,7 +9188,10 @@
                 }
             }
 
-            if (s.sdkExceptions) chips.push(chip('chip-alert', 'SDK errors', s.sdkExceptions, '#exceptions-container'));
+            if (s.blockingDiagnostics) chips.push(chip('chip-alert',
+                s.blockingDiagnostics === 1 ? 'Blocking issue' : 'Blocking issues',
+                s.blockingDiagnostics, '#diagnostics-container'));
+            if (s.sdkExceptions) chips.push(chip('chip-alert', 'SDK errors', s.sdkExceptions, '#diagnostics-container'));
             if (s.networkErrors) chips.push(chip('chip-alert', 'Errors', s.networkErrors, '#network-error-stream-box'));
 
             bar.innerHTML = chips.join('') + '<span class="status-spacer"></span>' +
@@ -9814,6 +10142,12 @@
             const response = await fetch(url);
             if (!response.ok) throw new Error(`the property's configuration file answered ${response.status}`);
             const config = await response.json();
+            // Captured on the way past. The diagnostics panel needs the domain allow-list to
+            // decide whether forms can render here at all, and this is already the one place
+            // that reads the property's configuration — fetching it twice would be wasteful and
+            // could disagree with itself.
+            lastKnownDomainsConfiguration = config.domainsConfiguration || null;
+            renderDiagnosticsPanel();
             return Array.isArray(config.customParams) ? config.customParams : [];
         }
 
@@ -10630,7 +10964,7 @@
             writeLog("Sandbox execution hub online. Core proxy network intercepts active.", 'info');
             // Event-driven, not polled: recordRuntimeException re-renders when something
             // arrives. This first call is only here to paint the empty state.
-            renderRuntimeExceptionsPanel();
+            renderDiagnosticsPanel();
 
             // Before anything else reads session/local storage: a repro link's script and
             // lifecycle state have to be in place before the saved-script auto-inject and the

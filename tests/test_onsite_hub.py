@@ -1109,8 +1109,12 @@ def test_a_cross_origin_script_error_is_reported_as_hidden_not_blamed_on_the_too
     assert page.evaluate("() => countSdkAttributedExceptions()") == 0, \
         "an unattributable error was counted as an SDK defect"
     # the panel has to say why it knows nothing, rather than showing an empty row
-    page.evaluate("() => { capturedRuntimeExceptions[0].expanded = true; renderRuntimeExceptionsPanel(); }")
-    assert "withheld" in page.inner_text("#exceptions-container")
+    page.evaluate("""() => {
+        const head = [...document.querySelectorAll('.diag-finding-head')]
+            .find(h => h.parentElement.innerText.includes('Script error'));
+        if (head) head.click();
+    }""")
+    assert "withheld" in page.inner_text("#diagnostics-container")
 
 
 def test_repeated_exceptions_are_grouped_rather_than_flooding_the_panel(page):
@@ -1181,3 +1185,135 @@ def test_setting_a_parameter_from_the_panel_makes_a_gated_form_appear(page):
     assert page.evaluate(
         "(n) => CUSTOM_PARAMETERS.getCustomParamValueByUniqueName(n)", criterion["name"]
     ) == criterion["value"]
+
+
+# --------------------------------------------------------------------------------------------
+# Diagnostics: one place for everything wrong, explained rather than dumped.
+# --------------------------------------------------------------------------------------------
+
+def test_the_sdk_console_output_is_captured_at_all(page):
+    """Regression: this app patched nothing on console, so everything the SDK said there was
+    invisible to it. The bundle has twenty console call sites and several are the only notice
+    that something is structurally wrong."""
+    inject(page)
+    page.wait_for_function("() => capturedSdkConsoleMessages.length > 0", timeout=15000)
+
+    captured = page.evaluate("() => capturedSdkConsoleMessages.map(m => ({level: m.level, origin: m.origin}))")
+    assert any(m["origin"] == "sdk" for m in captured), f"nothing attributed to the SDK: {captured}"
+    # the capture must not eat the message: the real console still has to receive it
+    assert page.evaluate("() => console.error.toString().includes('native code') === false"), \
+        "console.error should be a wrapper, not replaced wholesale"
+
+
+def test_console_capture_reports_the_caller_not_its_own_plumbing(page):
+    """The captured stack begins inside this file's console wrapper. The frame a developer wants
+    is whoever called console.error, so the wrapper's own frames are trimmed off the top."""
+    inject(page)
+    page.wait_for_function("() => capturedSdkConsoleMessages.length > 0", timeout=15000)
+
+    stacks = page.evaluate("() => capturedSdkConsoleMessages.map(m => m.stack)")
+    for stack in stacks:
+        first = next((line for line in stack.split("\n") if line.strip()), "")
+        assert "captureConsoleMessage" not in first and "console." not in first, \
+            f"the stack still starts inside the capture wrapper: {first}"
+
+
+def test_a_blocked_domain_is_explained_rather_than_left_as_a_raw_string(page):
+    """The highest-value finding in the panel, and the reason it is not just a console mirror.
+
+    A domain block makes the SDK load, publish its whole form registry and report targeting
+    verdicts normally while never rendering anything — so every other panel looks healthy. It
+    says "onsite origin domain is not allowed" on the console once, during init, which can land
+    before any capture is listening. Deriving it from the configuration instead catches it
+    regardless of what was captured in time.
+    """
+    inject(page)
+    page.evaluate("""() => {
+        lastKnownDomainsConfiguration = {allDomainsAllowed: false, domainsNames: ['www.example.com', '*.medallia.com']};
+        renderDiagnosticsPanel();
+    }""")
+
+    finding = page.evaluate("() => buildDiagnosticFindings().find(f => f.severity === 'blocker')")
+    assert finding, page.evaluate("() => buildDiagnosticFindings().map(f => f.severity)")
+    assert "never render" in finding["title"]
+    # the explanation must name the real allow-list and this host, not describe the idea of one
+    assert "www.example.com" in finding["explanation"]
+    assert page.evaluate("() => window.location.hostname") in finding["explanation"]
+    assert finding["fix"], "a blocker with no stated remedy is only half a finding"
+    # the remedy has to be on screen, not merely in the data
+    page.evaluate("() => document.querySelector('.diag-finding-blocker .diag-finding-head').click()")
+    panel_text = page.inner_text("#diagnostics-container")
+    assert "What to do" in panel_text and "allowed domains in Medallia" in panel_text
+
+    # and it must reach the status bar, or a tester looking at another workspace never learns
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.status-chip')].some(c => c.innerText.includes('Blocking issue'))",
+        timeout=6000)
+
+
+def test_a_wildcard_allow_list_entry_matches_its_subdomains(page):
+    """The configuration writes subdomain wildcards as `*.example.com`. Treating one as a literal
+    hostname would report a blocker on a domain that is actually allowed, and a false blocker is
+    considerably worse than none — it sends someone to fix a setting that was already correct.
+
+    Driven through the real check by swapping the configuration, rather than by restating the
+    matching rule here: a test that reimplements the logic it is checking passes even when the
+    app's copy is wrong.
+    """
+    inject(page)
+    host = page.evaluate("() => window.location.hostname")   # 'localhost' under this server
+
+    def blockers_for(domains):
+        return page.evaluate("""(domains) => {
+            lastKnownDomainsConfiguration = {allDomainsAllowed: false, domainsNames: domains};
+            return buildDiagnosticFindings().filter(f => f.source === 'Property config').length;
+        }""", domains)
+
+    assert blockers_for([f"*.{host}"]) == 0, "a wildcard must match its own bare domain"
+    assert blockers_for([host]) == 0, "an exact entry must match"
+    assert blockers_for(["*.medallia.com"]) == 1, "an unrelated wildcard must not match"
+    # the trap: endsWith() alone would let '*.host' match 'localhost'
+    assert blockers_for(["*.host"]) == 1, "a wildcard must not match by bare suffix"
+
+    # and a property that allows everything must never produce this finding
+    assert page.evaluate("""() => {
+        lastKnownDomainsConfiguration = {allDomainsAllowed: true, domainsNames: []};
+        return buildDiagnosticFindings().filter(f => f.source === 'Property config').length;
+    }""") == 0
+
+
+def test_the_sdk_error_channel_becomes_a_finding(page):
+    """The SDK reports structural failures through triggerError, which fires
+    neb_eventDispatcherError carrying a message that names the real cause — richer than the
+    console line. Those events already flowed through the event-bus tap, but landed unlabelled in
+    the raw stream among every other event and were reported as a finding nowhere."""
+    inject(page)
+    page.evaluate("""() => KAMPYLE_EVENT_DISPATCHER.trigger('neb_eventDispatcherError',
+        {errorMessage: 'qa.example.com domain was blocked! domainsConfiguration: {}'})""")
+    page.wait_for_timeout(400)
+
+    assert page.evaluate("() => capturedSdkErrorEvents.length") >= 1
+    finding = page.evaluate(
+        "() => buildDiagnosticFindings().find(f => f.source === 'SDK error channel')")
+    assert finding, "the SDK's own error channel produced no finding"
+    assert finding["severity"] == "blocker"
+    assert "never render" in finding["title"], finding["title"]
+
+
+def test_clearing_diagnostics_keeps_what_is_still_true(page):
+    """Clear drops what has been *observed*. A finding derived from configuration is not history —
+    the domain is still wrong after the list is emptied — so it must come straight back, and the
+    raw network panel it shares a store with must not be left contradicting it."""
+    inject(page)
+    page.evaluate("""() => {
+        lastKnownDomainsConfiguration = {allDomainsAllowed: false, domainsNames: ['nowhere.example']};
+        renderDiagnosticsPanel();
+    }""")
+    assert page.evaluate("() => countBlockingDiagnostics()") >= 1
+
+    page.evaluate("() => clearCapturedDiagnostics()")
+    assert page.evaluate("() => capturedSdkConsoleMessages.length") == 0
+    assert page.evaluate("() => countBlockingDiagnostics()") >= 1, \
+        "the domain is still wrong, so its finding must survive a Clear"
+    assert page.evaluate(
+        "() => document.querySelectorAll('#network-error-stream-box .network-err-entry').length") == 0
