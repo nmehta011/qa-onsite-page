@@ -577,6 +577,24 @@
         .targeting-form-body { display: none; padding: 0 14px 14px 14px; border-top: 1px solid var(--panel-border); }
         .targeting-form-card.card-expanded .targeting-form-body { display: block; }
 
+        /* --- Field-level conditional display --- */
+        .conditional-display-block { margin: 14px 12px 12px; padding: 12px; background: #070a12; border: 1px solid #1e293b; border-radius: 8px; }
+        .conditional-display-heading { font-size: 0.78rem; font-weight: bold; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .conditional-display-count { background: rgba(14, 165, 233, 0.18); color: #38bdf8; border-radius: 10px; padding: 1px 7px; font-size: 0.7rem; margin-left: 5px; }
+        .conditional-display-field { border-top: 1px solid #111827; padding: 9px 0 4px; }
+        .conditional-display-field-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+        .conditional-display-label { color: #ffffff; font-weight: 600; font-size: 0.86rem; }
+        .conditional-display-type { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.4px; }
+        .conditional-display-page { font-size: 0.7rem; color: #475569; margin-left: auto; }
+        .conditional-display-condition { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 0; }
+        .conditional-display-rule { font-family: monospace; font-size: 0.78rem; color: #cbd5e1; flex: 1; min-width: 200px; }
+        .conditional-display-joiner { font-size: 0.68rem; color: #64748b; text-transform: uppercase; letter-spacing: 1px; padding-left: 2px; }
+        .conditional-display-nofix { font-size: 0.74rem; color: #64748b; font-style: italic; }
+        /* Scoped past `.diag-panel button` (specificity 0,1,1), which outranks a bare class and
+           has caught out every compact control added inside a diag panel in this file. */
+        .diag-panel button.conditional-display-fix { background: rgba(139, 92, 246, 0.16); border: 1px solid #7c3aed; color: #c4b5fd; font-size: 0.72rem; padding: 3px 10px; border-radius: 5px; cursor: pointer; height: auto; white-space: nowrap; }
+        .diag-panel button.conditional-display-fix:hover { background: rgba(139, 92, 246, 0.3); transform: none; }
+
         .targeting-rule-row { display: grid; grid-template-columns: 210px 1fr 130px; gap: 12px; align-items: start; padding: 9px 4px; border-bottom: 1px solid #111827; font-size: 0.8rem; }
         @media (max-width: 900px) { .targeting-rule-row { grid-template-columns: 1fr; gap: 5px; } }
         .targeting-rule-name { font-family: monospace; color: #cbd5e1; font-weight: bold; font-size: 0.78rem; }
@@ -833,11 +851,13 @@
             cursor: pointer; white-space: nowrap; flex-shrink: 0; text-transform: none; letter-spacing: 0;
         }
         .diag-panel button.form-verdict-fix:hover, button.form-verdict-fix:hover { background: rgba(255,255,255,0.09); transform: none; }
-        .evidence-row { display: grid; grid-template-columns: 96px 1fr 100px; gap: 14px; align-items: center; padding: 10px 4px; border-bottom: 1px solid #111827; }
+        .evidence-row { display: grid; grid-template-columns: 96px 1fr 100px auto; gap: 14px; align-items: center; padding: 10px 4px; border-bottom: 1px solid #111827; }
+        .evidence-download-btn { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid #334155; color: #7dd3fc; font-size: 0.72rem; padding: 4px 9px; border-radius: 5px; cursor: pointer; text-decoration: none; white-space: nowrap; }
+        .evidence-download-btn:hover { border-color: #0ea5e9; background: rgba(14, 165, 233, 0.12); }
         .evidence-thumb { width: 96px; height: 60px; object-fit: cover; border: 1px solid #1e293b; border-radius: 6px; background: #020617; }
         .evidence-thumb-empty { display: flex; align-items: center; justify-content: center; text-align: center; font-size: 0.6rem; color: #475569; line-height: 1.2; }
         .evidence-title { font-size: 0.82rem; color: #e2e8f0; }
-        @media (max-width: 900px) { .evidence-row { grid-template-columns: 72px 1fr; } .evidence-row .verdict-pill { grid-column: 2; justify-self: start; } }
+        @media (max-width: 900px) { .evidence-row { grid-template-columns: 72px 1fr; } .evidence-row .verdict-pill, .evidence-row .evidence-download-btn { grid-column: 2; justify-self: start; } }
 
         .pii-finding-row { display: grid; grid-template-columns: 140px 1fr 1fr 90px; gap: 10px; align-items: center; padding: 8px 4px; border-bottom: 1px solid #111827; font-size: 0.78rem; }
         .pii-finding-row.pii-finding-head { color: #64748b; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -7335,6 +7355,226 @@
             return markup;
         }
 
+        // --- 5c5. FIELD-LEVEL CONDITIONAL DISPLAY ---
+        // Targeting decides whether a form appears. This is the layer below it: whether a
+        // *field* inside that form appears, which the form builder drives from a custom
+        // parameter's value. A tester with the form open and a field missing had nothing here to
+        // tell them why, and no way to find out short of reading the form's configuration in
+        // Medallia.
+        //
+        // Read from the same formDataV2 manifest the design validator already captures
+        // (capturedFormDesignManifests), so no new request is made for a form the SDK has
+        // already fetched. Shape:
+        //   conditionalDisplay: { type: 'group', logicalOperator: 'and', conditions: [
+        //       { type: 'custom-param', customParamName, condition: 'Ends With', value } ] }
+        //
+        // Two honest limits, both stated in the panel rather than papered over:
+        //   * The condition is evaluated inside the form's own cross-origin iframe, so this app
+        //     cannot confirm a field actually appeared. It can say what the rule is and set a
+        //     value that satisfies it; the tester still has to look.
+        //   * The form reads the parameter when it loads. Changing a value while the form is
+        //     open does not re-run the condition — the form has to be reopened.
+        // Definitions fetched by this feature, kept apart from capturedFormDesignManifests on
+        // purpose. That map is what the design validator decides which forms to check from, and
+        // quietly filling it would put every form on the property through a validation it was
+        // never getting before — a behaviour change disguised as a fetch.
+        const fetchedFormDefinitions = {};
+        const formDefinitionFetchAttempted = new Set();
+        let lastKnownFormNodes = null;
+
+        function ensureFormDefinitionFetched(formId) {
+            const key = String(formId);
+            if (capturedFormDesignManifests[key] || fetchedFormDefinitions[key]) return;
+            if (formDefinitionFetchAttempted.has(key) || !lastKnownFormNodes) return;
+            const node = lastKnownFormNodes.find(entry => String(entry.formId) === key);
+            if (!node || !node.formDataUrl) return;
+
+            formDefinitionFetchAttempted.add(key);
+            const language = (node.formLocalizationSettings && node.formLocalizationSettings.defaultLanguage) || 'en';
+            const url = String(node.formDataUrl).replace('###LANGUAGE_CODE###', language);
+            fetch(url)
+                .then(response => (response.ok ? response.json() : null))
+                .then(definition => {
+                    if (!definition || !Array.isArray(definition.pages)) return;
+                    fetchedFormDefinitions[key] = definition;
+                    renderFormTargetingRulesMatrix();
+                })
+                .catch(() => { /* a form definition that will not load is simply not shown */ });
+        }
+
+        function readConditionalDisplayFieldsForForm(formId) {
+            ensureFormDefinitionFetched(formId);
+            const manifest = capturedFormDesignManifests[String(formId)] || fetchedFormDefinitions[String(formId)];
+            if (!manifest || !Array.isArray(manifest.pages)) return null;
+
+            const fields = [];
+            manifest.pages.forEach((page, pageIndex) => {
+                (page.components || []).forEach(component => {
+                    const conditional = component.conditionalDisplay;
+                    if (!conditional || !Array.isArray(conditional.conditions) || !conditional.conditions.length) return;
+                    fields.push({
+                        componentId: String(component.id),
+                        // data.label is what the respondent actually reads; unique_name is the
+                        // builder's internal handle and is only a fallback.
+                        label: (component.data && component.data.label) || component.unique_name || `Field ${component.id}`,
+                        fieldType: component.type || 'field',
+                        pageName: page.pageName || `Page ${pageIndex + 1}`,
+                        logicalOperator: String(conditional.logicalOperator || 'and').toLowerCase(),
+                        conditions: conditional.conditions
+                    });
+                });
+            });
+            return fields;
+        }
+
+        // A value that satisfies each operator, keyed by the label the form builder emits (which
+        // is title-case with spaces, unlike the lower-case operators the targeting rules use --
+        // the two vocabularies are not interchangeable).
+        //
+        // Absent entries have no single derivable answer: a regex cannot be inverted into one
+        // example, so those rows show the rule and offer no button rather than a guess.
+        const CONDITIONAL_DISPLAY_SATISFIERS = {
+            'equals':           condition => String(condition.value),
+            'contains':         condition => String(condition.value),
+            'starts with':      condition => String(condition.value),
+            // A string ends with itself, so the configured value satisfies its own rule.
+            'ends with':        condition => String(condition.value),
+            'has any value':    condition => (String(condition.value || '').trim() || 'qa-value'),
+            'does not equal':   condition => `${condition.value}-qa`,
+            'does not contain': condition => (String(condition.value || '') && !'qa-value'.includes(String(condition.value)) ? 'qa-value' : null),
+            'greater than':     condition => (Number.isFinite(Number(condition.value)) ? String(Number(condition.value) + 1) : null),
+            'smaller than':     condition => (Number.isFinite(Number(condition.value)) ? String(Number(condition.value) - 1) : null),
+            // Datetime values arrive as ISO strings; a day either side clears the comparison
+            // without landing on the boundary, where "later than" is false.
+            'later than':       condition => { const at = Date.parse(condition.value); return Number.isFinite(at) ? String(at + 86400000) : null; },
+            'earlier than':     condition => { const at = Date.parse(condition.value); return Number.isFinite(at) ? String(at - 86400000) : null; }
+        };
+
+        // Type-aware, because "not equal to X" has a different answer per type and the generic
+        // one is wrong in a way that looks right. Appending "-qa" to a Datetime's ISO value
+        // produces a string the SDK casts to empty, so the button would report success while the
+        // condition still failed — the same trap the manual Datetime field fell into.
+        //
+        // Whatever is derived is then put through the real encoder. If the SDK would read it as
+        // empty, no button is offered at all: an honest gap beats a fix that silently does
+        // nothing.
+        function deriveValueSatisfyingConditionalDisplay(condition, param) {
+            const operator = String(condition.condition || '').toLowerCase();
+            const type = String((param && param.type) || 'Text').toLowerCase();
+            let value;
+
+            if (operator === 'does not equal') {
+                if (type === 'datetime') {
+                    const at = Date.parse(condition.value);
+                    value = Number.isFinite(at) ? String(at + 86400000) : null;
+                } else if (type === 'number') {
+                    value = Number.isFinite(Number(condition.value)) ? String(Number(condition.value) + 1) : null;
+                } else if (type === 'boolean') {
+                    value = String(condition.value).trim().toLowerCase() === 'true' ? 'false' : 'true';
+                } else {
+                    value = `${condition.value}-qa`;
+                }
+            } else {
+                const satisfier = CONDITIONAL_DISPLAY_SATISFIERS[operator];
+                value = satisfier ? satisfier(condition) : null;
+            }
+            if (value === null || value === undefined) return null;
+
+            const encoded = encodePropertyCustomParamValueForSdk(
+                String(value), (param && param.type) || 'Text', (param && param.source) || 'var');
+            return encoded.error ? null : String(value);
+        }
+
+        function findPropertyCustomParamByName(name) {
+            return propertyCustomParamRegistry.find(entry => entry.uniqueName === name) || null;
+        }
+
+        function describeConditionalDisplayCondition(condition) {
+            if (condition.type === 'custom-param') {
+                const operator = String(condition.condition || 'matches');
+                const hasValue = String(operator).toLowerCase() === 'has any value';
+                return `custom param "${condition.customParamName}" ${operator}${hasValue ? '' : ` "${condition.value}"`}`;
+            }
+            // Not seen on this property, but the schema carries a type per condition, so anything
+            // that is not a custom parameter is described from what it does contain rather than
+            // silently dropped.
+            const readable = Object.keys(condition)
+                .filter(key => key !== 'type')
+                .map(key => `${key}: ${condition[key]}`)
+                .join(', ');
+            return `${condition.type || 'condition'} — ${readable}`;
+        }
+
+        function buildConditionalDisplayMarkupForForm(form) {
+            const fields = readConditionalDisplayFieldsForForm(form.formId);
+            if (fields === null) {
+                // Silent while the definition is on its way: a card that flashes a warning and
+                // then replaces it a moment later reads as a fault rather than a fetch.
+                return '';
+            }
+            if (!fields.length) return '';
+
+            const rows = fields.map(field => {
+                const joiner = field.logicalOperator === 'or' ? ' OR ' : ' AND ';
+                const conditionRows = field.conditions.map((condition, index) => {
+                    const description = describeConditionalDisplayCondition(condition);
+                    const isCustomParam = condition.type === 'custom-param';
+                    const param = isCustomParam ? findPropertyCustomParamByName(condition.customParamName) : null;
+                    const satisfying = isCustomParam ? deriveValueSatisfyingConditionalDisplay(condition, param) : null;
+                    const button = satisfying
+                        ? `<button class="conditional-display-fix" data-cond-form="${escapeMarkupForSafeRender(form.formId)}" data-cond-field="${escapeMarkupForSafeRender(field.componentId)}" data-cond-index="${index}">Set ${escapeMarkupForSafeRender(condition.customParamName)} = ${escapeMarkupForSafeRender(satisfying.length > 24 ? satisfying.slice(0, 24) + '…' : satisfying)}</button>`
+                        : isCustomParam
+                            ? `<span class="conditional-display-nofix">No single value satisfies this — set ${escapeMarkupForSafeRender(condition.customParamName)} by hand.</span>`
+                            : `<span class="conditional-display-nofix">Driven by something other than a custom parameter, so it cannot be set from here.</span>`;
+                    return `<div class="conditional-display-condition"><span class="conditional-display-rule">${escapeMarkupForSafeRender(description)}</span>${button}</div>`;
+                }).join(field.conditions.length > 1 ? `<div class="conditional-display-joiner">${joiner.trim()}</div>` : '');
+
+                return `<div class="conditional-display-field">
+                            <div class="conditional-display-field-head">
+                                <span class="conditional-display-label">${escapeMarkupForSafeRender(field.label)}</span>
+                                <span class="conditional-display-type">${escapeMarkupForSafeRender(field.fieldType)}</span>
+                                <span class="conditional-display-page">${escapeMarkupForSafeRender(field.pageName)}</span>
+                            </div>
+                            ${conditionRows}
+                        </div>`;
+            }).join('');
+
+            return `<div class="conditional-display-block">
+                        <div class="conditional-display-heading">Fields with conditional display <span class="conditional-display-count">${fields.length}</span></div>
+                        <div class="design-note">These fields only appear when their condition holds. The form evaluates it inside its own cross-origin frame when it loads, so setting a value here cannot be confirmed from this page and will not affect a form that is already open — set the value, then reopen the form.</div>
+                        ${rows}
+                    </div>`;
+        }
+
+        function applyConditionalDisplayFix(formId, componentId, conditionIndex) {
+            const fields = readConditionalDisplayFieldsForForm(formId) || [];
+            const field = fields.find(entry => entry.componentId === String(componentId));
+            const condition = field && field.conditions[Number(conditionIndex)];
+            if (!condition) { toast('That field condition is no longer in the form definition.', 'warn'); return; }
+
+            // The parameter's real source and type come from the property's own registry, so the
+            // value is written to the key the SDK reads rather than to a guess at its name — and
+            // so the derived value suits the type it will be cast to.
+            const param = findPropertyCustomParamByName(condition.customParamName);
+            const satisfying = deriveValueSatisfyingConditionalDisplay(condition, param);
+            if (satisfying === null) { toast('No single value satisfies that condition.', 'warn'); return; }
+            if (!param) {
+                toast(`"${condition.customParamName}" is not in the fetched parameter list — open Setup and press Fetch, then try again.`, 'warn');
+                refreshPropertyCustomParamRegistry(false);
+                return;
+            }
+            const source = param.source || 'var';
+            const encoded = encodePropertyCustomParamValueForSdk(satisfying, param.type, source);
+            if (encoded.error) { toast(`${param.uniqueName}: ${encoded.error}`, 'warn'); return; }
+
+            writePropertyCustomParamValue(param, source, encoded.value);
+            renderActiveParametersDashboardList();
+            updateActiveBrowserAddressBarQueryString(true);
+            renderPropertyCustomParamRegistryList();
+            writeLog(`🔧 Set ${param.uniqueName} = ${encoded.value} to satisfy the display condition on "${field.label}".`, 'success');
+            toast(`${param.uniqueName} set. Reopen form ${formId} — the field's condition is evaluated when the form loads.`, 'success');
+        }
+
         function renderFormTargetingRulesMatrix() {
             const container = document.getElementById('targeting-matrix-container');
             if (!container) return;
@@ -7425,10 +7665,19 @@
                     <div class="targeting-form-body">
                         <div class="state-pill-row">${buildFormStatePillMarkup(form.state)}</div>
                         ${rulesMarkup}
+                        ${buildConditionalDisplayMarkupForForm(form)}
                     </div>
                 `;
                 card.querySelectorAll('.form-verdict-fix').forEach(btn => {
                     btn.onclick = e => { e.stopPropagation(); applyTargetingRuleFix(btn.getAttribute('data-fix')); };
+                });
+                card.querySelectorAll('.conditional-display-fix').forEach(btn => {
+                    btn.onclick = e => {
+                        e.stopPropagation();
+                        applyConditionalDisplayFix(btn.getAttribute('data-cond-form'),
+                                                   btn.getAttribute('data-cond-field'),
+                                                   btn.getAttribute('data-cond-index'));
+                    };
                 });
                 card.querySelector('.targeting-form-head').onclick = () => {
                     expandedTargetingFormCards[form.formId] = !expandedTargetingFormCards[form.formId];
@@ -9025,11 +9274,33 @@
                         `<div><div class="evidence-title">${escapeMarkupForSafeRender(evidence.title)}</div>` +
                         `<div class="design-note" style="margin:2px 0 0 0;">${escapeMarkupForSafeRender(evidence.area)} · ${escapeMarkupForSafeRender(new Date(evidence.at).toLocaleTimeString())}</div></div>` +
                         `<span class="verdict-pill verdict-${evidence.severity}">${evidence.severity === 'block' ? '✕ blocker' : '⚠ review'}</span>` +
+                        // A plain download link, not a scripted save: the frame is already a data
+                        // URL, so the browser writes it straight to disk with no re-encoding and
+                        // no copy held anywhere. Previously the only way to get one screenshot out
+                        // was to file the whole report and open the evidence pack.
+                        (frame
+                            ? `<a class="evidence-download-btn" href="${frame}" download="${escapeMarkupForSafeRender(buildEvidenceScreenshotFilename(evidence, frame))}" title="Save this screenshot">⬇ Save</a>`
+                            : `<span class="evidence-download-btn" style="opacity:0.35; cursor:default;" title="No screenshot was captured for this issue">⬇ Save</span>`) +
                         `</div>`
                     );
                 });
             }
             container.innerHTML = rows.join('');
+        }
+
+        // Named after the issue it belongs to, so a folder of these is still readable a week
+        // later. Restricted to characters every OS accepts in a filename.
+        function buildEvidenceScreenshotFilename(evidence, dataUrl) {
+            const slug = String(evidence.title || 'issue')
+                .replace(/[^a-z0-9]+/gi, '-')
+                .replace(/^-+|-+$/g, '')
+                .slice(0, 60) || 'issue';
+            const stamp = new Date(evidence.at).toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            // Read off the data URL rather than assumed: these are PNGs today, and a hardcoded
+            // extension would quietly start lying if the capture format ever changes.
+            const mimeMatch = /^data:image\/([a-z0-9+.-]+)/i.exec(String(dataUrl || ''));
+            const extension = mimeMatch ? mimeMatch[1].replace('jpeg', 'jpg') : 'png';
+            return `onsite-${slug}-${stamp}.${extension}`;
         }
 
         // --- CONSENT GATING & DATA PRIVACY (Page 4) ---
@@ -10147,6 +10418,9 @@
             // that reads the property's configuration — fetching it twice would be wasteful and
             // could disagree with itself.
             lastKnownDomainsConfiguration = config.domainsConfiguration || null;
+            // formNodes carries a formDataUrl per form, which is what lets a form's definition be
+            // read even when the SDK has not fetched it yet.
+            lastKnownFormNodes = Array.isArray(config.formNodes) ? config.formNodes : null;
             renderDiagnosticsPanel();
             return Array.isArray(config.customParams) ? config.customParams : [];
         }

@@ -1317,3 +1317,141 @@ def test_clearing_diagnostics_keeps_what_is_still_true(page):
         "the domain is still wrong, so its finding must survive a Clear"
     assert page.evaluate(
         "() => document.querySelectorAll('#network-error-stream-box .network-err-entry').length") == 0
+
+
+# --------------------------------------------------------------------------------------------
+# Field-level conditional display, and per-screenshot download.
+# --------------------------------------------------------------------------------------------
+
+def find_conditional_display_field(pg):
+    """The first form on this property that has a field driven by a custom parameter."""
+    return pg.evaluate("""() => {
+        for (const form of (readPublishedFormRegistryFromSdk() || [])) {
+            const fields = readConditionalDisplayFieldsForForm(form.formId);
+            if (!fields) continue;
+            for (const field of fields) {
+                const condition = field.conditions.find(c => c.type === 'custom-param');
+                if (condition) return {formId: form.formId, field, condition};
+            }
+        }
+        return null;
+    }""")
+
+
+def test_conditional_display_fields_are_read_from_the_form_definition(page):
+    """Targeting says whether a form appears; this is the layer below — whether a field inside it
+    appears. A tester with the form open and a field missing had nothing to tell them why."""
+    inject(page)
+    # definitions arrive either from the SDK's own fetch or the formNodes fallback
+    page.wait_for_function("""() => (readPublishedFormRegistryFromSdk() || [])
+        .some(f => (readConditionalDisplayFieldsForForm(f.formId) || []).length > 0)""", timeout=20000)
+
+    found = find_conditional_display_field(page)
+    if not found:
+        pytest.skip("no form on this property drives a field from a custom parameter")
+
+    assert found["field"]["label"], "a field with no readable label is no use to a tester"
+    described = page.evaluate("(c) => describeConditionalDisplayCondition(c)", found["condition"])
+    assert found["condition"]["customParamName"] in described
+    assert "custom param" in described
+
+
+def test_a_conditional_display_fix_is_typed_for_the_parameter_it_writes(page):
+    """Regression caught in review: "does not equal" appended "-qa" regardless of type, so for a
+    Datetime parameter it produced an ISO string with a suffix — which the SDK casts to empty.
+    The button would have reported success while the condition still failed, which is the exact
+    trap the manual Datetime field fell into.
+
+    Anything derived is put back through the real encoder, so a value the SDK would read as empty
+    offers no button at all rather than a fix that silently does nothing.
+    """
+    open_parameter_registry(page)
+    page.wait_for_function("""() => (readPublishedFormRegistryFromSdk() || [])
+        .some(f => (readConditionalDisplayFieldsForForm(f.formId) || []).length > 0)""", timeout=20000)
+
+    checked = page.evaluate("""() => {
+        const out = [];
+        for (const form of (readPublishedFormRegistryFromSdk() || [])) {
+            for (const field of (readConditionalDisplayFieldsForForm(form.formId) || [])) {
+                for (const condition of field.conditions) {
+                    if (condition.type !== 'custom-param') continue;
+                    const param = findPropertyCustomParamByName(condition.customParamName);
+                    const value = deriveValueSatisfyingConditionalDisplay(condition, param);
+                    if (value === null) continue;
+                    out.push({type: param ? param.type : null, operator: condition.condition, value,
+                              encodeError: !!encodePropertyCustomParamValueForSdk(
+                                  value, param ? param.type : 'Text', param ? param.source : 'var').error});
+                }
+            }
+        }
+        return out;
+    }""")
+    if not checked:
+        pytest.skip("no satisfiable custom-parameter condition on this property")
+
+    for row in checked:
+        assert row["encodeError"] is False, f"offered a value the SDK cannot read: {row}"
+        if str(row["type"]).lower() == "datetime":
+            assert row["value"].isdigit(), \
+                f"a Datetime parameter needs epoch millis, got {row['value']!r} for {row['operator']!r}"
+
+
+def test_setting_a_field_condition_writes_the_parameter_the_sdk_reads(page):
+    """The button is only worth anything if it reaches the key the SDK resolves — which is
+    source_name on the parameter's own source, not the display name in the condition."""
+    open_parameter_registry(page)
+    page.wait_for_function("""() => (readPublishedFormRegistryFromSdk() || [])
+        .some(f => (readConditionalDisplayFieldsForForm(f.formId) || []).length > 0)""", timeout=20000)
+
+    found = find_conditional_display_field(page)
+    if not found or not page.evaluate("(n) => !!findPropertyCustomParamByName(n)",
+                                      found["condition"]["customParamName"]):
+        pytest.skip("no conditional field backed by a parameter in this property's registry")
+
+    index = found["field"]["conditions"].index(found["condition"])
+    page.evaluate("(a) => applyConditionalDisplayFix(a.formId, a.fieldId, a.index)",
+                  {"formId": found["formId"], "fieldId": found["field"]["componentId"], "index": index})
+    page.wait_for_timeout(500)
+
+    # Resolved through a fresh descriptor rather than getCustomParamValueByUniqueName, which is
+    # not a reliable oracle: the SDK caches the resolved value onto its own config object, and
+    # extractCPValue only re-reads the source when that cached `value` is undefined. A parameter
+    # the SDK had already resolved as empty keeps reporting empty from cache even once the cookie
+    # exists. Passing a fresh object forces the real read, and is how the app's own live column
+    # reads it.
+    name = found["condition"]["customParamName"]
+    resolved = page.evaluate("""(n) => {
+        const p = CUSTOM_PARAMETERS.getAllCustomParams().find(x => x.unique_name === n);
+        return p ? CUSTOM_PARAMETERS.getCustomParamValue({name: p.source_name, type: p.type, source: p.source}) : null;
+    }""", name)
+    assert resolved is not None, f"the SDK still reads {name} as empty after the fix was applied"
+
+
+def test_each_captured_screenshot_can_be_saved_on_its_own(page):
+    """Previously the only way to get one screenshot out was to file the whole report and open the
+    evidence pack. The frames are already data URLs, so a plain download link writes one straight
+    to disk with no re-encoding."""
+    tiny_png = ("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z"
+                "8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+    page.evaluate("""(png) => {
+        capturedEvidenceFrames.set('f1', png);
+        capturedIssueEvidence.set('k1', {title: 'Decline button contrast 1.94:1', area: 'WCAG Contrast',
+                                         severity: 'block', frameId: 'f1', at: Date.now()});
+        capturedIssueEvidence.set('k2', {title: 'No capture for this one', area: 'Layout',
+                                         severity: 'warn', frameId: null, at: Date.now()});
+        renderBugReportPanel();
+    }""", tiny_png)
+
+    links = page.eval_on_selector_all(
+        "a.evidence-download-btn", "els => els.map(e => e.getAttribute('download'))")
+    assert len(links) == 1, "exactly the row that has a frame should offer a download"
+    # named after the issue so a folder of these is readable later, and typed from the data URL
+    # rather than a hardcoded extension that would quietly start lying
+    assert links[0].startswith("onsite-Decline-button-contrast")
+    assert links[0].endswith(".png")
+    # the row with no capture must not offer a dead link
+    assert page.eval_on_selector_all("span.evidence-download-btn", "els => els.length") == 1
+
+    with page.expect_download(timeout=8000) as download:
+        page.evaluate("() => document.querySelector('a.evidence-download-btn').click()")
+    assert download.value.suggested_filename.endswith(".png")
