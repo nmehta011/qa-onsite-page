@@ -124,6 +124,53 @@
         .rail-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .rail-count { margin-left: auto; font-size: 0.66rem; color: #475569; font-weight: 700; flex-shrink: 0; }
         .rail-empty { font-size: 0.74rem; color: #475569; padding: 8px 10px; }
+        .rail-triage { display: flex; align-items: center; gap: 9px; width: 100%; padding: 6px 10px; margin-bottom: 9px; border-radius: 6px; border: none; background: transparent; color: #94a3b8; font-family: inherit; font-size: 0.79rem; font-weight: 600; cursor: pointer; text-align: left; height: auto; box-shadow: none; }
+        .rail-triage:hover { background: #111827; color: #cbd5e1; transform: none; }
+        .rail-triage-count { margin-left: auto; font-size: 0.68rem; font-weight: 700; }
+
+        /* --- TRIAGE ---
+           The landing view: what needs attention, ranked, each linking to the panel that owns
+           it. Composed entirely from the functions the panels themselves use
+           (buildGlobalStatusSnapshot, buildDiagnosticFindings, decodeTargetingRulesForForm), so
+           it cannot report something the panel below it disagrees with. */
+        /* A FIXED box that scrolls internally, rather than one sized by its contents.
+           This section is the first thing in the document, so every time its height changed --
+           the start card giving way to the findings list, then each audit landing a row a second
+           or two later -- it shoved the whole page down. Measured: Cumulative Layout Shift since
+           injection went from 0.027 to 0.103, past the 0.100 "good" threshold, in a tool that
+           reports that very number back to the tester as the property's own.
+           A reserved min-height only absorbed part of it (0.093) because the list still grew
+           past the reserve. Fixing the height removes the mechanism rather than the symptom:
+           findings beyond the first few scroll inside the card, and the page never moves. */
+        .triage-view { margin-bottom: 26px; height: 350px; display: flex; flex-direction: column; }
+        .triage-items { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
+        .triage-items::-webkit-scrollbar { width: 8px; }
+        .triage-items::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+        .triage-heading { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+        .triage-title { font-size: 1.4rem; font-weight: 700; color: var(--text-main); letter-spacing: -0.2px; }
+        .triage-sub { font-size: 0.8rem; color: var(--text-muted); }
+        .triage-item { background: var(--card-bg); border: 1px solid var(--panel-border); border-left: 3px solid #334155; border-radius: 12px; padding: 14px 17px; display: flex; gap: 13px; align-items: flex-start; margin-bottom: 10px; }
+        .triage-item-blocker { border-left-color: var(--danger-red); }
+        .triage-item-warning { border-left-color: #fbbf24; }
+        .triage-item-info { border-left-color: #334155; }
+        .triage-sev { font-size: 0.62rem; font-weight: 800; letter-spacing: 0.7px; border-radius: 4px; padding: 2px 8px; text-transform: uppercase; flex-shrink: 0; }
+        .triage-sev-blocker { background: rgba(239,68,68,0.15); color: #f87171; }
+        .triage-sev-warning { background: rgba(245,158,11,0.15); color: #fbbf24; }
+        .triage-sev-info { background: #1e293b; color: #94a3b8; }
+        .triage-body { flex: 1; min-width: 0; }
+        .triage-item-title { font-size: 0.93rem; font-weight: 600; color: var(--text-main); }
+        .triage-detail { font-size: 0.81rem; color: var(--text-muted); margin-top: 2px; line-height: 1.5; }
+        .diag-panel button.triage-go, button.triage-go { font-size: 0.72rem; border: 1px solid #334155; background: transparent; color: #cbd5e1; border-radius: 6px; padding: 4px 11px; white-space: nowrap; flex-shrink: 0; height: auto; cursor: pointer; box-shadow: none; }
+        button.triage-go:hover { border-color: #0ea5e9; color: #7dd3fc; transform: none; }
+        .triage-clean { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--panel-border); }
+        .triage-clean-label { font-size: 0.68rem; letter-spacing: 1px; text-transform: uppercase; color: #475569; font-weight: 700; }
+        .triage-clean-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 20px; border: 1px solid rgba(16,185,129,0.4); color: var(--accent-green); font-size: 0.72rem; }
+
+        .triage-start { background: var(--card-bg); border: 1px solid var(--panel-border); border-radius: 14px; padding: 24px 26px; flex: 1; display: flex; flex-direction: column; justify-content: center; }
+        .triage-start-title { font-size: 1.35rem; font-weight: 700; color: var(--text-main); letter-spacing: -0.2px; }
+        .triage-start-sub { font-size: 0.86rem; color: var(--text-muted); margin-top: 4px; max-width: 640px; line-height: 1.5; }
+        .diag-panel button.triage-start-btn, button.triage-start-btn { margin-top: 16px; font-size: 0.86rem; font-weight: 600; color: #fff; background: var(--primary-gradient); border: none; border-radius: 8px; padding: 9px 22px; cursor: pointer; height: auto; }
+        .triage-start-note { font-size: 0.78rem; color: #64748b; margin-top: 14px; line-height: 1.55; }
         .rail-foot { font-size: 0.7rem; color: #334155; padding: 12px 10px 0; margin-top: 12px; border-top: 1px solid #111827; line-height: 1.5; }
 
         /* Below this the rail costs more than it gives -- the workspace bar is still there. */
@@ -2320,6 +2367,20 @@
         <div id="device-launch-notice" class="device-launch-notice"></div>
         <div id="dom-capture-alert" class="live-alert-banner"></div>
 
+        <!-- Rendered here as markup, not left to renderTriageView() on DOMContentLoaded. This
+             section is the first thing in the document, so it appearing a tick after first paint
+             pushed the entire page down -- measured at 0.076 of Cumulative Layout Shift, which
+             this app reports back to the tester as the property's own. renderTriageView()
+             replaces it from the same template the moment it runs. -->
+        <section id="triage-view" class="triage-view" aria-label="What needs attention">
+            <div class="triage-start">
+                <div class="triage-start-title">Paste your embed code to begin</div>
+                <div class="triage-start-sub">The property loads into this page exactly as it would on a real site — then every check in the rail starts reporting.</div>
+                <button class="triage-start-btn" onclick="focusPropertyInjectorOnActivePage()">Go to the injector</button>
+                <div class="triage-start-note">Opened from a repro link? The script, lifecycle dates and custom parameters restore themselves and injection starts on its own. Saved embed snippets live in <b>Setup → Zoom, presets &amp; injection delay</b>.</div>
+            </div>
+        </section>
+
         <div id="lifecycle-timer-panel" class="lifecycle-timer-container">
             <div>
                 <strong style="color:#0ea5e9; font-size:0.85rem; display:block; text-transform:uppercase; margin-bottom:2px;">⏱️ Time since injection</strong>
@@ -4188,6 +4249,7 @@
                 renderUserAgentScopeReport();
                 renderGlobalStatusBar();
                 renderWorkspaceBar();
+                renderTriageView();
                 renderPanelRail();
                 refreshCollapsedPanelSummaries();
                 decorateLifecycleKeysWithDependents();
@@ -8067,6 +8129,170 @@
             });
         }
 
+        // --- 5c2c. TRIAGE ---
+        // The landing view. Every other panel answers "what is the state of X"; this answers the
+        // question a tester actually arrives with -- "is anything wrong, and where do I go".
+        //
+        // It composes, never recomputes: buildDiagnosticFindings() for anything the SDK or the
+        // page reported, buildGlobalStatusSnapshot() for the audit counts, and
+        // decodeTargetingRulesForForm() for why forms are blocked. Recomputing any of that here
+        // would eventually contradict the panel it links to, which is the one thing a summary
+        // must never do.
+        const TRIAGE_SEVERITY_RANK = { blocker: 0, warning: 1, info: 2 };
+
+        function buildTriageItems() {
+            const snapshot = buildGlobalStatusSnapshot();
+            if (!snapshot.injected) return [];
+            const items = [];
+
+            // Diagnostics already explains itself in plain English, so it is passed through
+            // rather than re-summarised.
+            buildDiagnosticFindings().forEach(finding => {
+                if (finding.severity === 'info') return;   // notes belong in the panel, not the landing
+                items.push({
+                    severity: finding.severity,
+                    title: finding.title,
+                    detail: finding.explanation || finding.message,
+                    goLabel: 'Diagnostics',
+                    target: '#diagnostics-container'
+                });
+            });
+
+            if (snapshot.blockedForms) {
+                // The reasons come from the matrix's own decoder, so the sentence here and the
+                // verdict on the card cannot disagree.
+                const reasons = new Set();
+                (readPublishedFormRegistryFromSdk() || []).forEach(form => {
+                    decodeTargetingRulesForForm(form)
+                        .filter(rule => rule.verdict === 'block')
+                        .forEach(rule => reasons.add(rule.name));
+                });
+                const reasonText = reasons.size ? [...reasons].slice(0, 4).join(', ') : 'targeting rules';
+                items.push({
+                    severity: 'warning',
+                    title: `${snapshot.blockedForms} of ${snapshot.formCount} forms cannot show right now`,
+                    detail: `Blocked by ${reasonText}. Each card carries a one-click fix where the rule can be satisfied from here.`,
+                    goLabel: 'Why?',
+                    target: '#targeting-matrix-container'
+                });
+            }
+
+            const audits = [
+                { count: snapshot.contrastFailures, checked: snapshot.contrastChecked, severity: 'blocker',
+                  title: n => `${n} colour pair${n === 1 ? '' : 's'} below the WCAG minimum`,
+                  detail: 'Text or a control that does not meet its contrast threshold.',
+                  goLabel: 'Contrast', target: '#contrast-audit-container', cleanLabel: 'Contrast' },
+                { count: snapshot.a11yFailures, checked: snapshot.a11yChecked, severity: 'blocker',
+                  title: n => `${n} accessibility check${n === 1 ? '' : 's'} failing`,
+                  detail: 'Keyboard reachability, labelling or roles on the rendered widget.',
+                  goLabel: 'Accessibility', target: '#a11y-audit-container', cleanLabel: 'Accessibility' },
+                { count: snapshot.designMismatches, checked: snapshot.designChecked, severity: 'warning',
+                  title: n => `${n} design value${n === 1 ? '' : 's'} do not match the configuration`,
+                  detail: 'What rendered differs from what the property is configured to show.',
+                  goLabel: 'Design', target: '#design-validator-container', cleanLabel: 'Design' },
+                { count: snapshot.securityFailures, checked: snapshot.securityChecked, severity: 'warning',
+                  title: n => `${n} security check${n === 1 ? '' : 's'} failing`,
+                  detail: 'How the SDK is loaded and what it is permitted to reach.',
+                  goLabel: 'Security', target: '#security-posture-container', cleanLabel: 'Security' },
+                { count: snapshot.piiFindings, checked: snapshot.injected, severity: 'blocker',
+                  title: n => `${n} value${n === 1 ? '' : 's'} that look like personal data`,
+                  detail: 'Found in an outbound analytics payload or a custom parameter. Shown masked.',
+                  goLabel: 'PII scan', target: '#pii-scan-container', cleanLabel: 'No PII in payloads' }
+            ];
+            audits.forEach(audit => {
+                if (!audit.count) return;
+                items.push({ severity: audit.severity, title: audit.title(audit.count),
+                             detail: audit.detail, goLabel: audit.goLabel, target: audit.target });
+            });
+
+            // A poor verdict is worth the landing; "needs improvement" stays a chip, since it is
+            // a nudge rather than something to act on before shipping.
+            if (snapshot.perfVerdict === 'poor') {
+                items.push({ severity: 'warning',
+                    title: 'Core Web Vitals are poor since injection',
+                    detail: 'Layout shift or long tasks measured in the window after the SDK loaded.',
+                    goLabel: 'Performance', target: '#perf-waterfall-container' });
+            }
+
+            if (snapshot.consentViolations) {
+                items.push({ severity: 'blocker',
+                    title: `${snapshot.consentViolations} request${snapshot.consentViolations === 1 ? '' : 's'} sent before consent`,
+                    detail: 'SDK traffic left this page while consent was denied.',
+                    goLabel: 'Consent', target: '#consent-gate-container' });
+            }
+
+            return items.sort((a, b) => TRIAGE_SEVERITY_RANK[a.severity] - TRIAGE_SEVERITY_RANK[b.severity]);
+        }
+
+        // What is demonstrably fine. Only checks that actually ran: "Contrast OK" before the
+        // audit has run would be a claim this app has not earned.
+        function buildTriageCleanChips() {
+            const s = buildGlobalStatusSnapshot();
+            if (!s.injected) return [];
+            const chips = [];
+            if (s.contrastChecked && !s.contrastFailures) chips.push('Contrast');
+            if (s.a11yChecked && !s.a11yFailures) chips.push('Accessibility');
+            if (s.designChecked && !s.designMismatches) chips.push('Design');
+            if (s.securityChecked && !s.securityFailures) chips.push('Security');
+            if (!s.piiFindings) chips.push('No PII in payloads');
+            if (s.perfVerdict === 'good') chips.push('Performance');
+            if (s.formCount && !s.blockedForms) chips.push('Nothing blocked');
+            return chips;
+        }
+
+        function renderTriageView() {
+            const view = document.getElementById('triage-view');
+            if (!view) return;
+            const snapshot = buildGlobalStatusSnapshot();
+
+            if (!snapshot.injected) {
+                // Before anything is injected this slot is the first thing to do, not an empty
+                // summary. It points at the real injector rather than duplicating it -- a second
+                // textarea would be a second thing to keep in sync with the six that exist.
+                view.innerHTML = `
+                    <div class="triage-start">
+                        <div class="triage-start-title">Paste your embed code to begin</div>
+                        <div class="triage-start-sub">The property loads into this page exactly as it would on a real site — then every check in the rail starts reporting.</div>
+                        <button class="triage-start-btn" onclick="focusPropertyInjectorOnActivePage()">Go to the injector</button>
+                        <div class="triage-start-note">Opened from a repro link? The script, lifecycle dates and custom parameters restore themselves and injection starts on its own. Saved embed snippets live in <b>Setup → Zoom, presets &amp; injection delay</b>.</div>
+                    </div>`;
+                return;
+            }
+
+            const items = buildTriageItems();
+            const clean = buildTriageCleanChips();
+            const blockers = items.filter(item => item.severity === 'blocker').length;
+
+            const headline = items.length
+                ? `${items.length} thing${items.length === 1 ? '' : 's'} need${items.length === 1 ? 's' : ''} your attention`
+                : 'Nothing needs your attention';
+
+            view.innerHTML = `
+                <div class="triage-heading">
+                    <span class="triage-title">${headline}</span>
+                    <span class="triage-sub">property ${escapeMarkupForSafeRender(snapshot.propertyId || 'unknown')} · ${snapshot.formCount} form${snapshot.formCount === 1 ? '' : 's'}${blockers ? ` · ${blockers} blocking` : ''}</span>
+                </div>
+                <div class="triage-items">
+                ${items.map((item, index) => `
+                    <div class="triage-item triage-item-${item.severity}">
+                        <span class="triage-sev triage-sev-${item.severity}">${item.severity === 'blocker' ? 'Blocker' : 'Warning'}</span>
+                        <div class="triage-body">
+                            <div class="triage-item-title">${escapeMarkupForSafeRender(item.title)}</div>
+                            <div class="triage-detail">${escapeMarkupForSafeRender(item.detail)}</div>
+                        </div>
+                        <button class="triage-go" data-triage-go="${index}">${escapeMarkupForSafeRender(item.goLabel)} →</button>
+                    </div>`).join('')}
+                </div>
+                ${clean.length ? `<div class="triage-clean"><span class="triage-clean-label">Checked and clean</span>${
+                    clean.map(label => `<span class="triage-clean-chip">${escapeMarkupForSafeRender(label)}</span>`).join('')
+                }</div>` : ''}`;
+
+            view.querySelectorAll('[data-triage-go]').forEach(button => {
+                const item = items[Number(button.getAttribute('data-triage-go'))];
+                button.onclick = () => { if (item) jumpToPanelTarget(item.target); };
+            });
+        }
+
         // --- 5c2b. PANEL RAIL ---
         // A navigable index of every panel. Deliberately a VIEW over what already exists rather
         // than a registry of its own: the entries come from the same [data-workspace] children
@@ -8174,7 +8400,11 @@
                 return;
             }
 
+            const triageCount = buildTriageItems().length;
             let markup = needle ? '' :
+                `<button class="rail-triage" data-rail-triage="1">` +
+                `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3 8 4-16 3 8h4"></path></svg>` +
+                `Triage<span class="rail-triage-count" style="color:${triageCount ? '#f87171' : '#475569'};">${triageCount || '—'}</span></button>` +
                 `<button class="rail-all${activeWorkspaceKey === 'all' ? ' rail-all-active' : ''}" data-rail-workspace="all">` +
                 `<span class="rail-dot" style="background:transparent; box-shadow: inset 0 0 0 1.5px #334155;"></span>All panels at once</button>`;
             RAIL_WORKSPACE_ORDER.forEach(workspace => {
@@ -8197,6 +8427,9 @@
             });
             // Clicking a group narrows the canvas to that workspace without jumping anywhere --
             // the panel list stays whole, so you can still see and reach everything else.
+            body.querySelectorAll('[data-rail-triage]').forEach(button => {
+                button.onclick = () => { railActivePanelId = null; jumpToPanelTarget('#triage-view'); renderPanelRail(); };
+            });
             body.querySelectorAll('[data-rail-workspace]').forEach(button => {
                 button.onclick = () => {
                     setActiveWorkspace(button.getAttribute('data-rail-workspace'), { skipScroll: true });
@@ -11508,6 +11741,7 @@
                 renderGlobalStatusBar();
 
                 assignPanelsToWorkspaces();
+                renderTriageView();
                 renderPanelRail();
                 const requestedWorkspace = new URLSearchParams(window.location.search).get('qa_view');
                 setActiveWorkspace(requestedWorkspace || 'targeting', { skipUrlUpdate: true, skipScroll: true });

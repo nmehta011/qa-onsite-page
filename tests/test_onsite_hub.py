@@ -1555,3 +1555,37 @@ def test_sticky_bars_sit_below_each_other_rather_than_underneath(page):
         f"the status bar is under the nav: {geometry}"
     assert geometry["railTop"] >= geometry["barBottom"] - 1, \
         f"the rail is under the status bar: {geometry}"
+
+
+def test_triage_holds_its_height_so_the_page_does_not_shift_under_the_reader(page):
+    """Regression, caught by this app's own Performance panel: triage sits at the top of the
+    document, so every time its height changed — the start card giving way to the findings list,
+    then each audit landing a row a second later — it shoved everything below it down. Measured
+    Cumulative Layout Shift since injection went from 0.027 to 0.103, past the 0.100 'good'
+    threshold, in a tool that reports that number back to the tester as the property's own.
+
+    A reserved min-height only got it to 0.093, because the list still grew past the reserve.
+    Fixing the height removed the mechanism: findings past the first few scroll inside the card.
+    """
+    heights = []
+    heights.append(page.eval_on_selector("#triage-view", "e => Math.round(e.getBoundingClientRect().height)"))
+    inject(page)
+    for _ in range(4):
+        page.wait_for_timeout(1500)
+        heights.append(page.eval_on_selector("#triage-view", "e => Math.round(e.getBoundingClientRect().height)"))
+
+    assert len(set(heights)) == 1, f"the triage slot changed height and moved the page: {heights}"
+    # it must still be scrollable rather than clipping findings out of existence
+    assert page.eval_on_selector("#triage-items, .triage-items",
+                                 "e => getComputedStyle(e).overflowY") in ("auto", "scroll")
+
+
+def test_cumulative_layout_shift_stays_in_the_good_band(page):
+    """The number this app reports as the property's, so its own chrome must not dominate it.
+    Measured on main before the rail and triage landed: 0.027."""
+    inject(page)
+    page.wait_for_timeout(6000)
+
+    cls = page.evaluate("() => {const r = buildPerformanceReport(); return r ? r.clsSinceInjection : null;}")
+    assert cls is not None, "no performance report — layout-shift unsupported in this browser?"
+    assert cls < 0.100, f"the dashboard's own layout shift is being reported as the property's: {cls:.3f}"
