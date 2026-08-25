@@ -1589,3 +1589,93 @@ def test_cumulative_layout_shift_stays_in_the_good_band(page):
     cls = page.evaluate("() => {const r = buildPerformanceReport(); return r ? r.clsSinceInjection : null;}")
     assert cls is not None, "no performance report — layout-shift unsupported in this browser?"
     assert cls < 0.100, f"the dashboard's own layout shift is being reported as the property's: {cls:.3f}"
+
+
+# --------------------------------------------------------------------------------------------
+# Colour theme.
+# --------------------------------------------------------------------------------------------
+
+CONTRAST_SAMPLER = """() => {
+    const parse = c => { const m = c.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
+        return m ? {r:+m[1], g:+m[2], b:+m[3], a:m[4] === undefined ? 1 : +m[4]} : null; };
+    const hex = o => '#' + [o.r,o.g,o.b].map(v => Math.round(v).toString(16).padStart(2,'0')).join('');
+    const bgOf = el => { let n = el;
+        while (n && n !== document.documentElement) {
+            const c = parse(getComputedStyle(n).backgroundColor);
+            if (c && c.a > 0.85) return c;
+            n = n.parentElement;
+        }
+        return parse(getComputedStyle(document.body).backgroundColor) || {r:255,g:255,b:255,a:1}; };
+    const scope = 'nav, .global-status-bar, .panel-rail, #triage-view, .diag-panel, .suite-panel, '
+                + '.lifecycle-state-panel, .lifecycle-timer-container, .injector-panel, .log-panel';
+    const failures = [];
+    document.querySelectorAll(scope + ', ' + scope.split(', ').map(s => s + ' *').join(', ')).forEach(el => {
+        if (!el.offsetParent) return;
+        const own = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent.trim()).join('');
+        if (!own) return;
+        const style = getComputedStyle(el);
+        const fg = parse(style.color);
+        if (!fg || fg.a < 0.5) return;
+        const size = parseFloat(style.fontSize);
+        const bold = (parseInt(style.fontWeight) || 400) >= 700;
+        const large = size >= 24 || (size >= 18.66 && bold);
+        const ratio = computeContrastRatio(hex(fg), hex(bgOf(el)));
+        const need = large ? 3.0 : 4.5;
+        if (ratio && ratio < need) failures.push({text: own.slice(0, 40), fg: hex(fg), bg: hex(bgOf(el)),
+                                                 ratio: +ratio.toFixed(2), need});
+    });
+    return failures;
+}"""
+
+
+def open_with_theme(pg, theme):
+    pg.evaluate("(t) => localStorage.setItem('qa_colour_theme', t)", theme)
+    pg.reload(wait_until="domcontentloaded")
+    pg.wait_for_function("() => document.querySelectorAll('#workspace-bar .workspace-tab').length > 0",
+                         timeout=15000)
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_the_hub_meets_the_contrast_standard_it_enforces(page, theme):
+    """This app runs a WCAG contrast audit on other people's properties. A theme of its own that
+    fails that audit would be the tool contradicting itself — so both themes are held to it,
+    using the app's own computeContrastRatio rather than a second implementation."""
+    open_with_theme(page, theme)
+    inject(page)
+    page.wait_for_timeout(1500)
+
+    failures = page.evaluate(CONTRAST_SAMPLER)
+    assert not failures, f"{theme} theme has {len(failures)} pair(s) below AA: {failures[:5]}"
+
+
+def test_the_theme_is_applied_before_the_first_paint(page):
+    """A stored light preference that only lands once the app's own script runs shows a dark
+    flash first. The theme is set by a small inline script at the top of <body>, ahead of
+    everything else."""
+    page.evaluate("() => localStorage.setItem('qa_colour_theme', 'light')")
+    page.reload(wait_until="commit")
+    # read it at the earliest point the document exists, before load handlers have run
+    assert page.evaluate("() => document.documentElement.getAttribute('data-theme')") == "light"
+
+
+def test_switching_theme_sticks_across_a_reload(page):
+    open_with_theme(page, "dark")
+    page.evaluate("() => toggleColourTheme()")
+    assert page.evaluate("() => document.documentElement.getAttribute('data-theme')") == "light"
+
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_function("() => document.querySelectorAll('#workspace-bar .workspace-tab').length > 0",
+                           timeout=15000)
+    assert page.evaluate("() => document.documentElement.getAttribute('data-theme')") == "light"
+
+
+def test_with_no_stored_choice_the_os_preference_decides(page, browser):
+    """A tester whose whole desktop is light should not have to find a toggle first."""
+    for scheme, expected in (("light", "light"), ("dark", "dark")):
+        context = browser.new_context(viewport={"width": 1440, "height": 900}, color_scheme=scheme)
+        try:
+            other = context.new_page()
+            other.goto(BASE, wait_until="domcontentloaded")
+            assert other.evaluate("() => document.documentElement.getAttribute('data-theme')") == expected
+        finally:
+            context.close()
