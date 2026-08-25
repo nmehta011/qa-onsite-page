@@ -1455,3 +1455,103 @@ def test_each_captured_screenshot_can_be_saved_on_its_own(page):
     with page.expect_download(timeout=8000) as download:
         page.evaluate("() => document.querySelector('a.evidence-download-btn').click()")
     assert download.value.suggested_filename.endswith(".png")
+
+
+# --------------------------------------------------------------------------------------------
+# Panel rail: 26 panels reachable without scrolling for them.
+# --------------------------------------------------------------------------------------------
+
+def test_the_rail_indexes_every_panel_exactly_once(page):
+    """The rail is a view over the panels that exist, not a second list of them — it is built by
+    reading the same [data-workspace] children assignPanelsToWorkspaces() labels. A hand-written
+    index would drift from the panels it describes the first time one was renamed."""
+    inject(page)
+    page.wait_for_function("() => document.querySelectorAll('.rail-item').length > 0", timeout=15000)
+
+    rail = page.eval_on_selector_all(".rail-item", "els => els.map(e => e.dataset.railTarget)")
+    panels = page.evaluate("""() => [...document.querySelectorAll('#master-canvas-wrapper > [data-workspace]')]
+        .filter(p => p.getAttribute('data-workspace') !== 'always' && p.querySelector('h3, h4'))
+        .map(p => p.dataset.railId)""")
+    assert sorted(rail) == sorted(panels), "the rail and the canvas disagree about what exists"
+    assert len(rail) == len(set(rail)), "a panel is indexed twice"
+    assert len(rail) >= 20, f"only {len(rail)} panels indexed"
+
+
+def test_a_rail_label_is_the_panel_name_not_its_live_status(page):
+    """Regression: the label came from heading.innerText, which swept in the status pills sharing
+    that row — producing entries like "Journey Automation Idle" and "Config Drift Baseline No
+    baseline saved" that changed as the panel's state changed. A navigation label has to hold
+    still."""
+    inject(page)
+    page.wait_for_function("() => document.querySelectorAll('.rail-item').length > 0", timeout=15000)
+
+    labels = page.eval_on_selector_all(".rail-label", "els => els.map(e => e.innerText.trim())")
+    for label in labels:
+        assert not label.endswith(("Idle", "—", "-", ":")), f"label carries live state: {label!r}"
+        for leak in ("No baseline saved", "Awaiting property", "None captured", "Nothing wrong"):
+            assert leak not in label, f"label carries a status pill: {label!r}"
+
+
+def test_the_rail_reaches_a_panel_in_a_workspace_you_are_not_looking_at(page):
+    """The whole point: any panel, one click, from anywhere. jumpToPanelTarget already switches
+    workspace and expands a collapsed panel, so the rail reuses it rather than reimplementing the
+    reveal — three places doing that differently is how they drift."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('targeting')")
+    page.wait_for_function("() => document.querySelectorAll('.rail-item').length > 0", timeout=15000)
+
+    target = page.evaluate("""() => {
+        const item = [...document.querySelectorAll('.rail-item')]
+            .find(b => b.innerText.includes('Diagnostics'));
+        item.click();
+        return item.dataset.railTarget;
+    }""")
+    page.wait_for_timeout(700)
+
+    assert page.evaluate("() => activeWorkspaceKey") == "activity", "the workspace did not follow"
+    assert page.evaluate("(id) => {const p = document.querySelector(`[data-rail-id='${id}']`); return !!(p && p.offsetParent);}", target)
+    assert page.eval_on_selector_all(".rail-item-active .rail-label", "els => els.length") == 1
+
+
+def test_the_rail_filter_narrows_to_matching_panels(page):
+    """26 entries is past the point where scanning beats typing."""
+    inject(page)
+    page.wait_for_function("() => document.querySelectorAll('.rail-item').length > 0", timeout=15000)
+    # set directly rather than typed: an SDK invitation can hold focus, which is a property of
+    # the SDK rather than of the filter (see open_parameter_registry).
+    page.evaluate("""() => {
+        const f = document.getElementById('rail-filter-input');
+        f.value = 'contrast'; f.dispatchEvent(new Event('input'));
+    }""")
+    page.wait_for_timeout(300)
+
+    labels = page.eval_on_selector_all(".rail-label", "els => els.map(e => e.innerText)")
+    assert labels and all("contrast" in l.lower() for l in labels), labels
+
+    page.evaluate("""() => {
+        const f = document.getElementById('rail-filter-input');
+        f.value = 'zzzzz'; f.dispatchEvent(new Event('input'));
+    }""")
+    page.wait_for_timeout(200)
+    assert "No panel matches" in page.inner_text("#rail-body")
+
+
+def test_sticky_bars_sit_below_each_other_rather_than_underneath(page):
+    """Regression: the sticky offsets were hardcoded at 62/104/146px while the nav wraps to a
+    second row on a narrower desktop and the chip row grows as chips appear — so each bar tucked
+    under the one above it and clipped it. The offsets are measured from the DOM now."""
+    inject(page)
+    page.set_viewport_size({"width": 1500, "height": 950})
+    page.evaluate("() => window.scrollTo(0, 1400)")
+    page.wait_for_timeout(600)
+
+    geometry = page.evaluate("""() => {
+        const nav = document.querySelector('nav').getBoundingClientRect();
+        const bar = document.getElementById('global-status-bar').getBoundingClientRect();
+        const rail = document.getElementById('panel-rail').getBoundingClientRect();
+        return {navBottom: nav.bottom, barTop: bar.top, barBottom: bar.bottom, railTop: rail.top};
+    }""")
+    assert geometry["barTop"] >= geometry["navBottom"] - 1, \
+        f"the status bar is under the nav: {geometry}"
+    assert geometry["railTop"] >= geometry["barBottom"] - 1, \
+        f"the rail is under the status bar: {geometry}"

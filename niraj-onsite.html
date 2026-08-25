@@ -77,6 +77,65 @@
             padding: 0 20px;
         }
 
+        /* --- PANEL RAIL ---
+           26 panels across five workspaces, and the only way to reach one was to pick a
+           workspace and scroll: Activity alone measured 10.1 screens. The rail indexes every
+           panel with a live status dot, so breadth becomes a menu instead of something you
+           scroll past. It is a view over the panels that already exist -- built by reading the
+           same [data-workspace] children assignPanelsToWorkspaces assigns, and jumping through
+           jumpToPanelTarget, which already reveals a hidden workspace and expands a collapsed
+           panel. Nothing here is a second source of truth. */
+        .app-shell { display: flex; align-items: flex-start; gap: 0; }
+        .app-shell > .wrapper { flex: 1; min-width: 0; margin-top: 26px; }
+
+        .panel-rail {
+            /* Sits under the two bars that are sticky above it: nav at 62px, then the status
+               bar. The workspace bar is hidden at this width (below), so it claims no offset. */
+            position: sticky;
+            top: calc(var(--nav-h, 62px) + var(--statusbar-h, 42px) + 8px);
+            width: 262px;
+            flex-shrink: 0;
+            max-height: calc(100vh - var(--nav-h, 62px) - var(--statusbar-h, 42px) - 16px);
+            overflow-y: auto;
+            background: #090d16;
+            border-right: 1px solid var(--panel-border);
+            padding: 14px 10px 20px;
+            box-sizing: border-box;
+        }
+        .panel-rail::-webkit-scrollbar { width: 8px; }
+        .panel-rail::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+
+        .rail-search { display: flex; align-items: center; gap: 8px; background: #111827; border: 1px solid var(--panel-border); border-radius: 7px; padding: 5px 10px; margin: 0 2px 12px; color: #475569; }
+        .rail-search input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text-main); font-family: inherit; font-size: 0.76rem; height: auto; padding: 0; }
+        .rail-search input::placeholder { color: #475569; }
+        .rail-search-key { font-size: 0.63rem; color: #334155; border: 1px solid var(--panel-border); border-radius: 4px; padding: 1px 5px; }
+
+        .rail-group { font-size: 0.63rem; letter-spacing: 1.1px; text-transform: uppercase; color: #475569; font-weight: 700; padding: 0 10px; margin: 12px 0 4px; display: flex; align-items: center; gap: 6px; }
+        .rail-group:first-child { margin-top: 0; }
+        .rail-group-count { color: #334155; }
+
+        .rail-item { display: flex; align-items: center; gap: 9px; padding: 5px 10px; border-radius: 6px; font-size: 0.78rem; color: #94a3b8; cursor: pointer; border: none; background: transparent; width: 100%; text-align: left; font-family: inherit; height: auto; box-shadow: none; }
+        .rail-item:hover { background: #111827; color: #cbd5e1; transform: none; }
+        .rail-item.rail-item-active { background: rgba(14,165,233,0.14); color: var(--text-main); box-shadow: inset 2px 0 0 #0ea5e9; font-weight: 600; }
+        .rail-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: #334155; }
+        .rail-dot-alert { background: var(--danger-red); }
+        .rail-dot-watch { background: #fbbf24; }
+        .rail-dot-live { background: var(--accent-green); }
+        .rail-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .rail-count { margin-left: auto; font-size: 0.66rem; color: #475569; font-weight: 700; flex-shrink: 0; }
+        .rail-empty { font-size: 0.74rem; color: #475569; padding: 8px 10px; }
+        .rail-foot { font-size: 0.7rem; color: #334155; padding: 12px 10px 0; margin-top: 12px; border-top: 1px solid #111827; line-height: 1.5; }
+
+        /* Below this the rail costs more than it gives -- the workspace bar is still there. */
+        @media (max-width: 1180px) { .panel-rail { display: none; } .app-shell > .wrapper { margin-top: 40px; } }
+
+        .rail-group { cursor: pointer; border: none; background: transparent; width: 100%; font-family: inherit; height: auto; box-shadow: none; }
+        .rail-group:hover { color: #94a3b8; transform: none; }
+        .rail-group.rail-group-active { color: #7dd3fc; }
+        .rail-all { display: flex; align-items: center; gap: 9px; width: 100%; padding: 5px 10px; margin-bottom: 4px; border-radius: 6px; border: none; background: transparent; color: #64748b; font-family: inherit; font-size: 0.75rem; cursor: pointer; text-align: left; height: auto; box-shadow: none; }
+        .rail-all:hover { background: #111827; color: #cbd5e1; transform: none; }
+        .rail-all.rail-all-active { color: #7dd3fc; }
+
         .page {
             display: none;
             background-color: var(--card-bg);
@@ -624,7 +683,11 @@
            readable without scrolling. Previously a blocked rule or a failed check could only
            be discovered by scrolling nine screens down to go looking for it. */
         .global-status-bar {
-            position: sticky; top: 62px; z-index: 900;
+            /* Measured, not assumed. The nav wraps to a second row on a narrow-ish desktop and
+               the chip row wraps as chips appear, so the old hardcoded 62/104/146 offsets left
+               each bar tucked underneath the one above it. syncStickyHeaderOffsets() keeps
+               --nav-h and --statusbar-h true to what is actually rendered. */
+            position: sticky; top: var(--nav-h, 62px); z-index: 900;
             display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
             padding: 10px 30px;
             background: rgba(13, 21, 39, 0.94);
@@ -954,7 +1017,7 @@
            Its main job is reuniting the lifecycle dates with the targeting matrix: they are one
            workflow that previously sat five screens apart. */
         .workspace-bar {
-            position: sticky; top: 104px; z-index: 880;
+            position: sticky; top: calc(var(--nav-h, 62px) + var(--statusbar-h, 42px)); z-index: 880;
             display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
             padding: 9px 30px;
             background: rgba(9, 13, 22, 0.95);
@@ -974,6 +1037,12 @@
             }
             .workspace-bar > * { flex: 0 0 auto; }
         }
+
+        /* The rail's group headings ARE the workspace switcher, so this bar duplicates them and
+           costs 40px of permanently sticky height. Hidden rather than removed: it returns below
+           the rail's breakpoint, and it is still what the command palette drives.
+           Declared after the base rule on purpose -- same specificity, so source order decides. */
+        @media (min-width: 1181px) { .workspace-bar { display: none; } }
 
         .workspace-tab {
             display: inline-flex; align-items: center; gap: 7px;
@@ -2237,6 +2306,15 @@
         </div>
     </div>
 
+    <div class="app-shell">
+    <aside id="panel-rail" class="panel-rail" aria-label="Panel index">
+        <div class="rail-search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+            <input type="text" id="rail-filter-input" placeholder="Find a panel" aria-label="Find a panel" oninput="renderPanelRail()">
+            <span class="rail-search-key">/</span>
+        </div>
+        <div id="rail-body"></div>
+    </aside>
     <main id="master-canvas-wrapper" class="wrapper">
         <div id="device-emulation-banner" class="device-emulation-banner"></div>
         <div id="device-launch-notice" class="device-launch-notice"></div>
@@ -3116,6 +3194,7 @@
             <span class="build-stamp" id="footer-build-stamp"></span>
         </footer>
     </main>
+    </div>
 
     <script>
         const allPages = ['main-page', 'page1', 'page2', 'page3', 'page4', 'page5'];
@@ -3196,9 +3275,11 @@
             // Prioritise whichever filter lives in the workspace already on screen — pressing
             // '/' while looking at Activity should reach the event filter, not jump you away to
             // Targeting's.
+            // The rail's filter is the one that is always on screen, so '/' reaches it first
+            // when it is showing; the per-panel filters stay the fallback below its breakpoint.
             const candidateIds = activeWorkspaceKey === 'activity'
-                ? ['event-filter-input', 'sdkbus-filter-input', 'targeting-filter-input']
-                : ['targeting-filter-input', 'event-filter-input', 'sdkbus-filter-input'];
+                ? ['rail-filter-input', 'event-filter-input', 'sdkbus-filter-input', 'targeting-filter-input']
+                : ['rail-filter-input', 'targeting-filter-input', 'event-filter-input', 'sdkbus-filter-input'];
             for (const id of candidateIds) {
                 const el = document.getElementById(id);
                 if (!el) continue;
@@ -4107,6 +4188,7 @@
                 renderUserAgentScopeReport();
                 renderGlobalStatusBar();
                 renderWorkspaceBar();
+                renderPanelRail();
                 refreshCollapsedPanelSummaries();
                 decorateLifecycleKeysWithDependents();
             }
@@ -7985,6 +8067,152 @@
             });
         }
 
+        // --- 5c2b. PANEL RAIL ---
+        // A navigable index of every panel. Deliberately a VIEW over what already exists rather
+        // than a registry of its own: the entries come from the same [data-workspace] children
+        // assignPanelsToWorkspaces() labels, and the status dots read buildGlobalStatusSnapshot()
+        // -- the function that backs the status chips. A second list would drift from the panels
+        // it describes the first time one was renamed.
+        const RAIL_WORKSPACE_ORDER = ['targeting', 'appearance', 'activity', 'config'];
+        const RAIL_WORKSPACE_LABELS = { targeting: 'Targeting', appearance: 'Appearance', activity: 'Activity', config: 'Setup' };
+
+        // heading fragment -> how that panel reports itself. `tone` drives the dot, `count` the
+        // trailing number. Anything not listed stays idle, which is honest: most panels have no
+        // single number that means "attention needed".
+        const RAIL_PANEL_STATUS = {
+            'Will each form show?': s => (s.blockedForms ? { tone: 'watch', count: s.blockedForms } : s.formCount ? { tone: 'live' } : null),
+            'Diagnostics': s => (s.blockingDiagnostics ? { tone: 'alert', count: s.blockingDiagnostics }
+                                : s.sdkExceptions ? { tone: 'watch', count: s.sdkExceptions }
+                                : s.injected ? { tone: 'live' } : null),
+            'Design & Display Render Validator': s => (s.designMismatches ? { tone: 'alert', count: s.designMismatches } : s.designChecked ? { tone: 'live' } : null),
+            'WCAG Contrast Audit': s => (s.contrastFailures ? { tone: 'alert', count: s.contrastFailures } : s.contrastChecked ? { tone: 'live' } : null),
+            'Full Accessibility Audit': s => (s.a11yFailures ? { tone: 'alert', count: s.a11yFailures } : s.a11yChecked ? { tone: 'live' } : null),
+            'Security Posture': s => (s.securityFailures ? { tone: 'alert', count: s.securityFailures } : s.securityChecked ? { tone: 'live' } : null),
+            'Privacy / PII Leak Scan': s => (s.piiFindings ? { tone: 'alert', count: s.piiFindings } : s.injected ? { tone: 'live' } : null),
+            'Performance & Core Web Vitals': s => (s.perfVerdict === 'poor' ? { tone: 'alert' } : s.perfVerdict === 'needs-improvement' ? { tone: 'watch' } : s.perfVerdict ? { tone: 'live' } : null),
+            'Feedback Submission Inspector': s => (s.submissions ? { tone: 'live', count: s.submissions } : null),
+            'Live Analytics Events Tracking': () => (collectedAnalyticsEventsCacheList.length ? { tone: 'live', count: collectedAnalyticsEventsCacheList.length } : null),
+            'Native SDK Custom Event Bus': () => (collectedSdkBusEventsCacheList.length ? { tone: 'live', count: collectedSdkBusEventsCacheList.length } : null),
+            'Custom parameters & variables': () => (propertyCustomParamRegistry.length ? { tone: 'live', count: propertyCustomParamRegistry.length } : null),
+            'Onsite Lifecycle State': () => {
+                const set = ONSITE_LIFECYCLE_STORAGE_KEYS.filter(def => localStorage.getItem(def.key) !== null).length;
+                return set ? { tone: 'watch', count: set } : null;
+            }
+        };
+
+        // Assigned alongside the workspace so the rail has a stable handle to jump to, without
+        // needing every panel to carry a hand-written id.
+        function railIdForHeading(headingText) {
+            return String(headingText || '').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase().slice(0, 60);
+        }
+
+        // A panel's heading shares its row with live status pills and counters, and innerText
+        // swept those in -- producing rail entries like "Journey Automation Idle" and "Config
+        // Drift Baseline No baseline saved" that changed as the panel's state changed. The
+        // heading is cloned and stripped so the rail label is the panel's NAME and stays put.
+        function readRailLabelFromHeading(heading) {
+            if (!heading) return '';
+            const clone = heading.cloneNode(true);
+            clone.querySelectorAll('.status-pill, button, .collapsed-summary, [data-panel-summary]').forEach(node => node.remove());
+            return (clone.textContent || '')
+                .replace(/\s*\[[^\]]*\]\s*/g, ' ')   // trailing "[0]" style counters
+                .replace(/\s+/g, ' ')
+                .trim()
+                // A heading that introduces a live value ("Live Device Preview — <span>") is
+                // left holding its separator once the value is stripped.
+                .replace(/[\s\u2014\u2013:\u00b7-]+$/, '');
+        }
+
+        function collectRailEntries() {
+            const wrapper = document.getElementById('master-canvas-wrapper');
+            if (!wrapper) return [];
+            const snapshot = buildGlobalStatusSnapshot();
+            const entries = [];
+            Array.from(wrapper.children).forEach(child => {
+                const workspace = child.getAttribute('data-workspace');
+                if (!workspace || workspace === 'always') return;   // page fixtures and banners are not panels
+                const label = readRailLabelFromHeading(child.querySelector('h3, h4'));
+                if (!label) return;
+                const railId = railIdForHeading(label);
+                child.setAttribute('data-rail-id', railId);
+                const match = Object.keys(RAIL_PANEL_STATUS).find(fragment => label.includes(fragment));
+                let status = null;
+                if (match) { try { status = RAIL_PANEL_STATUS[match](snapshot); } catch (err) { status = null; } }
+                entries.push({ railId, label, workspace, tone: (status && status.tone) || 'idle', count: status && status.count });
+            });
+            return entries;
+        }
+
+        let railActivePanelId = null;
+
+        // The two bars above the rail are sticky at offsets that have to match their real
+        // heights. Both wrap -- the nav onto a second row at narrower desktop widths, the chip
+        // row as chips come and go -- so the heights are read from the DOM rather than declared.
+        function syncStickyHeaderOffsets() {
+            const nav = document.querySelector('nav');
+            const statusBar = document.getElementById('global-status-bar');
+            const root = document.documentElement;
+            if (nav) root.style.setProperty('--nav-h', `${Math.round(nav.getBoundingClientRect().height)}px`);
+            if (statusBar) {
+                // A hidden bar occupies nothing, and its offset must collapse with it.
+                const visible = statusBar.offsetParent !== null && getComputedStyle(statusBar).position === 'sticky';
+                root.style.setProperty('--statusbar-h', visible ? `${Math.round(statusBar.getBoundingClientRect().height)}px` : '0px');
+            }
+        }
+
+        function renderPanelRail() {
+            syncStickyHeaderOffsets();
+            const body = document.getElementById('rail-body');
+            if (!body) return;
+            const filterField = document.getElementById('rail-filter-input');
+            const needle = String(filterField && filterField.value || '').trim().toLowerCase();
+            const entries = collectRailEntries();
+            const visible = needle ? entries.filter(e => e.label.toLowerCase().includes(needle)) : entries;
+
+            if (!visible.length) {
+                body.innerHTML = '<div class="rail-empty">No panel matches that.</div>';
+                return;
+            }
+
+            let markup = needle ? '' :
+                `<button class="rail-all${activeWorkspaceKey === 'all' ? ' rail-all-active' : ''}" data-rail-workspace="all">` +
+                `<span class="rail-dot" style="background:transparent; box-shadow: inset 0 0 0 1.5px #334155;"></span>All panels at once</button>`;
+            RAIL_WORKSPACE_ORDER.forEach(workspace => {
+                const group = visible.filter(entry => entry.workspace === workspace);
+                if (!group.length) return;
+                markup += `<button class="rail-group${activeWorkspaceKey === workspace ? ' rail-group-active' : ''}" data-rail-workspace="${workspace}">${RAIL_WORKSPACE_LABELS[workspace]}<span class="rail-group-count">&middot; ${group.length}</span></button>`;
+                group.forEach(entry => {
+                    markup += `<button class="rail-item${entry.railId === railActivePanelId ? ' rail-item-active' : ''}" data-rail-target="${escapeMarkupForSafeRender(entry.railId)}">` +
+                              `<span class="rail-dot rail-dot-${entry.tone}"></span>` +
+                              `<span class="rail-label">${escapeMarkupForSafeRender(entry.label)}</span>` +
+                              (entry.count ? `<span class="rail-count">${escapeMarkupForSafeRender(entry.count)}</span>` : '') +
+                              `</button>`;
+                });
+            });
+            if (!needle) markup += '<div class="rail-foot">A dot lights up when a panel has something to report.</div>';
+            body.innerHTML = markup;
+
+            body.querySelectorAll('[data-rail-target]').forEach(button => {
+                button.onclick = () => jumpToRailPanel(button.getAttribute('data-rail-target'));
+            });
+            // Clicking a group narrows the canvas to that workspace without jumping anywhere --
+            // the panel list stays whole, so you can still see and reach everything else.
+            body.querySelectorAll('[data-rail-workspace]').forEach(button => {
+                button.onclick = () => {
+                    setActiveWorkspace(button.getAttribute('data-rail-workspace'), { skipScroll: true });
+                    renderPanelRail();
+                };
+            });
+        }
+
+        function jumpToRailPanel(railId) {
+            railActivePanelId = railId;
+            // The panel is its own jump target, so jumpToPanelTarget's existing reveal chain --
+            // switch workspace, expand a collapsed panel, then scroll -- applies unchanged.
+            jumpToPanelTarget(`#master-canvas-wrapper > [data-rail-id="${railId}"]`);
+            renderPanelRail();
+        }
+
         // --- 5c2. GLOBAL STATUS BAR ---
         // Summarises session state above the fold. Counts are derived from the same functions
         // the panels themselves use, so the bar can never disagree with the detail below it.
@@ -11028,6 +11256,8 @@
             }, 200);
         }
 
+        window.addEventListener('resize', syncStickyHeaderOffsets);
+
         window.addEventListener('popstate', (e) => {
             const pageId = e.state ? e.state.page : 'main-page';
             navigateTo(pageId);
@@ -11278,6 +11508,7 @@
                 renderGlobalStatusBar();
 
                 assignPanelsToWorkspaces();
+                renderPanelRail();
                 const requestedWorkspace = new URLSearchParams(window.location.search).get('qa_view');
                 setActiveWorkspace(requestedWorkspace || 'targeting', { skipUrlUpdate: true, skipScroll: true });
             }
