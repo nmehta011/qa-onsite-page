@@ -1931,3 +1931,50 @@ def test_no_configuration_ever_leaves_the_browser(page):
     assert all(m == "POST" and "api/web/events" in u for m, u in writes), \
         f"an unexpected non-GET request was made: {writes}"
     page.evaluate("() => restorePropertyConfiguration()")
+
+
+def test_every_workspace_is_reachable_from_the_command_palette(page):
+    """Regression: the palette's workspace entries were hand-written, so adding the Inspect
+    workspace shipped it unreachable by ⌘K — the list said five while the app had six, and
+    nothing compared them. They are derived from WORKSPACE_DEFINITIONS now; this is the check
+    that says so, because the next workspace will be added by someone who has not read that
+    commit."""
+    entries = page.evaluate("""() => buildCommandPaletteActions()
+        .filter(a => a.label.includes('workspace'))
+        .map(a => ({label: a.label, hint: a.hint}))""")
+    definitions = page.evaluate("() => WORKSPACE_DEFINITIONS.map(w => ({key: w.key, label: w.label}))")
+
+    assert len(entries) == len(definitions), \
+        f"{len(definitions)} workspaces but {len(entries)} palette entries: {entries}"
+    # the number key and the palette hint have to agree, or the hint teaches the wrong shortcut
+    assert [e["hint"] for e in entries] == [str(i + 1) for i in range(len(definitions))]
+
+    for definition in definitions:
+        name = definition["label"].split(" ", 1)[-1]     # drop the emoji
+        assert any(name in e["label"] for e in entries), \
+            f"no palette entry for the {name} workspace: {entries}"
+
+    # and the entry must actually switch, not merely exist
+    page.evaluate("""() => buildCommandPaletteActions()
+        .find(a => a.label.includes('Inspect')).run()""")
+    page.wait_for_timeout(300)
+    assert page.evaluate("() => activeWorkspaceKey") == "inspect"
+
+
+def test_the_palette_hint_counts_the_workspaces_that_exist(page):
+    """The button's tooltip advertised "workspaces 1-5" after a sixth was added. It is written
+    from the definitions at load rather than typed into the markup."""
+    title = page.eval_on_selector("#command-palette-btn", "e => e.title")
+    count = page.evaluate("() => WORKSPACE_DEFINITIONS.length")
+    assert f"1-{count}" in title, f"tooltip says {title!r} for {count} workspaces"
+
+
+def test_the_number_key_range_follows_the_workspace_list(page):
+    """The handler was hardcoded to '1'-'5', then to '1'-'6'. It reads the list's length now, so
+    the last workspace is always reachable by its number."""
+    count = page.evaluate("() => WORKSPACE_DEFINITIONS.length")
+    last_key = page.evaluate("() => WORKSPACE_DEFINITIONS[WORKSPACE_DEFINITIONS.length - 1].key")
+    page.evaluate("() => setActiveWorkspace('targeting')")
+    page.keyboard.press(str(count))
+    page.wait_for_timeout(300)
+    assert page.evaluate("() => activeWorkspaceKey") == last_key

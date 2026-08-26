@@ -2551,7 +2551,7 @@
             </select>
             <button class="global-purge-btn" onclick="executeGlobalNuclearApplicationReset()" style="height:32px; font-size:0.8rem; padding:0 12px;">🔄 Hard Purge & Reset</button>
             <button id="theme-toggle-btn" onclick="toggleColourTheme()" title="Switch between dark and light" aria-label="Switch colour theme" style="height:32px; font-size:0.75rem; padding:0 10px; background:var(--surface-control); border:1px solid var(--line-strong); color:var(--text-soft); display:inline-flex; align-items:center; gap:6px;"><span id="theme-toggle-label">Dark</span></button>
-            <button onclick="openCommandPalette()" title="Command palette — workspaces 1-5, / to filter" style="height:32px; font-size:0.75rem; padding:0 10px; background:var(--line); border:1px solid var(--line-strong); color:var(--text-soft); font-family:monospace;">⌘K</button>
+            <button id="command-palette-btn" onclick="openCommandPalette()" title="Command palette" style="height:32px; font-size:0.75rem; padding:0 10px; background:var(--line); border:1px solid var(--line-strong); color:var(--text-soft); font-family:monospace;">⌘K</button>
         </div>
     </nav>
 
@@ -3632,12 +3632,11 @@
             if (input) { jumpToPanelTarget(`#input-${activePage}`); input.focus(); }
         }
 
-        const COMMAND_PALETTE_ACTIONS = [
-            { label: 'Go to Targeting workspace', hint: '1', run: () => setActiveWorkspace('targeting') },
-            { label: 'Go to Appearance workspace', hint: '2', run: () => setActiveWorkspace('appearance') },
-            { label: 'Go to Activity workspace', hint: '3', run: () => setActiveWorkspace('activity') },
-            { label: 'Go to Setup workspace', hint: '4', run: () => setActiveWorkspace('config') },
-            { label: 'Go to All workspace', hint: '5', run: () => setActiveWorkspace('all') },
+        // Workspace entries are NOT listed here -- they are derived from WORKSPACE_DEFINITIONS by
+        // buildCommandPaletteActions() below. Hand-writing them is what let the Inspect workspace
+        // ship unreachable from the palette: the list said five workspaces while the app had six,
+        // and nothing compared the two. One source, so it cannot drift again.
+        const COMMAND_PALETTE_STATIC_ACTIONS = [
             { label: 'Focus the active filter box', hint: '/', run: () => focusActiveFilterInput() },
             { label: 'Focus the property injector', run: () => focusPropertyInjectorOnActivePage() },
             { label: 'Run Journey Automation', run: () => startAutomatedPageJourney() },
@@ -3666,7 +3665,20 @@
         ];
 
         let commandPaletteActiveIndex = 0;
-        let commandPaletteFilteredActions = COMMAND_PALETTE_ACTIONS;
+        // Built on demand rather than at load: WORKSPACE_DEFINITIONS is declared later in this
+        // file, so reading it from a const initialiser up here would throw.
+        function buildCommandPaletteActions() {
+            const workspaceActions = WORKSPACE_DEFINITIONS.map((workspace, index) => ({
+                // The number key and the palette hint come from the same index, so a workspace
+                // added in the middle renumbers both together.
+                label: `Go to ${workspace.label.replace(/^[^\w]+\s*/, '')} workspace`,
+                hint: String(index + 1),
+                run: () => setActiveWorkspace(workspace.key)
+            }));
+            return workspaceActions.concat(COMMAND_PALETTE_STATIC_ACTIONS);
+        }
+
+        let commandPaletteFilteredActions = [];
 
         function openCommandPalette() {
             const overlay = document.getElementById('command-palette-overlay');
@@ -3689,8 +3701,8 @@
             if (!list) return;
             const normalizedQuery = query.trim().toLowerCase();
             commandPaletteFilteredActions = normalizedQuery
-                ? COMMAND_PALETTE_ACTIONS.filter(a => a.label.toLowerCase().includes(normalizedQuery))
-                : COMMAND_PALETTE_ACTIONS;
+                ? buildCommandPaletteActions().filter(a => a.label.toLowerCase().includes(normalizedQuery))
+                : buildCommandPaletteActions();
             commandPaletteActiveIndex = Math.min(commandPaletteActiveIndex, Math.max(0, commandPaletteFilteredActions.length - 1));
 
             if (commandPaletteFilteredActions.length === 0) {
@@ -3743,7 +3755,7 @@
 
             if (isTypingTarget(document.activeElement)) return;
 
-            if (e.key >= '1' && e.key <= '6' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            if (e.key >= '1' && Number(e.key) <= WORKSPACE_DEFINITIONS.length && !e.metaKey && !e.ctrlKey && !e.altKey) {
                 const workspace = WORKSPACE_DEFINITIONS[Number(e.key) - 1];
                 if (workspace) { e.preventDefault(); navigateTo('main-page'); setActiveWorkspace(workspace.key); }
             } else if (e.key === '/') {
@@ -12558,6 +12570,10 @@
         // --- 13. INITIALIZATION BOOTSTRAPPERS ---
         window.addEventListener('DOMContentLoaded', () => {
             applyColourTheme(resolveColourTheme());
+            // Written from the definitions rather than typed into the markup, where it had gone
+            // stale the moment a sixth workspace was added.
+            const paletteButton = document.getElementById('command-palette-btn');
+            if (paletteButton) paletteButton.title = `Command palette — workspaces 1-${WORKSPACE_DEFINITIONS.length}, / to filter`;
             writeLog("Sandbox execution hub online. Core proxy network intercepts active.", 'info');
             // Event-driven, not polled: recordRuntimeException re-renders when something
             // arrives. This first call is only here to paint the empty state.
