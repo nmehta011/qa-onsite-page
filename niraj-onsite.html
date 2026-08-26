@@ -3608,11 +3608,11 @@
 
         function focusActiveFilterInput() {
             // Prioritise whichever filter lives in the workspace already on screen — pressing
-            // '/' while looking at Activity should reach the event filter, not jump you away to
-            // Targeting's.
+            // '/' while looking at Traffic should reach the event filter, not jump you away to
+            // Targeting's. (Both event filters live in Traffic, not Health, after the split.)
             // The rail's filter is the one that is always on screen, so '/' reaches it first
             // when it is showing; the per-panel filters stay the fallback below its breakpoint.
-            const candidateIds = activeWorkspaceKey === 'activity'
+            const candidateIds = activeWorkspaceKey === 'traffic'
                 ? ['rail-filter-input', 'event-filter-input', 'sdkbus-filter-input', 'targeting-filter-input']
                 : ['rail-filter-input', 'targeting-filter-input', 'event-filter-input', 'sdkbus-filter-input'];
             for (const id of candidateIds) {
@@ -8290,21 +8290,30 @@
         const WORKSPACE_DEFINITIONS = [
             { key: 'targeting',  label: '🎯 Targeting',  hint: 'Why a form does or does not show' },
             { key: 'appearance', label: '🎨 Appearance', hint: 'Whether it renders as designed' },
-            { key: 'activity',   label: '📊 Activity',   hint: 'What the SDK reported and submitted' },
+            // Activity was one workspace of twelve panels -- the most crowded by a wide margin,
+            // and two unrelated jobs wearing one label: watching the stream go past, versus
+            // asking whether anything in it is wrong. Split along that line, six panels each.
+            { key: 'traffic',    label: '📡 Traffic',    hint: 'The stream: events, submissions, storage, log' },
+            { key: 'health',     label: '🩺 Health',     hint: 'Whether anything is wrong, and the evidence' },
             { key: 'config',     label: '🧭 Setup',      hint: 'Property config, parameters and drift' },
             { key: 'inspect',    label: '🔬 Inspect',    hint: 'The raw configuration the SDK is running on' },
             { key: 'all',        label: '▦ All',        hint: 'Every panel at once — the original layout' }
         ];
 
+        // A permalink or a bookmark made before the split carries the old key. Resolving it to
+        // the half that inherited the panel it was pointing at beats the silent fall back to
+        // Targeting that an unknown key otherwise gets.
+        const RETIRED_WORKSPACE_KEYS = { activity: 'traffic' };
+
         // Matched on visible headings: they are the same labels a tester reads on screen, so the
         // mapping stays obvious and survives markup edits that ids would not.
         const WORKSPACE_BY_PANEL_HEADING = {
             'Custom parameters & variables': 'config',
-            'Page containers & stored values': 'activity',
+            'Page containers & stored values': 'traffic',
             'Onsite Lifecycle State': 'targeting',
             'Live Device Preview': 'appearance',
             'Feedback Submission Scope': 'appearance',
-            'Feedback Submission Inspector': 'activity',
+            'Feedback Submission Inspector': 'traffic',
             'Design & Display Render Validator': 'appearance',
             'WCAG Contrast Audit': 'appearance',
             'Full Accessibility Audit': 'appearance',
@@ -8314,16 +8323,16 @@
             'SDK Inspector': 'inspect',
             'Environment A/B Comparison': 'config',
             'Journey Automation': 'targeting',
-            'Live Analytics Events Tracking': 'activity',
-            'Native SDK Custom Event Bus': 'activity',
-            'Diagnostics': 'activity',
-            'Activity log': 'activity',
-            'Unified Session Timeline': 'activity',
-            'Performance & Core Web Vitals': 'activity',
-            'What Changed Since Last Run': 'activity',
-            'Privacy / PII Leak Scan': 'activity',
-            'Security Posture': 'activity',
-            'Bug Report & Evidence': 'activity'
+            'Live Analytics Events Tracking': 'traffic',
+            'Native SDK Custom Event Bus': 'traffic',
+            'Diagnostics': 'health',
+            'Activity log': 'traffic',
+            'Unified Session Timeline': 'traffic',
+            'Performance & Core Web Vitals': 'health',
+            'What Changed Since Last Run': 'health',
+            'Privacy / PII Leak Scan': 'health',
+            'Security Posture': 'health',
+            'Bug Report & Evidence': 'health'
         };
 
         let activeWorkspaceKey = 'targeting';
@@ -8361,6 +8370,7 @@
 
         function setActiveWorkspace(workspaceKey, options) {
             const settings = options || {};
+            if (RETIRED_WORKSPACE_KEYS[workspaceKey]) workspaceKey = RETIRED_WORKSPACE_KEYS[workspaceKey];
             if (!WORKSPACE_DEFINITIONS.some(w => w.key === workspaceKey)) workspaceKey = 'targeting';
             activeWorkspaceKey = workspaceKey;
 
@@ -8391,10 +8401,13 @@
             // Surfaced per tab so a problem in a workspace the tester is not looking at still
             // announces itself, rather than waiting to be discovered.
             const snapshot = window.KAMPYLE_ONSITE_SDK ? buildGlobalStatusSnapshot() : null;
+            // Split with the panels they came from: the network-error stream lives in Page
+            // containers (Traffic), the performance verdict in Core Web Vitals (Health).
             const alertsByWorkspace = {
                 targeting: snapshot ? snapshot.blockedForms : 0,
                 appearance: snapshot ? snapshot.designMismatches + snapshot.contrastFailures : 0,
-                activity: snapshot ? snapshot.networkErrors + (snapshot.perfVerdict === 'block' ? 1 : 0) : 0,
+                traffic: snapshot ? snapshot.networkErrors : 0,
+                health: snapshot ? (snapshot.perfVerdict === 'block' ? 1 : 0) + snapshot.piiFindings + snapshot.securityFailures : 0,
                 config: 0, all: 0
             };
 
@@ -9170,8 +9183,8 @@
         // assignPanelsToWorkspaces() labels, and the status dots read buildGlobalStatusSnapshot()
         // -- the function that backs the status chips. A second list would drift from the panels
         // it describes the first time one was renamed.
-        const RAIL_WORKSPACE_ORDER = ['targeting', 'appearance', 'activity', 'config', 'inspect'];
-        const RAIL_WORKSPACE_LABELS = { targeting: 'Targeting', appearance: 'Appearance', activity: 'Activity', config: 'Setup', inspect: 'Inspect' };
+        const RAIL_WORKSPACE_ORDER = ['targeting', 'appearance', 'traffic', 'health', 'config', 'inspect'];
+        const RAIL_WORKSPACE_LABELS = { targeting: 'Targeting', appearance: 'Appearance', traffic: 'Traffic', health: 'Health', config: 'Setup', inspect: 'Inspect' };
 
         // heading fragment -> how that panel reports itself. `tone` drives the dot, `count` the
         // trailing number. Anything not listed stays idle, which is honest: most panels have no

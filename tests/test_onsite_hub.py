@@ -794,20 +794,25 @@ def test_dashboard_stays_clickable_under_a_full_page_sdk_overlay(page):
 
 def test_no_workspace_panel_is_orphaned_by_a_heading_rename(page):
     """Panels are assigned to workspaces by matching heading text, so renaming a heading without
-    updating WORKSPACE_BY_PANEL_HEADING silently drops the panel into 'always'."""
+    updating WORKSPACE_BY_PANEL_HEADING silently drops the panel into 'always'.
+
+    The workspace list is read from WORKSPACE_DEFINITIONS rather than written out here: this
+    test used to carry its own copy, and that copy was still four workspaces long after Inspect
+    shipped -- so the one panel in it was outside what the test looked at."""
     counts = page.evaluate("""() => {
         const o = {};
-        ['targeting','appearance','activity','config'].forEach(w => {
-            o[w] = document.querySelectorAll(`#master-canvas-wrapper > [data-workspace="${w}"]`).length;
+        WORKSPACE_DEFINITIONS.filter(w => w.key !== 'all').forEach(w => {
+            o[w.key] = document.querySelectorAll(`#master-canvas-wrapper > [data-workspace="${w.key}"]`).length;
         });
         return o;
     }""")
-    assert sum(counts.values()) == 24, f"expected 24 assigned panels, got {counts}"
+    assert sum(counts.values()) == 25, f"expected 25 assigned panels, got {counts}"
+    assert all(counts.values()), f"a workspace ended up with no panels at all: {counts}"
 
 
 def test_no_uncaught_errors_during_a_full_session(page):
     inject(page)
-    for workspace in ["targeting", "appearance", "activity", "config"]:
+    for workspace in ["targeting", "appearance", "traffic", "health", "config"]:
         page.evaluate(f"setActiveWorkspace('{workspace}')")
         page.wait_for_timeout(800)
     assert page.errors == []
@@ -1510,7 +1515,7 @@ def test_the_rail_reaches_a_panel_in_a_workspace_you_are_not_looking_at(page):
     }""")
     page.wait_for_timeout(700)
 
-    assert page.evaluate("() => activeWorkspaceKey") == "activity", "the workspace did not follow"
+    assert page.evaluate("() => activeWorkspaceKey") == "health", "the workspace did not follow"
     assert page.evaluate("(id) => {const p = document.querySelector(`[data-rail-id='${id}']`); return !!(p && p.offsetParent);}", target)
     assert page.eval_on_selector_all(".rail-item-active .rail-label", "els => els.length") == 1
 
@@ -1881,7 +1886,7 @@ def test_an_overridden_configuration_is_impossible_to_forget(page):
     page.evaluate("(n) => setProvisionOverride(n, true)", name)
     page.wait_for_timeout(300)
 
-    for workspace in ("targeting", "appearance", "activity"):
+    for workspace in ("targeting", "appearance", "traffic", "health"):
         page.evaluate("(w) => setActiveWorkspace(w)", workspace)
         page.wait_for_timeout(250)
         assert page.eval_on_selector("#config-override-banner", "e => getComputedStyle(e).display") != "none", \
@@ -1978,3 +1983,69 @@ def test_the_number_key_range_follows_the_workspace_list(page):
     page.keyboard.press(str(count))
     page.wait_for_timeout(300)
     assert page.evaluate("() => activeWorkspaceKey") == last_key
+
+
+# --------------------------------------------------------------------------------------------
+# Splitting Activity.
+#
+# Activity was twelve panels — the most crowded workspace by a wide margin, and measurably about
+# ten screens of scroll before the rail landed. It was also two jobs under one label: watching
+# the stream go past (Traffic) versus asking whether anything in it is wrong (Health). These
+# tests hold the split in place and cover the two lists that had to be edited by hand to make it.
+# --------------------------------------------------------------------------------------------
+
+
+def test_neither_half_of_the_split_activity_is_crowded_again(page):
+    """The point of the split was the panel count, so that is what is asserted. Eight leaves
+    room to add a panel to either half without a test edit, and still catches a slide back
+    towards the twelve that made Activity unusable."""
+    counts = page.evaluate("""() => {
+        const o = {};
+        WORKSPACE_DEFINITIONS.filter(w => w.key !== 'all').forEach(w => {
+            o[w.key] = document.querySelectorAll(`#master-canvas-wrapper > [data-workspace="${w.key}"]`).length;
+        });
+        return o;
+    }""")
+    assert "activity" not in counts, "the split did not happen"
+    assert counts["traffic"] and counts["health"], f"a half of the split is empty: {counts}"
+    crowded = {k: v for k, v in counts.items() if v > 8}
+    assert not crowded, f"a workspace is back to being a scroll: {crowded} (all: {counts})"
+
+
+def test_the_rail_groups_every_workspace_the_app_defines(page):
+    """RAIL_WORKSPACE_ORDER is the last hand-kept copy of the workspace list — it stays separate
+    because the rail orders and labels them differently and omits 'all'. Splitting Activity meant
+    editing it by hand, which is exactly how the palette's copy went stale. A workspace missing
+    here has its panels indexed nowhere: the rail renders only the groups it names."""
+    order = page.evaluate("() => RAIL_WORKSPACE_ORDER")
+    labels = page.evaluate("() => RAIL_WORKSPACE_LABELS")
+    keys = page.evaluate("() => WORKSPACE_DEFINITIONS.filter(w => w.key !== 'all').map(w => w.key)")
+
+    assert sorted(order) == sorted(keys), f"the rail groups {order} for workspaces {keys}"
+    assert all(labels.get(key) for key in order), f"a rail group has no label: {labels}"
+
+    # and every panel actually reaches a group, rather than being silently dropped
+    indexed = page.evaluate("() => collectRailEntries().length")
+    rendered = page.eval_on_selector_all(".rail-item", "els => els.length")
+    assert indexed == rendered, f"{indexed} panels indexed but {rendered} shown in the rail"
+
+
+def test_a_link_to_the_retired_activity_workspace_still_opens_its_panels(page):
+    """Repro permalinks carry the workspace as ?qa_view=, so links made before the split name a
+    workspace that no longer exists. An unknown key falls back to Targeting, which would drop
+    someone somewhere unrelated to what they were sent; the retired key resolves to the half
+    that kept the event panels instead."""
+    page.goto(BASE + "?qa_view=activity", wait_until="domcontentloaded")
+    page.wait_for_function("() => document.querySelectorAll('#workspace-bar .workspace-tab').length > 0",
+                           timeout=15000)
+
+    assert page.evaluate("() => activeWorkspaceKey") == "traffic", "an old permalink lost its workspace"
+    assert page.evaluate(
+        "() => !!document.querySelector('[data-rail-id=\"live-analytics-events-tracking\"]').offsetParent"), \
+        "the panels the link was pointing at are not on screen"
+    # the restore deliberately does not rewrite the address bar (that would erase a deep-linked
+    # route before it is read), so the retired key is still in the URL here -- the next workspace
+    # switch is what normalises it
+    page.evaluate("() => setActiveWorkspace('health')")
+    page.wait_for_timeout(300)
+    assert "qa_view=health" in page.evaluate("() => location.search")

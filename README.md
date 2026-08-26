@@ -11,8 +11,8 @@ because content renders inside a cross-origin iframe), it says so plainly instea
 | | |
 | --- | --- |
 | **0** external dependencies | no CDN, no fonts, no framework |
-| **22** diagnostic panels | grouped into 5 task-based workspaces |
-| **25** regression tests | driven against a live property, no mocks |
+| **25** diagnostic panels | grouped into 6 task-based workspaces |
+| **84** regression tests | driven against a live property, no mocks |
 | **~600 KB** | one HTML file, runs from `file://` if you have to |
 
 ---
@@ -108,21 +108,37 @@ back-date shortcuts) and **Journey Automation**.
 - **Full Accessibility Audit** — accessible names, keyboard reachability, dialog semantics
 - **Live Device Preview** — a real device-sized viewport
 
-### 📊 Activity — *what's happening right now?*
+### 📡 Traffic — *what did the SDK actually do?*
 
 - **Live Analytics Events Tracking** — every outbound payload, with full JSON per event
 - **Native SDK Custom Event Bus** — the SDK's own lifecycle broadcasts, ahead of the batched analytics
 - **Feedback Submission Inspector** — the whole journey with real timings, including the
   **feedbackUUID** you can search in the Medallia Inbox to open that exact response
+- **Unified Session Timeline** — every stream above on one clock
+- **Page containers & stored values** — what the page holds, plus the failed-request stream
+- **Activity log** — the running execution log
+
+### 🩺 Health — *is anything wrong with it?*
+
+- **Diagnostics** — what is broken and what to do about it
 - **Performance & Core Web Vitals** — scoped to since-injection, so an idle tab can't inflate it
 - **Privacy / PII Leak Scan** — Luhn-validated, results masked
 - **Security Posture** — mixed content, CSP violations, injection hygiene
-- **Unified Session Timeline**, **Findings History**, **Bug Report & Evidence**
+- **What Changed Since Last Run**, **Bug Report & Evidence**
 
 ### 🛠️ Setup — *configuration and manual control*
 
 Custom parameters and variables, manual `loadForm` / `showForm` / `closeForm`, URL simulation,
-viewport controls, config drift baselines and environment A/B comparison.
+viewport controls, config drift baselines, environment A/B comparison, and **Provisions &
+overrides** — every provision the property ships, each one switchable at runtime.
+
+### 🔬 Inspect — *the raw configuration, not this tool's reading of it*
+
+Every other workspace interprets the SDK's configuration. This one shows it: property config,
+provisions, published forms, form definitions, raw targeting rules, custom parameters, SDK
+memory, browser storage and console output — as the JSON the SDK is actually running on, with
+search and copy. Edits are previewed as a path-level diff, applied to the live object in the
+page, and reversible; nothing is ever sent to Medallia.
 
 ### 🧪 Scenario pages
 
