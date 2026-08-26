@@ -802,7 +802,7 @@ def test_no_workspace_panel_is_orphaned_by_a_heading_rename(page):
         });
         return o;
     }""")
-    assert sum(counts.values()) == 25, f"expected 25 assigned panels, got {counts}"
+    assert sum(counts.values()) == 24, f"expected 24 assigned panels, got {counts}"
 
 
 def test_no_uncaught_errors_during_a_full_session(page):
@@ -1196,7 +1196,8 @@ def test_the_sdk_console_output_is_captured_at_all(page):
     invisible to it. The bundle has twenty console call sites and several are the only notice
     that something is structurally wrong."""
     inject(page)
-    page.wait_for_function("() => capturedSdkConsoleMessages.length > 0", timeout=15000)
+    page.evaluate("setActiveWorkspace('config')")   # reading the live config makes the SDK log
+    page.wait_for_function("() => capturedSdkConsoleMessages.length > 0", timeout=20000)
 
     captured = page.evaluate("() => capturedSdkConsoleMessages.map(m => ({level: m.level, origin: m.origin}))")
     assert any(m["origin"] == "sdk" for m in captured), f"nothing attributed to the SDK: {captured}"
@@ -1209,7 +1210,8 @@ def test_console_capture_reports_the_caller_not_its_own_plumbing(page):
     """The captured stack begins inside this file's console wrapper. The frame a developer wants
     is whoever called console.error, so the wrapper's own frames are trimmed off the top."""
     inject(page)
-    page.wait_for_function("() => capturedSdkConsoleMessages.length > 0", timeout=15000)
+    page.evaluate("setActiveWorkspace('config')")   # reading the live config makes the SDK log
+    page.wait_for_function("() => capturedSdkConsoleMessages.length > 0", timeout=20000)
 
     stacks = page.evaluate("() => capturedSdkConsoleMessages.map(m => m.stack)")
     for stack in stacks:
@@ -1750,38 +1752,24 @@ def test_overrides_are_pinned_so_they_survive_a_re_injection(page):
     assert page.evaluate("() => localStorage.getItem('qa_provision_overrides_v1')") is None
 
 
-def test_the_page_console_separates_what_the_sdk_said_from_what_this_tool_said(page):
-    """A developer's first question about a console line is whose it is. The raw stream keeps
-    every level; Diagnostics takes only the errors and warnings out of the same capture."""
+def test_console_capture_attributes_the_sdk_separately_from_this_tool(page):
+    """A developer's first question about a console line is whose it is. Every level is kept for
+    the inspector's console subject; Diagnostics reads only the errors and warnings out of the
+    same capture and explains what it recognises."""
     inject(page)
-    page.evaluate("setActiveWorkspace('activity')")
-    page.wait_for_function("() => document.querySelectorAll('.console-line').length > 0", timeout=20000)
+    page.evaluate("setActiveWorkspace('config')")   # reading the live config makes the SDK log
+    page.wait_for_function("() => capturedSdkConsoleMessages.some(m => m.origin === 'sdk')", timeout=20000)
     page.evaluate("() => { console.log('a plain log'); console.error('a page error'); }")
-    page.wait_for_timeout(1800)
+    page.wait_for_timeout(600)
 
     captured = page.evaluate("() => capturedSdkConsoleMessages.map(m => ({level: m.level, origin: m.origin}))")
     assert any(m["origin"] == "sdk" for m in captured), f"nothing attributed to the SDK: {captured}"
     assert any(m["origin"] == "hub" for m in captured), f"nothing attributed to this tool: {captured}"
-    assert {m["level"] for m in captured} & {"log", "error"}, "levels beyond warn are not being captured"
+    assert {m["level"] for m in captured} & {"log", "error"}, "levels beyond warn are not captured"
 
-    # and the chatter must not leak into the findings list
+    # the chatter must not leak into the findings list
     sources = page.evaluate("() => buildDiagnosticFindings().map(f => f.source)")
     assert "console.log" not in sources and "console.info" not in sources, sources
-
-
-def test_console_level_filters_narrow_the_stream(page):
-    inject(page)
-    page.evaluate("setActiveWorkspace('activity')")
-    page.evaluate("() => { console.log('filterable log line'); }")
-    page.wait_for_function("() => document.querySelectorAll('.console-line').length > 0", timeout=20000)
-    page.wait_for_timeout(1600)
-
-    before = page.eval_on_selector_all(".console-line .console-level-tag", "els => els.map(e => e.innerText.toLowerCase())")
-    assert "log" in before, before
-    page.evaluate("() => document.querySelector('[data-console-level=\"log\"]').click()")
-    page.wait_for_timeout(300)
-    after = page.eval_on_selector_all(".console-line .console-level-tag", "els => els.map(e => e.innerText.toLowerCase())")
-    assert "log" not in after, after
 
 
 def test_console_capture_does_not_swallow_the_real_console(page):
@@ -1791,3 +1779,155 @@ def test_console_capture_does_not_swallow_the_real_console(page):
     page.evaluate("() => console.warn('this must still reach devtools')")
     page.wait_for_timeout(300)
     assert any("must still reach devtools" in t for t in seen), seen
+
+
+# --------------------------------------------------------------------------------------------
+# SDK Inspector, and the configuration override it allows.
+# --------------------------------------------------------------------------------------------
+
+def open_inspector(pg, subject="onsite-config"):
+    inject(pg)
+    pg.evaluate("setActiveWorkspace('inspect')")
+    pg.wait_for_function("() => document.querySelectorAll('.inspector-subject').length > 0", timeout=20000)
+    pg.evaluate("(s) => document.querySelector(`[data-inspector-subject='${s}']`).click()", subject)
+    pg.wait_for_timeout(400)
+
+
+def test_the_inspector_shows_the_sdk_own_objects_not_this_apps_reading_of_them(page):
+    """Every other panel interprets the configuration. This is the source those readings come
+    from, for the case where the reading is the thing you doubt."""
+    open_inspector(page)
+    text = page.eval_on_selector("#inspector-output", "e => e.innerText")
+    assert text.strip().startswith("{"), text[:120]
+    assert "provisions" in text
+
+    # each subject has to resolve to something real, or it is a dead entry in the list
+    populated = page.evaluate("""() => INSPECTOR_SUBJECTS.map(s => {
+        const v = readInspectorSubjectValue(s);
+        return {id: s.id, empty: v === null || v === undefined};
+    })""")
+    dead = [s["id"] for s in populated if s["empty"]]
+    assert not dead, f"subjects with nothing behind them: {dead}"
+
+
+def test_inspector_search_highlights_without_letting_config_inject_markup(page):
+    """The output is configuration read off the network, so it is escaped before the highlight
+    markup goes in — never the other way round."""
+    open_inspector(page)
+    page.evaluate("""() => {
+        const f = document.getElementById('inspector-search-input');
+        f.value = 'provisions'; f.dispatchEvent(new Event('input'));
+    }""")
+    page.wait_for_timeout(300)
+    assert page.eval_on_selector_all("#inspector-output mark", "els => els.length") > 0
+    assert "matching line" in page.inner_text("#inspector-match-count")
+
+    # a value containing markup must render as text, not as an element
+    page.evaluate("""() => {
+        readLiveOnsiteConfiguration().__qa_xss__ = '<img src=x onerror=alert(1)>';
+        renderInspectorOutput();
+    }""")
+    page.wait_for_timeout(200)
+    assert page.eval_on_selector_all("#inspector-output img", "els => els.length") == 0
+    page.evaluate("() => { delete readLiveOnsiteConfiguration().__qa_xss__; }")
+
+
+def test_applying_edited_json_reaches_the_sdk_and_can_be_restored(page):
+    """The whole feature in one pass: preview names the changes, applying reaches the SDK's own
+    checkProvision, and Restore puts the property's values back."""
+    open_inspector(page, "provisions")
+    name = page.evaluate("""() => {
+        const c = readLiveOnsiteConfiguration();
+        return Object.keys(c.provisions).find(k => !(c.provisions[k] === true || c.provisions[k] === 'true'));
+    }""")
+    assert page.evaluate("(n) => KAMPYLE_FUNC.checkProvision(n)", name) is False
+
+    page.evaluate("""(n) => {
+        const editor = document.getElementById('inspector-editor');
+        const parsed = JSON.parse(editor.value);
+        parsed[n] = true; parsed.__qa_probe__ = 'hello';
+        editor.value = JSON.stringify(parsed, null, 2);
+        editor.dispatchEvent(new Event('input'));
+    }""", name)
+    page.evaluate("() => previewInspectorJsonApply()")
+    page.wait_for_timeout(300)
+
+    diff = page.inner_text("#inspector-diff")
+    assert name in diff and "__qa_probe__" in diff, diff[:200]
+
+    page.evaluate("() => applyInspectorJson()")
+    page.wait_for_timeout(400)
+    assert page.evaluate("(n) => KAMPYLE_FUNC.checkProvision(n)", name) is True, \
+        "the editor reported an apply the SDK never saw"
+    assert page.evaluate("() => readLiveOnsiteConfiguration().provisions.__qa_probe__") == "hello"
+
+    page.evaluate("() => restorePropertyConfiguration()")
+    page.wait_for_timeout(400)
+    assert page.evaluate("(n) => KAMPYLE_FUNC.checkProvision(n)", name) is False
+    assert page.evaluate("() => readLiveOnsiteConfiguration().provisions.__qa_probe__ === undefined"), \
+        "restore left a key the property never had"
+
+
+def test_an_overridden_configuration_is_impossible_to_forget(page):
+    """The real hazard is not data safety — it is debugging a state you created yourself. The
+    banner is sticky and follows into every workspace until the property's values are back."""
+    open_inspector(page, "provisions")
+    assert page.eval_on_selector("#config-override-banner", "e => getComputedStyle(e).display") == "none"
+
+    name = page.evaluate("""() => {
+        const c = readLiveOnsiteConfiguration();
+        return Object.keys(c.provisions).find(k => !(c.provisions[k] === true || c.provisions[k] === 'true'));
+    }""")
+    page.evaluate("(n) => setProvisionOverride(n, true)", name)
+    page.wait_for_timeout(300)
+
+    for workspace in ("targeting", "appearance", "activity"):
+        page.evaluate("(w) => setActiveWorkspace(w)", workspace)
+        page.wait_for_timeout(250)
+        assert page.eval_on_selector("#config-override-banner", "e => getComputedStyle(e).display") != "none", \
+            f"the override banner vanished in the {workspace} workspace"
+    assert "not what the property ships" in page.inner_text("#config-override-banner")
+
+    page.evaluate("() => restorePropertyConfiguration()")
+    page.wait_for_timeout(300)
+    assert page.eval_on_selector("#config-override-banner", "e => getComputedStyle(e).display") == "none"
+
+
+def test_the_editor_is_not_wiped_by_the_inspectors_own_refresh(page):
+    """Regression: the inspector re-reads the SDK every few seconds while it is on screen, and
+    that refilled the editor from the live configuration — discarding an edit half-typed. Same
+    class of bug as the parameter panel's drafts."""
+    open_inspector(page, "provisions")
+    page.evaluate("""() => {
+        const editor = document.getElementById('inspector-editor');
+        editor.value = '{"typed_by_hand": true}';
+        editor.dispatchEvent(new Event('input'));
+    }""")
+    page.wait_for_timeout(3600)   # longer than the refresh interval
+    assert "typed_by_hand" in page.eval_on_selector("#inspector-editor", "e => e.value"), \
+        "the auto-refresh discarded the edit"
+
+
+def test_no_configuration_ever_leaves_the_browser(page):
+    """The claim the override feature rests on: the SDK fetches configuration with GET and has no
+    write path, so an override is local to this tab and reaches neither Medallia nor anyone else.
+    Asserted rather than assumed, because the whole feature is only safe if it holds."""
+    writes = []
+    page.on("request", lambda r: writes.append((r.method, r.url))
+            if r.method != "GET" and "localhost" not in r.url else None)
+
+    open_inspector(page, "provisions")
+    name = page.evaluate("""() => {
+        const c = readLiveOnsiteConfiguration();
+        return Object.keys(c.provisions).find(k => !(c.provisions[k] === true || c.provisions[k] === 'true'));
+    }""")
+    page.evaluate("(n) => setProvisionOverride(n, true)", name)
+    page.wait_for_timeout(2500)
+
+    config_writes = [(m, u) for m, u in writes
+                     if any(part in u for part in ("onsiteData", "formData", "provision", "domains-configuration"))]
+    assert not config_writes, f"configuration was sent somewhere: {config_writes}"
+    # analytics is the one thing that does leave, and it is a POST — so the check above is real
+    assert all(m == "POST" and "api/web/events" in u for m, u in writes), \
+        f"an unexpected non-GET request was made: {writes}"
+    page.evaluate("() => restorePropertyConfiguration()")
