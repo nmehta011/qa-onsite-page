@@ -152,6 +152,36 @@
         .rail-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .rail-count { margin-left: auto; font-size: 0.66rem; color: var(--text-faint); font-weight: 700; flex-shrink: 0; }
         .rail-empty { font-size: 0.74rem; color: var(--text-faint); padding: 8px 10px; }
+        .console-toolbar { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+        .console-toolbar .suite-input { height: 32px; font-size: 0.8rem; padding: 0 11px; max-width: 300px; }
+        .console-levels { display: flex; gap: 6px; }
+        .diag-panel button.console-level { height: 24px; padding: 0 10px; font-size: 0.7rem; border-radius: 12px; border: 1px solid var(--line-strong); background: transparent; color: var(--text-dim); cursor: pointer; box-shadow: none; }
+        .diag-panel button.console-level.console-level-on { border-color: var(--accent-sky-strong); color: var(--accent-sky); background: rgba(14,165,233,0.1); }
+        .console-line { display: flex; align-items: flex-start; gap: 9px; padding: 7px 4px; border-bottom: 1px solid var(--surface-control); font-family: monospace; font-size: 0.76rem; }
+        .console-level-tag { font-size: 0.62rem; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; border-radius: 4px; padding: 1px 7px; flex-shrink: 0; }
+        .console-tag-error { background: rgba(239,68,68,0.15); color: var(--accent-red); }
+        .console-tag-warn { background: rgba(245,158,11,0.15); color: var(--accent-amber); }
+        .console-tag-log, .console-tag-info { background: var(--surface-control); color: var(--text-dim); }
+        .console-origin { font-size: 0.66rem; color: var(--text-faint); flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.4px; }
+        .console-text { flex: 1; min-width: 0; color: var(--text-firm); word-break: break-word; white-space: pre-wrap; }
+        .console-frame { display: block; font-size: 0.7rem; color: var(--text-faint); margin-top: 3px; word-break: break-all; }
+        .console-count { font-size: 0.68rem; font-weight: 700; color: var(--accent-amber); background: rgba(251,191,36,0.14); border-radius: 10px; padding: 0 7px; flex-shrink: 0; }
+        .console-empty { color: var(--text-dim); font-style: italic; font-size: 0.8rem; padding: 10px 4px; }
+
+        .provisions-toolbar { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+        .provisions-toolbar .suite-input { height: 32px; font-size: 0.8rem; padding: 0 11px; max-width: 320px; }
+        .provisions-only-on { display: flex; align-items: center; gap: 6px; font-size: 0.76rem; color: var(--text-soft); white-space: nowrap; cursor: pointer; }
+        .provisions-only-on input { width: 14px; height: 14px; accent-color: var(--accent-sky-strong); cursor: pointer; }
+        .provision-row { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-bottom: 1px solid var(--surface-control); font-size: 0.8rem; }
+        .provision-name { font-family: monospace; font-size: 0.76rem; color: var(--text-firm); flex: 1; min-width: 0; word-break: break-all; }
+        .provision-state { font-size: 0.68rem; font-weight: 700; border-radius: 4px; padding: 1px 7px; white-space: nowrap; }
+        .provision-on { background: rgba(16,185,129,0.15); color: var(--accent-green); }
+        .provision-off { background: var(--surface-control); color: var(--text-dim); }
+        .provision-overridden { background: rgba(139,92,246,0.18); color: var(--accent-purple); }
+        .diag-panel button.provision-toggle { height: 24px; padding: 0 10px; font-size: 0.7rem; border-radius: 5px; border: 1px solid var(--line-strong); background: var(--surface-control); color: var(--text-firm); cursor: pointer; white-space: nowrap; box-shadow: none; }
+        .diag-panel button.provision-toggle:hover { border-color: var(--accent-sky-strong); color: var(--accent-sky); transform: none; }
+        .provisions-empty { color: var(--text-dim); font-style: italic; font-size: 0.8rem; padding: 10px 4px; }
+
         .rail-triage { display: flex; align-items: center; gap: 9px; width: 100%; padding: 6px 10px; margin-bottom: 9px; border-radius: 6px; border: none; background: transparent; color: var(--text-soft); font-family: inherit; font-size: 0.79rem; font-weight: 600; cursor: pointer; text-align: left; height: auto; box-shadow: none; }
         .rail-triage:hover { background: var(--surface-control); color: var(--text-firm); transform: none; }
         .rail-triage-count { margin-left: auto; font-size: 0.68rem; font-weight: 700; }
@@ -1702,6 +1732,9 @@
             });
 
             capturedSdkConsoleMessages.forEach(entry => {
+                // The store now holds every level for the console panel; only the two that can
+                // carry a problem are findings.
+                if (entry.level !== 'error' && entry.level !== 'warn') return;
                 const explained = explainDiagnosticMessage(entry.message);
                 // Unrecognised console output from this app itself is not a finding about the
                 // property, and listing it would bury the things that are.
@@ -1901,8 +1934,8 @@
         // Patched at load rather than after injection. The domain check runs during SDK init, so
         // anything that waits for a property to be present has already missed it.
         //
-        // console.log is deliberately not captured: one call site in the bundle, and it is
-        // ordinary chatter rather than a signal.
+        // Every level is captured for the console panel. Diagnostics deliberately reads only
+        // `error` and `warn` out of this store -- a log line is chatter, not a finding.
         const capturedSdkConsoleMessages = [];
         const CONSOLE_CAPTURE_CAP = 300;
 
@@ -1954,7 +1987,7 @@
         // Wrapped, never replaced: the original is always called, so DevTools still shows
         // everything exactly as it did. A capture failure must not swallow a real message
         // either, which is why the recording is the part inside the try.
-        ['error', 'warn'].forEach(level => {
+        ['error', 'warn', 'log', 'info'].forEach(level => {
             const original = console[level];
             if (typeof original !== 'function') return;
             console[level] = function() {
@@ -2896,18 +2929,6 @@
                 </div>
             </div>
 
-            <div class="diag-panel diag-panel-full-span">
-                <h4>📜 List of Enabled Provisions [<span id="provisions-counter-badge" style="color:var(--accent-green);">0</span>]</h4>
-                <div id="provisions-matrix-stream-box" class="telemetry-scroll-box">
-                    <div class="teaching-empty-state" id="empty-provisions-notice">
-                        <div class="teaching-empty-icon">📜</div>
-                        <div>
-                            <div class="teaching-empty-title">Provisions describe what the SDK has enabled for this property</div>
-                            <div class="teaching-empty-body">A provision is a feature flag Medallia toggles per property — screen capture, custom parameters, session recording, and similar. <b>Inject a property embed</b> above to see which ones are turned on here.</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <div class="lifecycle-state-panel">
@@ -3142,6 +3163,61 @@
             <div id="journey-log-container" style="margin-top:12px;">
                 <div class="no-rules-notice">Journey has not been run yet. Inject a property first so rule changes can be observed. <button class="rule-source-link" onclick="focusPropertyInjectorOnActivePage()">Jump to injector</button></div>
             </div>
+        </div>
+
+
+        <div class="diag-panel" data-panel-key="provisions" style="margin-top:25px;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid var(--line); padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:230px;">🎛️ Provisions &amp; overrides [<span id="provisions-counter-badge" style="color:var(--accent-green);">0</span>]</h4>
+                <span id="provisions-override-summary" class="status-pill pill-sdk">No overrides</span>
+                <button class="lifecycle-btn panel-collapse-btn" onclick="togglePanelCollapsed('provisions')">▾ Collapse</button>
+                <button class="lifecycle-btn" onclick="releaseAllProvisionOverrides()">Release all</button>
+            </div>
+            <div class="collapsed-summary" data-panel-summary style="display:none;"></div>
+            <p data-panel-body style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                A provision is a feature flag Medallia sets per property — screen capture, custom parameters, session
+                recording and similar. Every one the property carries is listed here, and any of them can be
+                <strong>overridden in this session</strong> to see how the SDK behaves with it flipped, without waiting
+                for a configuration change. Overrides are held in this browser and re-applied on the next injection.
+                <strong>Scope:</strong> the SDK re-reads a provision on each check, so an override takes effect for
+                everything checked after it — but a provision consulted once while the SDK started up has already been
+                read, and needs a re-inject to take effect.
+            </p>
+            <div data-panel-body class="provisions-toolbar">
+                <input type="text" id="provisions-filter-input" class="suite-input" placeholder="Filter provisions…" aria-label="Filter provisions" oninput="renderProvisionsPanel()">
+                <label class="provisions-only-on"><input type="checkbox" id="provisions-only-enabled" onchange="renderProvisionsPanel()"> Enabled only</label>
+            </div>
+            <div data-panel-body id="provisions-matrix-stream-box" class="telemetry-scroll-box" style="max-height:360px;">
+                <div class="teaching-empty-state" id="empty-provisions-notice">
+                    <div class="teaching-empty-icon">🎛️</div>
+                    <div>
+                        <div class="teaching-empty-title">Provisions describe what the SDK has enabled for this property</div>
+                        <div class="teaching-empty-body">A provision is a feature flag Medallia toggles per property — screen capture, custom parameters, session recording, and similar. <b>Inject a property embed</b> above to list them and to override any of them.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="diag-panel" data-panel-key="console" style="margin-top:25px;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid var(--line); padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:230px;">🖥️ Page console [<span id="console-counter-badge" style="color:var(--accent-sky);">0</span>]</h4>
+                <span id="console-summary" class="status-pill pill-sdk">Nothing logged</span>
+                <button class="lifecycle-btn panel-collapse-btn" onclick="togglePanelCollapsed('console')">▾ Collapse</button>
+                <button class="lifecycle-btn btn-purge" onclick="clearCapturedConsoleMessages()">Clear</button>
+            </div>
+            <div class="collapsed-summary" data-panel-summary style="display:none;"></div>
+            <p data-panel-body style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                Everything written to the browser console since this page loaded, with the caller's frame kept and the
+                blame assigned — so you can tell what the <strong>SDK</strong> said from what this tool said without
+                opening DevTools. Repeats are grouped with a count. Diagnostics above reads the errors and warnings out
+                of the same capture and explains the ones it recognises; this is the raw stream, chatter included.
+            </p>
+            <div data-panel-body class="console-toolbar">
+                <input type="text" id="console-filter-input" class="suite-input" placeholder="Filter messages…" aria-label="Filter console messages" oninput="renderPageConsolePanel()">
+                <span class="console-levels" id="console-level-filters"></span>
+            </div>
+            <div data-panel-body id="console-stream-box" class="telemetry-scroll-box" style="max-height:340px;"></div>
         </div>
 
         <div class="diag-panel" data-panel-key="diagnostics" style="margin-top:25px;">
@@ -4189,23 +4265,12 @@
             stream.innerHTML = ""; 
 
             const provisions = e.detail.provisions;
-            let enabledKeys = Object.keys(provisions).filter(key => provisions[key] === true);
-
-            if(enabledKeys.length === 0) {
-                stream.innerHTML = `<div style="color:var(--text-dim); font-style:italic; font-size:0.8rem;">No active provisions evaluated true inside target map.</div>`;
-                return;
-            }
-
-            enabledKeys.forEach(key => {
-                const entry = document.createElement('div');
-                entry.className = "provisions-entry-item";
-                entry.innerHTML = `<div><span class="badge badge-provisions">Enabled</span> <strong>${escapeMarkupForSafeRender(key)}</strong></div><span style="color:var(--accent-green); font-size:0.75rem;">✔ true</span>`;
-                stream.appendChild(entry);
-            });
-
-            const counterBadge = document.getElementById('provisions-counter-badge');
-            if (counterBadge) counterBadge.innerText = `${enabledKeys.length} of ${Object.keys(provisions).length}`;
-            writeLog(`Configuration Sync: Extracted ${enabledKeys.length} enabled provisions out of ${Object.keys(provisions).length} total flags (source: ${e.detail.source || 'network manifest'}).`, 'success');
+            // Rendered from the SDK's own live configuration rather than from this event's
+            // payload, so the list reflects any override in effect instead of the values the
+            // manifest happened to ship with. The event stays the trigger.
+            writeLog(`Configuration Sync: ${Object.keys(provisions).length} provision flag(s) read (source: ${e.detail.source || 'network manifest'}).`, 'success');
+            reapplyStoredProvisionOverrides();
+            renderProvisionsPanel();
 
             // The SDK bus panel's empty state depends on customEventsBroadcast, and it only
             // renders when a broadcast arrives — which never happens when that provision is off.
@@ -4330,6 +4395,8 @@
         setInterval(renderPerformancePanel, 2000);
         setInterval(renderFindingsHistoryPanel, 2000);
         setInterval(renderPiiScanPanel, 2000);
+        setInterval(renderProvisionsPanel, 2500);
+        setInterval(renderPageConsolePanel, 1500);
         setInterval(renderDiagnosticsPanel, 2000);
         setInterval(renderConsentGatePanel, 1000);
         setInterval(renderAccessibilityAuditPanel, 2000);
@@ -8132,11 +8199,13 @@
             'Full Accessibility Audit': 'appearance',
             'Will each form show?': 'targeting',
             'Config Drift Baseline': 'config',
+            'Provisions & overrides': 'config',
             'Environment A/B Comparison': 'config',
             'Journey Automation': 'targeting',
             'Live Analytics Events Tracking': 'activity',
             'Native SDK Custom Event Bus': 'activity',
             'Diagnostics': 'activity',
+            'Page console': 'activity',
             'Activity log': 'activity',
             'Unified Session Timeline': 'activity',
             'Performance & Core Web Vitals': 'activity',
@@ -8227,6 +8296,249 @@
 
             bar.querySelectorAll('[data-workspace-key]').forEach(tab => {
                 tab.onclick = () => setActiveWorkspace(tab.getAttribute('data-workspace-key'));
+            });
+        }
+
+        // --- 5c7. PAGE CONSOLE ---
+        // The raw stream, as a companion to Diagnostics rather than a duplicate of it: the same
+        // capture feeds both, Diagnostics taking only the errors and warnings it can explain,
+        // this taking everything including the chatter. A developer wanting "what did the SDK
+        // actually say" should not have to open DevTools and lose it on the next reload.
+        const CONSOLE_LEVELS = ['error', 'warn', 'log', 'info'];
+        const consoleLevelFilterState = { error: true, warn: true, log: true, info: true };
+
+        function clearCapturedConsoleMessages() {
+            capturedSdkConsoleMessages.length = 0;
+            renderPageConsolePanel();
+            renderDiagnosticsPanel();
+            writeLog('Page console cleared.', 'info');
+        }
+
+        function toggleConsoleLevelFilter(level) {
+            consoleLevelFilterState[level] = !consoleLevelFilterState[level];
+            renderPageConsolePanel();
+        }
+
+        function renderPageConsolePanel() {
+            const stream = document.getElementById('console-stream-box');
+            const summary = document.getElementById('console-summary');
+            const badge = document.getElementById('console-counter-badge');
+            const levelRow = document.getElementById('console-level-filters');
+            if (!stream) return;
+
+            const total = capturedSdkConsoleMessages.reduce((sum, entry) => sum + entry.count, 0);
+            const errors = capturedSdkConsoleMessages.filter(e => e.level === 'error').reduce((s, e) => s + e.count, 0);
+            const warnings = capturedSdkConsoleMessages.filter(e => e.level === 'warn').reduce((s, e) => s + e.count, 0);
+            if (badge) badge.innerText = String(total);
+            if (summary) {
+                summary.className = 'status-pill ' + (errors ? 'pill-danger' : warnings ? 'pill-warn' : 'pill-sdk');
+                summary.innerText = errors ? `${errors} error${errors === 1 ? '' : 's'}`
+                    : warnings ? `${warnings} warning${warnings === 1 ? '' : 's'}`
+                    : total ? `${total} message${total === 1 ? '' : 's'}` : 'Nothing logged';
+            }
+
+            if (levelRow) {
+                const counts = {};
+                CONSOLE_LEVELS.forEach(level => {
+                    counts[level] = capturedSdkConsoleMessages.filter(e => e.level === level).reduce((s, e) => s + e.count, 0);
+                });
+                levelRow.innerHTML = CONSOLE_LEVELS.map(level =>
+                    `<button class="console-level${consoleLevelFilterState[level] ? ' console-level-on' : ''}" data-console-level="${level}">${level} ${counts[level]}</button>`
+                ).join('');
+                levelRow.querySelectorAll('[data-console-level]').forEach(button => {
+                    button.onclick = () => toggleConsoleLevelFilter(button.getAttribute('data-console-level'));
+                });
+            }
+
+            const filterField = document.getElementById('console-filter-input');
+            const needle = String(filterField && filterField.value || '').trim().toLowerCase();
+            const visible = capturedSdkConsoleMessages
+                .filter(entry => consoleLevelFilterState[entry.level])
+                .filter(entry => !needle || entry.message.toLowerCase().includes(needle))
+                .slice()
+                .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+
+            if (!visible.length) {
+                stream.innerHTML = `<div class="console-empty">${total ? 'Nothing matches that filter.' : 'Nothing written to the console yet. Anything this page or the injected SDK logs will appear here.'}</div>`;
+                return;
+            }
+
+            stream.innerHTML = visible.map(entry => {
+                const origin = RUNTIME_EXCEPTION_ORIGINS[entry.origin] || RUNTIME_EXCEPTION_ORIGINS.unknown;
+                const frame = extractLeadingStackFrame(entry.stack);
+                return `<div class="console-line">
+                            <span class="console-level-tag console-tag-${entry.level}">${entry.level}</span>
+                            <span class="console-origin">${escapeMarkupForSafeRender(origin.label)}</span>
+                            <span class="console-text">${escapeMarkupForSafeRender(entry.message)}${
+                                frame ? `<span class="console-frame">at ${escapeMarkupForSafeRender(frame)}</span>` : ''}</span>
+                            ${entry.count > 1 ? `<span class="console-count">×${entry.count}</span>` : ''}
+                        </div>`;
+            }).join('');
+        }
+
+        // --- 5c6. PROVISIONS & OVERRIDES ---
+        // A provision is a per-property feature flag, and a developer's usual question is "what
+        // does this do with that flag flipped" — which otherwise means asking Medallia to change
+        // the property and waiting for it to republish.
+        //
+        // Overriding one is possible because of how the SDK reads them, confirmed against the
+        // bundle and then live: checkProvision is
+        //     getOnsiteConfiguration().provisions[name]
+        // evaluated on EVERY call, and getOnsiteConfiguration() hands back the same mutable
+        // object every time. So writing to that object changes what the SDK sees from the next
+        // check onward. Verified end to end on a real property: flipped an off provision on, the
+        // SDK's own checkProvision returned true, released it, and it returned false again.
+        //
+        // The honest limit, stated in the panel too: a provision consulted once while the SDK
+        // was starting up has already been read, and an override applied afterwards cannot undo
+        // that. Those need a re-inject, which is what pinning the overrides is for.
+        const PROVISION_OVERRIDE_STORAGE_KEY = 'qa_provision_overrides_v1';
+
+        // Always asked for fresh, never held.
+        //
+        // Holding it was the first attempt and it silently did nothing: the SDK swaps its
+        // configuration object once its own data finishes loading, so a reference taken earlier
+        // is a detached copy. Writes to it succeed, the panel shows the new value, and
+        // checkProvision keeps returning the old one — an override that reports success and has
+        // no effect, which is worse than one that fails.
+        //
+        // The cost is a deprecation warning per call, since MDIGITAL.CONFIGURATION is a wrapped
+        // namespace. renderProvisionsPanel only runs while its panel is on screen, which keeps
+        // that to when someone is actually looking at it.
+        function readLiveOnsiteConfiguration() {
+            try {
+                const api = window.MDIGITAL && window.MDIGITAL.CONFIGURATION;
+                if (!api || typeof api.getOnsiteConfiguration !== 'function') return null;
+                const config = api.getOnsiteConfiguration();
+                return config && config.provisions ? config : null;
+            } catch (err) { return null; }
+        }
+
+        function readStoredProvisionOverrides() {
+            try { return JSON.parse(localStorage.getItem(PROVISION_OVERRIDE_STORAGE_KEY)) || {}; }
+            catch (err) { return {}; }
+        }
+
+        function writeStoredProvisionOverrides(overrides) {
+            if (Object.keys(overrides).length) localStorage.setItem(PROVISION_OVERRIDE_STORAGE_KEY, JSON.stringify(overrides));
+            else localStorage.removeItem(PROVISION_OVERRIDE_STORAGE_KEY);
+        }
+
+        // The value the property actually shipped, before anything here touched it. Captured the
+        // first time each provision is overridden so releasing can put back the real value rather
+        // than a guess at it.
+        const provisionValuesBeforeOverride = {};
+
+        function setProvisionOverride(name, value) {
+            const config = readLiveOnsiteConfiguration();
+            if (!config) { toast('No property is loaded, so there are no provisions to override.', 'warn'); return; }
+            if (!(name in provisionValuesBeforeOverride)) provisionValuesBeforeOverride[name] = config.provisions[name];
+
+            config.provisions[name] = value;
+            const overrides = readStoredProvisionOverrides();
+            overrides[name] = value;
+            writeStoredProvisionOverrides(overrides);
+
+            writeLog(`🎛️ Provision override: ${name} → ${value}. The SDK reads this on its next check.`, 'warn');
+            toast(`${name} overridden to ${value}. Anything the SDK checks from now on sees it; re-inject for what it read at startup.`, 'warn');
+            renderProvisionsPanel();
+        }
+
+        function releaseProvisionOverride(name) {
+            const config = readLiveOnsiteConfiguration();
+            const overrides = readStoredProvisionOverrides();
+            delete overrides[name];
+            writeStoredProvisionOverrides(overrides);
+            if (config && name in provisionValuesBeforeOverride) {
+                config.provisions[name] = provisionValuesBeforeOverride[name];
+                delete provisionValuesBeforeOverride[name];
+            }
+            writeLog(`🎛️ Released the override on ${name}.`, 'info');
+            renderProvisionsPanel();
+        }
+
+        function releaseAllProvisionOverrides() {
+            const overrides = readStoredProvisionOverrides();
+            const names = Object.keys(overrides);
+            if (!names.length) { toast('No provision overrides are active.', 'info'); return; }
+            names.forEach(releaseProvisionOverride);
+            toast(`Released ${names.length} provision override(s).`, 'success');
+        }
+
+        // Re-applied after each injection, which is what makes an override survive the re-inject
+        // that provisions read at startup require.
+        function reapplyStoredProvisionOverrides() {
+            const config = readLiveOnsiteConfiguration();
+            if (!config) return;
+            const overrides = readStoredProvisionOverrides();
+            const names = Object.keys(overrides);
+            if (!names.length) return;
+            names.forEach(name => {
+                if (!(name in provisionValuesBeforeOverride)) provisionValuesBeforeOverride[name] = config.provisions[name];
+                config.provisions[name] = overrides[name];
+            });
+            writeLog(`🎛️ Re-applied ${names.length} pinned provision override(s) to this property.`, 'warn');
+            renderProvisionsPanel();
+        }
+
+        function renderProvisionsPanel() {
+            const stream = document.getElementById('provisions-matrix-stream-box');
+            // Reading the configuration costs a deprecation warning, so it is only done while
+            // someone can see the result. The panel is re-rendered on demand after any override.
+            if (stream && !stream.offsetParent) return;
+            const summary = document.getElementById('provisions-override-summary');
+            const badge = document.getElementById('provisions-counter-badge');
+            if (!stream) return;
+
+            const config = readLiveOnsiteConfiguration();
+            const provisions = config && config.provisions;
+            const overrides = readStoredProvisionOverrides();
+            const overrideCount = Object.keys(overrides).length;
+
+            if (summary) {
+                summary.className = 'status-pill ' + (overrideCount ? 'pill-warn' : 'pill-sdk');
+                summary.innerText = overrideCount ? `${overrideCount} overridden` : 'No overrides';
+            }
+
+            if (!provisions) return;   // keeps the teaching empty state until a property is loaded
+
+            const names = Object.keys(provisions).sort();
+            const enabled = names.filter(name => provisions[name] === true || provisions[name] === 'true');
+            if (badge) badge.innerText = `${enabled.length} of ${names.length}`;
+
+            const filterField = document.getElementById('provisions-filter-input');
+            const onlyEnabledBox = document.getElementById('provisions-only-enabled');
+            const needle = String(filterField && filterField.value || '').trim().toLowerCase();
+            const onlyEnabled = !!(onlyEnabledBox && onlyEnabledBox.checked);
+
+            const visible = names.filter(name => {
+                if (needle && !name.toLowerCase().includes(needle)) return false;
+                if (onlyEnabled && !(provisions[name] === true || provisions[name] === 'true')) return false;
+                return true;
+            });
+
+            if (!visible.length) {
+                stream.innerHTML = '<div class="provisions-empty">No provision matches that filter.</div>';
+                return;
+            }
+
+            stream.innerHTML = visible.map(name => {
+                const on = provisions[name] === true || provisions[name] === 'true';
+                const overridden = name in overrides;
+                return `<div class="provision-row">
+                            <span class="provision-state ${overridden ? 'provision-overridden' : on ? 'provision-on' : 'provision-off'}">${overridden ? 'overridden' : on ? 'on' : 'off'}</span>
+                            <span class="provision-name">${escapeMarkupForSafeRender(name)}</span>
+                            <button class="provision-toggle" data-provision-set="${escapeMarkupForSafeRender(name)}" data-provision-value="${on ? 'false' : 'true'}">Turn ${on ? 'off' : 'on'}</button>
+                            ${overridden ? `<button class="provision-toggle" data-provision-release="${escapeMarkupForSafeRender(name)}">Release</button>` : ''}
+                        </div>`;
+            }).join('');
+
+            stream.querySelectorAll('[data-provision-set]').forEach(button => {
+                button.onclick = () => setProvisionOverride(button.getAttribute('data-provision-set'),
+                                                            button.getAttribute('data-provision-value') === 'true');
+            });
+            stream.querySelectorAll('[data-provision-release]').forEach(button => {
+                button.onclick = () => releaseProvisionOverride(button.getAttribute('data-provision-release'));
             });
         }
 
@@ -11832,6 +12144,7 @@
         window.addEventListener('DOMContentLoaded', () => {
             applyColourTheme(resolveColourTheme());
             writeLog("Sandbox execution hub online. Core proxy network intercepts active.", 'info');
+            renderPageConsolePanel();
             // Event-driven, not polled: recordRuntimeException re-renders when something
             // arrives. This first call is only here to paint the empty state.
             renderDiagnosticsPanel();

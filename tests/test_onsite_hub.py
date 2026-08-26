@@ -802,7 +802,7 @@ def test_no_workspace_panel_is_orphaned_by_a_heading_rename(page):
         });
         return o;
     }""")
-    assert sum(counts.values()) == 23, f"expected 23 assigned panels, got {counts}"
+    assert sum(counts.values()) == 25, f"expected 25 assigned panels, got {counts}"
 
 
 def test_no_uncaught_errors_during_a_full_session(page):
@@ -1679,3 +1679,115 @@ def test_with_no_stored_choice_the_os_preference_decides(page, browser):
             assert other.evaluate("() => document.documentElement.getAttribute('data-theme')") == expected
         finally:
             context.close()
+
+
+# --------------------------------------------------------------------------------------------
+# Provision overrides and the page console.
+# --------------------------------------------------------------------------------------------
+
+def open_provisions(pg):
+    inject(pg)
+    pg.evaluate("setActiveWorkspace('config')")
+    pg.wait_for_function("() => document.querySelectorAll('.provision-row').length > 0", timeout=20000)
+
+
+def test_a_provision_override_is_what_the_sdk_actually_reads(page):
+    """The whole point, and the thing that is easy to fake: the panel could show a flipped value
+    while the SDK carries on reading the original. Asserted through the SDK's own
+    checkProvision, not through this app's rendering of it.
+
+    It works because checkProvision is getOnsiteConfiguration().provisions[name] evaluated on
+    every call, against an object the SDK hands back by reference.
+    """
+    open_provisions(page)
+    name = page.evaluate("""() => {
+        const c = readLiveOnsiteConfiguration();
+        return Object.keys(c.provisions).find(k => !(c.provisions[k] === true || c.provisions[k] === 'true'));
+    }""")
+    assert name, "this property has no provision that is currently off"
+    assert page.evaluate("(n) => KAMPYLE_FUNC.checkProvision(n)", name) is False
+
+    page.evaluate("(n) => document.querySelector(`[data-provision-set='${n}']`).click()", name)
+    page.wait_for_timeout(400)
+    assert page.evaluate("(n) => KAMPYLE_FUNC.checkProvision(n)", name) is True, \
+        "the panel reported an override the SDK never saw"
+
+    page.evaluate("(n) => document.querySelector(`[data-provision-release='${n}']`).click()", name)
+    page.wait_for_timeout(400)
+    assert page.evaluate("(n) => KAMPYLE_FUNC.checkProvision(n)", name) is False, \
+        "releasing did not restore the property's own value"
+
+
+def test_the_live_configuration_is_never_held_across_calls(page):
+    """Regression: the configuration object was fetched once and cached. The SDK swaps it when
+    its own data finishes loading, so the cached reference was a detached copy — writes to it
+    succeeded, the panel showed the new value, and checkProvision kept returning the old one. An
+    override that reports success and does nothing is worse than one that fails."""
+    open_provisions(page)
+    same = page.evaluate("""() => {
+        const a = readLiveOnsiteConfiguration();
+        return a === (window.MDIGITAL.CONFIGURATION.getOnsiteConfiguration());
+    }""")
+    assert same, "readLiveOnsiteConfiguration is not returning the SDK's live object"
+
+
+def test_overrides_are_pinned_so_they_survive_a_re_injection(page):
+    """A provision the SDK consults once at startup cannot be changed after the fact — that needs
+    a re-inject, which is the only reason pinning exists."""
+    open_provisions(page)
+    name = page.evaluate("""() => {
+        const c = readLiveOnsiteConfiguration();
+        return Object.keys(c.provisions).find(k => !(c.provisions[k] === true || c.provisions[k] === 'true'));
+    }""")
+    page.evaluate("(n) => setProvisionOverride(n, true)", name)
+    stored = page.evaluate("() => JSON.parse(localStorage.getItem('qa_provision_overrides_v1') || '{}')")
+    assert stored.get(name) is True
+
+    page.evaluate("() => reapplyStoredProvisionOverrides()")
+    assert page.evaluate("(n) => KAMPYLE_FUNC.checkProvision(n)", name) is True
+
+    page.evaluate("() => releaseAllProvisionOverrides()")
+    assert page.evaluate("() => localStorage.getItem('qa_provision_overrides_v1')") is None
+
+
+def test_the_page_console_separates_what_the_sdk_said_from_what_this_tool_said(page):
+    """A developer's first question about a console line is whose it is. The raw stream keeps
+    every level; Diagnostics takes only the errors and warnings out of the same capture."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('activity')")
+    page.wait_for_function("() => document.querySelectorAll('.console-line').length > 0", timeout=20000)
+    page.evaluate("() => { console.log('a plain log'); console.error('a page error'); }")
+    page.wait_for_timeout(1800)
+
+    captured = page.evaluate("() => capturedSdkConsoleMessages.map(m => ({level: m.level, origin: m.origin}))")
+    assert any(m["origin"] == "sdk" for m in captured), f"nothing attributed to the SDK: {captured}"
+    assert any(m["origin"] == "hub" for m in captured), f"nothing attributed to this tool: {captured}"
+    assert {m["level"] for m in captured} & {"log", "error"}, "levels beyond warn are not being captured"
+
+    # and the chatter must not leak into the findings list
+    sources = page.evaluate("() => buildDiagnosticFindings().map(f => f.source)")
+    assert "console.log" not in sources and "console.info" not in sources, sources
+
+
+def test_console_level_filters_narrow_the_stream(page):
+    inject(page)
+    page.evaluate("setActiveWorkspace('activity')")
+    page.evaluate("() => { console.log('filterable log line'); }")
+    page.wait_for_function("() => document.querySelectorAll('.console-line').length > 0", timeout=20000)
+    page.wait_for_timeout(1600)
+
+    before = page.eval_on_selector_all(".console-line .console-level-tag", "els => els.map(e => e.innerText.toLowerCase())")
+    assert "log" in before, before
+    page.evaluate("() => document.querySelector('[data-console-level=\"log\"]').click()")
+    page.wait_for_timeout(300)
+    after = page.eval_on_selector_all(".console-line .console-level-tag", "els => els.map(e => e.innerText.toLowerCase())")
+    assert "log" not in after, after
+
+
+def test_console_capture_does_not_swallow_the_real_console(page):
+    """Wrapped, never replaced — DevTools has to keep showing everything exactly as before."""
+    seen = []
+    page.on("console", lambda m: seen.append(m.text))
+    page.evaluate("() => console.warn('this must still reach devtools')")
+    page.wait_for_timeout(300)
+    assert any("must still reach devtools" in t for t in seen), seen
