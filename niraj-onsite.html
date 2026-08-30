@@ -4533,7 +4533,9 @@
                 renderWorkspaceBar();
                 renderTriageView();
                 renderPanelRail();
-                refreshCollapsedPanelSummaries();
+                const foldSnapshot = buildGlobalStatusSnapshot();
+                foldQuietPanels(foldSnapshot);
+                refreshCollapsedPanelSummaries(foldSnapshot);
                 decorateLifecycleKeysWithDependents();
             }
         }, 1800);
@@ -9347,13 +9349,20 @@
                 propertyId: null, formCount: 0, blockedForms: 0, shownForms: 0,
                 networkErrors: document.querySelectorAll('#network-error-stream-box .network-err-entry').length,
                 sdkExceptions: countSdkAttributedExceptions(),
-                blockingDiagnostics: countBlockingDiagnostics(),
+                blockingDiagnostics: 0, diagnosticFindings: 0,
                 submissions: capturedSubmissionTraces.filter(t => t.isComplete).length,
                 designMismatches: 0, designChecked: 0,
                 contrastFailures: 0, contrastChecked: 0,
-                perfVerdict: null, piiFindings: 0, consentViolations: consentGateViolations.length,
+                perfVerdict: null, piiFindings: 0, piiPayloadsScanned: 0, consentViolations: consentGateViolations.length,
                 a11yFailures: 0, a11yChecked: 0, securityFailures: 0, securityChecked: 0
             };
+
+            // Built once and read twice: the blocker count and the total. countBlockingDiagnostics()
+            // rebuilds the whole finding list to count a subset of it, and this snapshot is
+            // assembled several times per render tick.
+            const diagnosticFindings = buildDiagnosticFindings();
+            snapshot.diagnosticFindings = diagnosticFindings.length;
+            snapshot.blockingDiagnostics = diagnosticFindings.filter(f => f.severity === 'blocker').length;
 
             try { snapshot.propertyId = String(KAMPYLE_DATA.getPropertyId()); } catch (err) { /* not injected */ }
 
@@ -9390,6 +9399,9 @@
 
             const piiFindings = buildPiiScanReport();
             if (piiFindings) snapshot.piiFindings = piiFindings.length;
+            // A clean scan of nothing is not a clean scan. Everything the scanner reads is
+            // derived from fired events, so this is what says whether it has had anything to do.
+            snapshot.piiPayloadsScanned = collectedAnalyticsEventsCacheList.length;
 
             const a11yChecks = buildAccessibilityAuditReport();
             if (a11yChecks) { snapshot.a11yChecked = a11yChecks.length; snapshot.a11yFailures = a11yChecks.filter(c => c.verdict === 'block').length; }
@@ -10865,7 +10877,12 @@
             // than being that element itself — checking only the exact target missed those.
             if (target.closest('.panel-body-collapsed')) {
                 const panel = target.closest('.diag-panel');
-                if (panel) setPanelCollapsed(panel.getAttribute('data-panel-key'), false);
+                if (panel) {
+                    // Asking to be taken to a panel is asking to see it. Without this the fold
+                    // pass owns it still and can close it again on the next tick.
+                    claimPanelForReader(panel.getAttribute('data-panel-key'));
+                    setPanelCollapsed(panel.getAttribute('data-panel-key'), false);
+                }
             }
             const panel = target.closest('.diag-panel') || target;
             requestAnimationFrame(() => panel.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -10877,7 +10894,10 @@
         // the outcome, so collapsing never hides whether something needs attention.
         const collapsedPanelState = {};
 
-        function setPanelCollapsed(panelKey, shouldCollapse) {
+        // `snapshot` is threaded through purely to avoid rebuilding it: a fold pass that closes
+        // six panels at once would otherwise assemble the global status snapshot six times, and
+        // that snapshot decodes every targeting rule and rebuilds five audit reports.
+        function setPanelCollapsed(panelKey, shouldCollapse, snapshot) {
             const panel = document.querySelector(`[data-panel-key="${panelKey}"]`);
             if (!panel) return;
             collapsedPanelState[panelKey] = shouldCollapse;
@@ -10890,45 +10910,128 @@
 
             const button = panel.querySelector('.panel-collapse-btn');
             if (button) button.innerText = shouldCollapse ? '▸ Expand' : '▾ Collapse';
-            if (shouldCollapse) refreshCollapsedPanelSummaries();
+            if (shouldCollapse) refreshCollapsedPanelSummaries(snapshot);
         }
 
         function togglePanelCollapsed(panelKey) {
+            // Pressing the button hands the panel to the reader for good — see foldQuietPanels().
+            panelFoldOwnedByReader[panelKey] = true;
             setPanelCollapsed(panelKey, !collapsedPanelState[panelKey]);
         }
 
-        function refreshCollapsedPanelSummaries() {
-            const targetingSummary = document.querySelector('[data-panel-key="targeting"] [data-panel-summary]');
-            if (targetingSummary && collapsedPanelState.targeting) {
-                const registry = readPublishedFormRegistryFromSdk();
-                if (!registry) {
-                    targetingSummary.innerHTML = `No property injected yet.`;
-                } else {
-                    let blocked = 0;
-                    registry.forEach(form => {
-                        if (decodeTargetingRulesForForm(form).some(r => r.verdict === 'block')) blocked++;
-                    });
-                    targetingSummary.innerHTML = blocked
-                        ? `<strong>${registry.length}</strong> forms · <strong style="color:var(--accent-amber);">${blocked}</strong> with a blocking rule — expand to see why.`
-                        : `<strong>${registry.length}</strong> forms · no blocking rules.`;
-                }
-            }
+        // --- 5c3b. FOLDING PANELS THAT HAVE NOTHING TO REPORT ---
+        // A panel whose check has run and found nothing still costs a screen of scrolling, and
+        // most panels most of the time have nothing to report. The rail's status dots already
+        // say which panels DO; this is the other half of that — the ones that do not fold down
+        // to the one-line summary the collapse machinery already knows how to render.
+        //
+        // Each entry answers for one panel and returns either null ("cannot say yet") or
+        // {quiet, summary}. Three rules make folding automatically safe rather than annoying:
+        //
+        //   1. Only a completed check can be quiet. "Nothing found yet" and "nothing to find"
+        //      look identical from outside and mean opposite things, so every entry below tests
+        //      a *checked* count, not just a failure count of zero.
+        //   2. A panel that stops being quiet unfolds itself. Leaving a finding folded away is
+        //      the one failure that would make this worse than not having it.
+        //   3. Touching the collapse button — or jumping to the panel from the rail or a chip —
+        //      hands it to the reader permanently. Nothing automatic moves it again.
+        const PANEL_FOLD_STATE = {
+            targeting: s => {
+                // Never quiet: this is the panel the tester came for, and "no blocking rules" is
+                // itself the answer they are looking for rather than noise to fold away.
+                if (!s.injected || !s.formCount) return { quiet: false, summary: 'No property injected yet.' };
+                return { quiet: false, summary: s.blockedForms
+                    ? `<strong>${s.formCount}</strong> forms · <strong style="color:var(--accent-amber);">${s.blockedForms}</strong> with a blocking rule — expand to see why.`
+                    : `<strong>${s.formCount}</strong> forms · no blocking rules.` };
+            },
+            design: s => !s.designChecked ? null : { quiet: !s.designMismatches, summary: s.designMismatches
+                ? `<strong style="color:var(--accent-red);">${s.designMismatches}</strong> mismatch(es) across ${s.designChecked} checks — expand to review.`
+                : `<strong style="color:var(--accent-green);">${s.designChecked}</strong> checks matched configuration.` },
+            contrast: s => !s.contrastChecked ? null : { quiet: !s.contrastFailures, summary: s.contrastFailures
+                ? `<strong style="color:var(--accent-red);">${s.contrastFailures}</strong> of ${s.contrastChecked} measured pairs are below the WCAG minimum — expand to review.`
+                : `<strong style="color:var(--accent-green);">${s.contrastChecked}</strong> measured pairs meet the WCAG minimum.` },
+            a11y: s => !s.a11yChecked ? null : { quiet: !s.a11yFailures, summary: s.a11yFailures
+                ? `<strong style="color:var(--accent-red);">${s.a11yFailures}</strong> of ${s.a11yChecked} checks failed — expand to review.`
+                : `<strong style="color:var(--accent-green);">${s.a11yChecked}</strong> accessibility checks passed.` },
+            'security-posture': s => !s.securityChecked ? null : { quiet: !s.securityFailures, summary: s.securityFailures
+                ? `<strong style="color:var(--accent-red);">${s.securityFailures}</strong> of ${s.securityChecked} checks failed — expand to review.`
+                : `<strong style="color:var(--accent-green);">${s.securityChecked}</strong> security checks passed.` },
+            'pii-scan': s => !s.injected || !s.piiPayloadsScanned ? null : { quiet: !s.piiFindings, summary: s.piiFindings
+                ? `<strong style="color:var(--accent-red);">${s.piiFindings}</strong> possible leak(s) across ${s.piiPayloadsScanned} payloads — expand to review.`
+                : `No PII found in <strong style="color:var(--accent-green);">${s.piiPayloadsScanned}</strong> scanned payloads.` },
+            perf: s => !s.perfVerdict ? null : { quiet: s.perfVerdict === 'pass', summary: s.perfVerdict === 'block'
+                ? `Core Web Vitals are <strong style="color:var(--accent-red);">poor</strong> since injection — expand to review.`
+                : s.perfVerdict === 'watch'
+                ? `Core Web Vitals <strong style="color:var(--accent-amber);">need improvement</strong> since injection — expand to review.`
+                : `Core Web Vitals are <strong style="color:var(--accent-green);">good</strong> since injection.` },
+            diagnostics: s => !s.injected ? null : { quiet: !s.diagnosticFindings, summary: s.diagnosticFindings
+                ? `<strong style="color:${s.blockingDiagnostics ? 'var(--accent-red)' : 'var(--accent-amber)'};">${s.diagnosticFindings}</strong> finding(s)`
+                  + (s.blockingDiagnostics ? `, ${s.blockingDiagnostics} blocking` : '') + ` — expand to review.`
+                : `<strong style="color:var(--accent-green);">Nothing wrong</strong> — no errors, exceptions or blocked domains.` }
+        };
 
-            const designSummary = document.querySelector('[data-panel-key="design"] [data-panel-summary]');
-            if (designSummary && collapsedPanelState.design) {
-                const groups = buildDesignValidationReport();
-                if (!groups || groups.length === 0) {
-                    designSummary.innerHTML = `Nothing rendered yet to validate.`;
-                } else {
-                    let pass = 0, fail = 0;
-                    groups.forEach(g => g.checks.forEach(c => {
-                        if (c.verdict === 'pass') pass++; else if (c.verdict === 'block') fail++;
-                    }));
-                    designSummary.innerHTML = fail
-                        ? `<strong style="color:var(--accent-red);">${fail}</strong> mismatch(es) across ${groups.length} group(s) — expand to review.`
-                        : `<strong style="color:var(--accent-green);">${pass}</strong> checks matched across ${groups.length} group(s).`;
+        // Panels the reader has taken over, by pressing the button or by jumping to one.
+        const panelFoldOwnedByReader = {};
+        // Only panels this folded are ones it may unfold: a panel the reader collapsed by hand
+        // stays collapsed even when it starts reporting something.
+        const panelFoldedAutomatically = {};
+
+        function claimPanelForReader(panelKey) {
+            if (panelKey) panelFoldOwnedByReader[panelKey] = true;
+        }
+
+        function foldQuietPanels(snapshot) {
+            const state = snapshot || buildGlobalStatusSnapshot();
+
+            Object.keys(PANEL_FOLD_STATE).forEach(panelKey => {
+                if (panelFoldOwnedByReader[panelKey]) return;
+                const panel = document.querySelector(`[data-panel-key="${panelKey}"]`);
+                if (!panel) return;
+                const verdict = PANEL_FOLD_STATE[panelKey](state);
+                if (!verdict) return;
+
+                if (verdict.quiet && !collapsedPanelState[panelKey]) {
+                    const box = panel.getBoundingClientRect();
+                    // Whatever is on screen right now is what someone is reading. Folding it is
+                    // deferred until it scrolls out of view, which costs nothing: the pass runs
+                    // again on the next tick.
+                    if (box.bottom > 0 && box.top < window.innerHeight) return;
+
+                    const heightBefore = panel.offsetHeight;
+                    const scrollBefore = window.scrollY;
+                    setPanelCollapsed(panelKey, true, state);
+                    panelFoldedAutomatically[panelKey] = true;
+
+                    // Folding a panel the reader has already scrolled past pulls everything
+                    // below it upwards, which moves text under their eyes. Chrome anchors the
+                    // scroll position itself when content above the viewport shrinks and Safari
+                    // does not, so this sets the absolute position that is correct either way
+                    // -- a relative nudge would land twice in the browser that already did it,
+                    // measured as an 11,000px jump on the design panel.
+                    if (box.bottom <= 0) {
+                        const target = Math.max(0, scrollBefore - (heightBefore - panel.offsetHeight));
+                        if (Math.abs(window.scrollY - target) > 1) window.scrollTo(0, target);
+                    }
+                } else if (!verdict.quiet && collapsedPanelState[panelKey] && panelFoldedAutomatically[panelKey]) {
+                    setPanelCollapsed(panelKey, false, state);
+                    panelFoldedAutomatically[panelKey] = false;
                 }
-            }
+            });
+        }
+
+        // One source for the line a collapsed panel shows, whichever way it got collapsed --
+        // the reader's button or the fold pass above. Previously two panels had this written by
+        // hand and the other ten showed whatever static text was in the markup.
+        function refreshCollapsedPanelSummaries(snapshot) {
+            let state = snapshot;
+            Object.keys(PANEL_FOLD_STATE).forEach(panelKey => {
+                if (!collapsedPanelState[panelKey]) return;
+                const slot = document.querySelector(`[data-panel-key="${panelKey}"] [data-panel-summary]`);
+                if (!slot) return;
+                if (!state) state = buildGlobalStatusSnapshot();
+                const verdict = PANEL_FOLD_STATE[panelKey](state);
+                slot.innerHTML = verdict ? verdict.summary : 'Nothing measured yet — expand to set it running.';
+            });
         }
 
         // --- 5d. CONFIG DRIFT BASELINE ---
@@ -12635,7 +12738,13 @@
                 // with a one-line "will this form show, and if not why" verdict per form plus the
                 // button that fixes it, which is the whole reason a tester opens this app. Hiding
                 // that behind a collapse (as it was) buried the single most useful thing on screen.
+                //
+                // Recorded as an automatic fold rather than a bare collapse: this fires before
+                // the validator has run, so without the flag foldQuietPanels() would have no
+                // licence to re-open the panel once a mismatch actually turned up, and the
+                // opening collapse would quietly hide a real finding.
                 setPanelCollapsed('design', true);
+                panelFoldedAutomatically.design = true;
                 renderGlobalStatusBar();
 
                 assignPanelsToWorkspaces();

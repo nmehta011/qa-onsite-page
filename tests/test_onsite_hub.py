@@ -2092,3 +2092,134 @@ def test_a_link_to_the_retired_activity_workspace_still_opens_its_panels(page):
     page.evaluate("() => setActiveWorkspace('health')")
     page.wait_for_timeout(300)
     assert "qa_view=health" in page.evaluate("() => location.search")
+
+
+# --------------------------------------------------------------------------------------------
+# Folding panels that have nothing to report.
+#
+# Most panels most of the time have found nothing, and each one still cost a screen of scroll.
+# The risk in doing this automatically is not the folding, it is the three ways it could go
+# wrong: folding a check that has not finished (so "found nothing" means "looked at nothing"),
+# leaving a panel folded after a finding appears in it, and fighting the reader's own button.
+# One test each.
+# --------------------------------------------------------------------------------------------
+
+
+def _fold_state(pg):
+    return pg.evaluate("""() => {
+        const snapshot = buildGlobalStatusSnapshot();
+        const o = {};
+        Object.keys(PANEL_FOLD_STATE).forEach(k => {
+            const v = PANEL_FOLD_STATE[k](snapshot);
+            o[k] = {collapsed: !!collapsedPanelState[k], auto: !!panelFoldedAutomatically[k],
+                    quiet: v ? v.quiet : None_};
+        });
+        return o;
+    }""".replace("None_", "null"))
+
+
+def test_a_panel_with_nothing_to_report_folds_and_one_with_findings_does_not(page):
+    """The whole point, and its inverse in the same assertion: a panel is folded because its
+    check ran and found nothing, never because it is quiet-looking."""
+    inject(page)
+    page.wait_for_timeout(6000)     # the fold pass runs on the 1800ms render tick
+    state = _fold_state(page)
+
+    folded = {k for k, v in state.items() if v["collapsed"]}
+    assert folded, f"nothing folded at all on a clean-ish property: {state}"
+
+    for key, panel in state.items():
+        if panel["quiet"] is None:
+            assert not panel["auto"], f"{key} was folded before its check produced anything"
+        elif panel["quiet"] is False:
+            assert not panel["collapsed"] or not panel["auto"], \
+                f"{key} has findings but was folded away: {panel}"
+
+    # targeting is deliberately never folded — it is the panel the tester came for
+    assert not state["targeting"]["collapsed"], "the targeting matrix folded itself"
+
+
+def test_a_folded_panel_reopens_when_it_starts_reporting_something(page):
+    """The failure that would make this feature worse than not having it. Driven through the
+    real pass with a doctored snapshot rather than by waiting for a genuine mismatch, because
+    the branch has to hold for every panel, not just whichever one happens to fail today."""
+    inject(page)
+    page.wait_for_timeout(6000)
+    assert page.evaluate("() => !!collapsedPanelState.design && !!panelFoldedAutomatically.design"), \
+        "design did not fold, so there is nothing to reopen"
+
+    page.evaluate("""() => foldQuietPanels(
+        Object.assign(buildGlobalStatusSnapshot(), {designMismatches: 3, designChecked: 11}))""")
+
+    assert not page.evaluate("() => collapsedPanelState.design"), "a new finding stayed folded away"
+    assert not page.eval_on_selector_all('[data-panel-key="design"] [data-panel-body]',
+                                         "els => els.some(e => e.classList.contains('panel-body-collapsed'))"), \
+        "the panel reopened in name only — its body is still hidden"
+
+    # and folded again with findings present, the one line it shows says so rather than
+    # repeating the stale all-clear it was folded with
+    page.evaluate("""() => setPanelCollapsed('design', true,
+        Object.assign(buildGlobalStatusSnapshot(), {designMismatches: 3, designChecked: 11}))""")
+    assert "3 mismatch" in page.inner_text('[data-panel-key="design"] [data-panel-summary]')
+
+
+def test_the_fold_never_argues_with_the_collapse_button(page):
+    """Expanding a folded panel by hand has to stick. The pass runs every 1.8s, so a fold that
+    ignored the button would close the panel again while it was being read."""
+    inject(page)
+    page.wait_for_timeout(6000)
+    quiet = page.evaluate("""() => Object.keys(PANEL_FOLD_STATE)
+        .find(k => collapsedPanelState[k] && panelFoldedAutomatically[k])""")
+    assert quiet, "no panel folded itself, so there is nothing to argue with"
+
+    page.evaluate("(k) => togglePanelCollapsed(k)", quiet)      # the reader expands it
+    page.wait_for_timeout(5000)                                  # two full passes
+    assert not page.evaluate("(k) => collapsedPanelState[k]", quiet), \
+        f"{quiet} was folded again after being opened by hand"
+
+    # and the reverse: a panel the reader collapsed stays collapsed even when it has findings
+    page.evaluate("() => togglePanelCollapsed('diagnostics')")
+    page.evaluate("""() => foldQuietPanels(
+        Object.assign(buildGlobalStatusSnapshot(), {diagnosticFindings: 4, blockingDiagnostics: 2}))""")
+    assert page.evaluate("() => collapsedPanelState.diagnostics"), \
+        "a panel the reader collapsed was reopened over their head"
+
+
+def test_folding_a_panel_above_the_viewport_does_not_move_the_page(page):
+    """Folding something the reader has already scrolled past pulls everything below it upwards.
+    The pass adds the lost height back to the scroll position; without that, text jumps under
+    the eyes of someone reading further down the page."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('all')")
+    page.wait_for_timeout(6000)
+
+    key = page.evaluate("""() => Object.keys(PANEL_FOLD_STATE)
+        .find(k => collapsedPanelState[k] && panelFoldedAutomatically[k])""")
+    assert key, "no folded panel to re-fold"
+
+    # put it back, scroll well past it, and note where a landmark below it sits on screen
+    page.evaluate("(k) => { panelFoldedAutomatically[k] = false; setPanelCollapsed(k, false); }", key)
+    page.wait_for_timeout(400)
+    before = page.evaluate("""(k) => {
+        const panel = document.querySelector(`[data-panel-key="${k}"]`);
+        window.scrollTo(0, panel.getBoundingClientRect().bottom + window.scrollY + 400);
+        return null;
+    }""", key)
+    page.wait_for_timeout(300)
+    landmark = page.evaluate("""(k) => {
+        const panel = document.querySelector(`[data-panel-key="${k}"]`);
+        if (panel.getBoundingClientRect().bottom > 0) return null;   // must be fully above
+        const below = document.querySelector('footer') || document.body.lastElementChild;
+        return {top: Math.round(below.getBoundingClientRect().top)};
+    }""", key)
+    assert landmark, "could not get the panel above the viewport"
+
+    page.evaluate("() => foldQuietPanels()")
+    page.wait_for_timeout(200)
+    after = page.evaluate("""() => {
+        const below = document.querySelector('footer') || document.body.lastElementChild;
+        return Math.round(below.getBoundingClientRect().top);
+    }""")
+    assert page.evaluate("(k) => collapsedPanelState[k]", key), "the panel did not fold"
+    assert abs(after - landmark["top"]) <= 4, \
+        f"the page moved {after - landmark['top']}px under the reader"
