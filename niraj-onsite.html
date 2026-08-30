@@ -239,11 +239,15 @@
            action states the opposite of the value, which is a reliable way to misread a list of
            98 flags. */
         .diag-panel button.provision-switch, button.provision-switch {
-            display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 4px 0 0;
+            display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0;
             border: none; background: transparent; cursor: pointer; box-shadow: none;
             font-family: inherit; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.5px;
             text-transform: uppercase; color: var(--text-dim); flex-shrink: 0;
         }
+        /* On the right-hand edge the label is what sets the switch's width, so an unreserved
+           one would slide the track a few pixels between an On row and an Off row -- visible as
+           a ragged column down a list this long. Reserved at the wider of the two. */
+        .provision-switch-state { min-width: 26px; text-align: left; }
         .diag-panel button.provision-switch:hover { transform: none; }
         .provision-switch-track { width: 34px; height: 18px; border-radius: 999px; background: var(--surface-control); border: 1px solid var(--line-strong); position: relative; transition: background 0.15s, border-color 0.15s; flex-shrink: 0; }
         .provision-switch-knob { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-faint); transition: transform 0.15s, background 0.15s; }
@@ -8961,15 +8965,19 @@
                 const on = provisions[name] === true || provisions[name] === 'true';
                 const overridden = name in overrides;
                 const safe = escapeMarkupForSafeRender(name);
+                // Name first, switch last: the eye reads what the flag IS before what it is set
+                // to, and every switch lands in the same right-hand column instead of being the
+                // thing 98 monospace names are ragged against. DOM order is the visual order, so
+                // tab order follows it too.
                 return `<div class="provision-row${overridden ? ' provision-row-overridden' : ''}">
-                            <button class="provision-switch" role="switch" aria-checked="${on}"
-                                    aria-label="${safe}" data-provision-set="${safe}" data-provision-value="${on ? 'false' : 'true'}">
-                                <span class="provision-switch-track"><span class="provision-switch-knob"></span></span>
-                                <span>${on ? 'On' : 'Off'}</span>
-                            </button>
                             <span class="provision-name">${safe}</span>
                             ${overridden ? `<span class="provision-state provision-overridden">overridden</span>
                             <button class="provision-release" data-provision-release="${safe}">Release</button>` : ''}
+                            <button class="provision-switch" role="switch" aria-checked="${on}"
+                                    aria-label="${safe}" data-provision-set="${safe}" data-provision-value="${on ? 'false' : 'true'}">
+                                <span class="provision-switch-track"><span class="provision-switch-knob"></span></span>
+                                <span class="provision-switch-state">${on ? 'On' : 'Off'}</span>
+                            </button>
                         </div>`;
             }).join('');
 

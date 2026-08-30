@@ -1738,6 +1738,49 @@ def test_the_live_configuration_is_never_held_across_calls(page):
     assert same, "readLiveOnsiteConfiguration is not returning the SDK's live object"
 
 
+def test_every_provision_switch_lands_in_the_same_column(page):
+    """The switch moved to the right-hand end of the row: 98 monospace names of wildly different
+    lengths were what the eye had to get past to reach the control, and the name is what you are
+    looking for. Right-aligned it only helps if it is a real column, which needs two things --
+    the switch last in the row, and its On/Off label width reserved, or the track slides a few
+    pixels between an On row and an Off row."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('config')")
+    page.wait_for_function("() => document.querySelectorAll('.provision-row').length > 0", timeout=20000)
+
+    # an overridden row carries two extra children, which is exactly the case a right-aligned
+    # column has to survive
+    name = page.evaluate("""() => {
+        const c = readLiveOnsiteConfiguration();
+        return Object.keys(c.provisions).find(k => !(c.provisions[k] === true || c.provisions[k] === 'true'));
+    }""")
+    page.evaluate("(n) => setProvisionOverride(n, true)", name)
+    page.wait_for_timeout(400)
+
+    geometry = page.evaluate("""() => {
+        const rows = [...document.querySelectorAll('.provision-row')].slice(0, 60);
+        const round = n => Math.round(n);
+        return {
+            rows: rows.length,
+            lastChildIsTheSwitch: rows.every(r => r.lastElementChild.classList.contains('provision-switch')),
+            switchRightEdges: [...new Set(rows.map(r => round(r.querySelector('.provision-switch').getBoundingClientRect().right)))],
+            trackLeftEdges: [...new Set(rows.map(r => round(r.querySelector('.provision-switch-track').getBoundingClientRect().left)))],
+            states: [...new Set(rows.map(r => r.querySelector('.provision-switch').getAttribute('aria-checked')))],
+            overriddenRows: document.querySelectorAll('.provision-row-overridden').length
+        };
+    }""")
+
+    assert geometry["rows"] > 10 and geometry["overriddenRows"] == 1, f"thin sample: {geometry}"
+    assert set(geometry["states"]) == {"true", "false"}, \
+        f"both an On and an Off row are needed to catch a sliding track: {geometry['states']}"
+    assert geometry["lastChildIsTheSwitch"], "a switch is no longer the last thing in its row"
+    assert len(geometry["switchRightEdges"]) == 1, f"the switches are ragged: {geometry['switchRightEdges']}"
+    assert len(geometry["trackLeftEdges"]) == 1, \
+        f"the track shifts between On and Off rows: {geometry['trackLeftEdges']}"
+
+    page.evaluate("(n) => releaseProvisionOverride(n)", name)
+
+
 def test_overrides_are_pinned_so_they_survive_a_re_injection(page):
     """A provision the SDK consults once at startup cannot be changed after the fact — that needs
     a re-inject, which is the only reason pinning exists."""
