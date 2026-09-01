@@ -1830,12 +1830,12 @@ def test_console_capture_does_not_swallow_the_real_console(page):
 
 
 # --------------------------------------------------------------------------------------------
-# SDK Inspector, and the configuration override it allows.
+# SDK Debugger, and the configuration override it allows.
 # --------------------------------------------------------------------------------------------
 
 def open_inspector(pg, subject="onsite-config"):
     inject(pg)
-    pg.evaluate("setActiveWorkspace('inspect')")
+    pg.evaluate("setActiveWorkspace('debugger')")
     pg.wait_for_function("() => document.querySelectorAll('.inspector-subject').length > 0", timeout=20000)
     pg.evaluate("(s) => document.querySelector(`[data-inspector-subject='${s}']`).click()", subject)
     pg.wait_for_timeout(400)
@@ -2004,9 +2004,9 @@ def test_every_workspace_is_reachable_from_the_command_palette(page):
 
     # and the entry must actually switch, not merely exist
     page.evaluate("""() => buildCommandPaletteActions()
-        .find(a => a.label.includes('Inspect')).run()""")
+        .find(a => a.label.includes('Debugger')).run()""")
     page.wait_for_timeout(300)
-    assert page.evaluate("() => activeWorkspaceKey") == "inspect"
+    assert page.evaluate("() => activeWorkspaceKey") == "debugger"
 
 
 def test_the_palette_hint_counts_the_workspaces_that_exist(page):
@@ -2312,7 +2312,7 @@ def test_a_required_field_with_no_error_message_is_called_out(page):
 def test_component_roles_is_reachable_as_an_inspector_subject(page):
     """A subject nobody can select is a function, not a feature."""
     inject(page)
-    page.evaluate("setActiveWorkspace('inspect')")
+    page.evaluate("setActiveWorkspace('debugger')")
     page.wait_for_function("() => document.querySelectorAll('[data-inspector-subject]').length > 0",
                            timeout=15000)
     page.evaluate("""() => document.querySelector('[data-inspector-subject="component-roles"]').click()""")
@@ -2323,3 +2323,15 @@ def test_component_roles_is_reachable_as_an_inspector_subject(page):
     assert "expectedRole" in output and "unique_name" in output, output[:400]
     # it is not an editable subject: nothing here is a live object to write back to
     assert page.eval_on_selector("#inspector-editor-wrap", "e => getComputedStyle(e).display") == "none"
+
+
+def test_a_link_to_the_retired_inspect_workspace_still_opens_the_debugger(page):
+    """Inspect was renamed to Debugger once it stopped being only a viewer. Same reasoning as the
+    Activity split: a permalink naming a workspace that no longer exists would otherwise fall
+    back to Targeting and drop someone somewhere unrelated to what they were sent."""
+    page.goto(BASE + "?qa_view=inspect", wait_until="domcontentloaded")
+    page.wait_for_function("() => document.querySelectorAll('#workspace-bar .workspace-tab').length > 0",
+                           timeout=15000)
+    assert page.evaluate("() => activeWorkspaceKey") == "debugger"
+    assert page.eval_on_selector_all("[data-inspector-subject]", "els => els.length") > 0, \
+        "the debugger did not render for someone arriving on the old link"

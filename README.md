@@ -12,7 +12,7 @@ because content renders inside a cross-origin iframe), it says so plainly instea
 | --- | --- |
 | **0** external dependencies | no CDN, no fonts, no framework |
 | **25** diagnostic panels | grouped into 6 task-based workspaces |
-| **89** regression tests | driven against a live property, no mocks |
+| **94** regression tests | driven against a live property, no mocks |
 | **~600 KB** | one HTML file, runs from `file://` if you have to |
 
 ---
@@ -132,13 +132,17 @@ Custom parameters and variables, manual `loadForm` / `showForm` / `closeForm`, U
 viewport controls, config drift baselines, environment A/B comparison, and **Provisions &
 overrides** — every provision the property ships, each one switchable at runtime.
 
-### 🔬 Inspect — *the raw configuration, not this tool's reading of it*
+### 🐞 Debugger — *the raw objects, not this tool's reading of them*
 
 Every other workspace interprets the SDK's configuration. This one shows it: property config,
-provisions, published forms, form definitions, raw targeting rules, custom parameters, SDK
-memory, browser storage and console output — as the JSON the SDK is actually running on, with
-search and copy. Edits are previewed as a path-level diff, applied to the live object in the
-page, and reversible; nothing is ever sent to Medallia.
+provisions, published forms, form definitions, **component roles**, raw targeting rules, custom
+parameters, SDK memory, browser storage and console output — as the JSON the SDK is actually
+running on, with search and copy. Edits are previewed as a path-level diff, applied to the live
+object in the page, and reversible; nothing is ever sent to Medallia.
+
+**Component roles** lists every field on every form with the role its type renders as, the key it
+submits under, its validation and what a screen reader is given to announce — flagging required
+fields with no error message, missing autocomplete attributes and answer ids that collide.
 
 ### 🧪 Scenario pages
 

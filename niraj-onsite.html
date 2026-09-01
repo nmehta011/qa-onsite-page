@@ -2593,15 +2593,16 @@
 
         <div class="diag-panel inspector-panel" data-panel-key="inspector" style="margin-top:0;">
             <div class="event-toolbar-row" style="border-bottom:1px solid var(--line); padding-bottom:12px;">
-                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:200px;">🔬 SDK Inspector</h4>
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:200px;">🐞 SDK Debugger</h4>
                 <span id="inspector-subject-meta" class="status-pill pill-sdk">Nothing loaded</span>
                 <button class="lifecycle-btn" onclick="copyInspectorOutputToClipboard()">📋 Copy</button>
                 <button class="lifecycle-btn" onclick="refreshInspectorOutput()">🔄 Refresh</button>
             </div>
             <p data-panel-body style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
-                The raw configuration the SDK is actually running on, straight from its own objects — not this app's
-                reading of it. Every other panel interprets; this is the source those interpretations come from, for
-                when the interpretation is the thing you doubt.
+                The raw objects the SDK is actually running on, straight from its own memory — not this app's
+                reading of them. Every other panel interprets; this is the source those interpretations come from,
+                for when the interpretation is the thing you doubt, and the one place you can change what the SDK
+                is running on to test a theory.
             </p>
             <div class="inspector-body">
                 <div class="inspector-subjects" id="inspector-subjects" role="tablist" aria-label="Inspector subjects"></div>
@@ -3637,7 +3638,7 @@
         }
 
         // Workspace entries are NOT listed here -- they are derived from WORKSPACE_DEFINITIONS by
-        // buildCommandPaletteActions() below. Hand-writing them is what let the Inspect workspace
+        // buildCommandPaletteActions() below. Hand-writing them is what let the Debugger workspace
         // ship unreachable from the palette: the list said five workspaces while the app had six,
         // and nothing compared the two. One source, so it cannot drift again.
         const COMMAND_PALETTE_STATIC_ACTIONS = [
@@ -8302,14 +8303,14 @@
             { key: 'traffic',    label: '📡 Traffic',    hint: 'The stream: events, submissions, storage, log' },
             { key: 'health',     label: '🩺 Health',     hint: 'Whether anything is wrong, and the evidence' },
             { key: 'config',     label: '🧭 Setup',      hint: 'Property config, parameters and drift' },
-            { key: 'inspect',    label: '🔬 Inspect',    hint: 'The raw configuration the SDK is running on' },
+            { key: 'debugger',   label: '🐞 Debugger',   hint: 'The raw objects the SDK is running on, and a way to change them' },
             { key: 'all',        label: '▦ All',        hint: 'Every panel at once — the original layout' }
         ];
 
         // A permalink or a bookmark made before the split carries the old key. Resolving it to
         // the half that inherited the panel it was pointing at beats the silent fall back to
         // Targeting that an unknown key otherwise gets.
-        const RETIRED_WORKSPACE_KEYS = { activity: 'traffic' };
+        const RETIRED_WORKSPACE_KEYS = { activity: 'traffic', inspect: 'debugger' };
 
         // Matched on visible headings: they are the same labels a tester reads on screen, so the
         // mapping stays obvious and survives markup edits that ids would not.
@@ -8326,7 +8327,7 @@
             'Will each form show?': 'targeting',
             'Config Drift Baseline': 'config',
             'Provisions & overrides': 'config',
-            'SDK Inspector': 'inspect',
+            'SDK Debugger': 'debugger',
             'Environment A/B Comparison': 'config',
             'Journey Automation': 'targeting',
             'Live Analytics Events Tracking': 'traffic',
@@ -8382,7 +8383,7 @@
 
             // The inspector reads the SDK live and only refreshes while it is on screen, so
             // arriving at it has to trigger a read rather than waiting for the next tick.
-            if (workspaceKey === 'inspect' || workspaceKey === 'all') {
+            if (workspaceKey === 'debugger' || workspaceKey === 'all') {
                 setTimeout(() => { if (typeof renderInspectorView === 'function') renderInspectorView(); }, 0);
             }
 
@@ -9298,8 +9299,8 @@
         // assignPanelsToWorkspaces() labels, and the status dots read buildGlobalStatusSnapshot()
         // -- the function that backs the status chips. A second list would drift from the panels
         // it describes the first time one was renamed.
-        const RAIL_WORKSPACE_ORDER = ['targeting', 'appearance', 'traffic', 'health', 'config', 'inspect'];
-        const RAIL_WORKSPACE_LABELS = { targeting: 'Targeting', appearance: 'Appearance', traffic: 'Traffic', health: 'Health', config: 'Setup', inspect: 'Inspect' };
+        const RAIL_WORKSPACE_ORDER = ['targeting', 'appearance', 'traffic', 'health', 'config', 'debugger'];
+        const RAIL_WORKSPACE_LABELS = { targeting: 'Targeting', appearance: 'Appearance', traffic: 'Traffic', health: 'Health', config: 'Setup', debugger: 'Debugger' };
 
         // heading fragment -> how that panel reports itself. `tone` drives the dot, `count` the
         // trailing number. Anything not listed stays idle, which is honest: most panels have no
