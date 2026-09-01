@@ -8443,6 +8443,106 @@
         // A workspace rather than a panel: a two-pane inspector needs the whole canvas, and
         // stacked among two dozen panels it would get a few hundred pixels while competing with
         // QA findings, which is a different job for a different person.
+        // --- COMPONENT ROLES ---
+        // The Web Debugger exposes per-field "component roles"; this is that, built from the
+        // form definition rather than the rendered form, because the rendered form lives in a
+        // cross-origin iframe and its DOM is unreachable from here (see the invitation-colour
+        // work for the same wall). So every role below is the role the type is DEFINED to
+        // render as, never one read back off a node — the field is named `expectedRole` and the
+        // subject note says so, because a debugger that quietly implies it measured something
+        // it inferred is worse than one that shows less.
+        const COMPONENT_ROLE_BY_TYPE = {
+            label: { role: 'presentation', interactive: false },
+            textInput: { role: 'textbox', interactive: true },
+            textArea: { role: 'textbox', interactive: true, multiline: true },
+            select: { role: 'combobox', interactive: true },
+            radio: { role: 'radiogroup', optionRole: 'radio', interactive: true },
+            checkbox: { role: 'group', optionRole: 'checkbox', interactive: true },
+            grading: { role: 'radiogroup', optionRole: 'radio', interactive: true },
+            grading1to7: { role: 'radiogroup', optionRole: 'radio', interactive: true },
+            grading1to10: { role: 'radiogroup', optionRole: 'radio', interactive: true },
+            nps: { role: 'radiogroup', optionRole: 'radio', interactive: true }
+        };
+
+        // A name the form designer never changed. It is also the key the answer arrives under in
+        // the Inbox, so a form full of these is a form whose responses are hard to read — worth
+        // saying out loud rather than leaving to be discovered at reporting time.
+        const AUTO_GENERATED_COMPONENT_NAME = /^Page \s*\d+\s+\w+\s+\d+$/i;
+
+        // Everything a developer debugging one field needs to know about it, and nothing that is
+        // merely styling. `notes` is the part that earns the subject its place: the same facts
+        // the fields above carry, read as the consequences they have.
+        function describeFormComponent(component, formId, formName, pageName) {
+            const type = component.type;
+            const mapping = COMPONENT_ROLE_BY_TYPE[type] || null;
+            const data = component.data || {};
+            const validation = component.validation || {};
+            const autocomplete = data.autocompleteAttribute || {};
+            const alternatives = Array.isArray(data.alternatives) ? data.alternatives : null;
+            // The SDK's default regex matches everything, so treating it as a constraint would
+            // report every field on every form as validated.
+            const constrainedByRegex = !!validation.regex && !/^\/?\.\*\/?$/.test(String(validation.regex));
+            const errorMessage = String(component.descriptiveErrorMessage || '').trim();
+            const notes = [];
+
+            if (!mapping) notes.push(`Unmapped component type "${type}" — this build does not know what role it renders as. The raw definition is under Form definitions.`);
+            if (validation.required && !errorMessage) notes.push('Required, but no descriptive error message: a screen reader announces only the generic page-level validation summary, so the field that failed is not named.');
+            if (constrainedByRegex && !errorMessage) notes.push('Constrained by a regex with no descriptive error message — a rejected answer cannot tell the respondent what shape was wanted.');
+            if (mapping && mapping.interactive && !data.label) notes.push('No label configured: the control has nothing to be named by.');
+            if (mapping && mapping.role === 'textbox' && !autocomplete.value) notes.push('No autocomplete attribute. WCAG 1.3.5 (Identify Input Purpose) wants one on a field collecting information about the respondent.');
+            if (alternatives) {
+                const ids = alternatives.map(a => String(a.id));
+                const labels = alternatives.map(a => String(a.label));
+                if (new Set(ids).size !== ids.length) notes.push('Two answers share an id — the response cannot be attributed to one of them.');
+                if (new Set(labels).size !== labels.length) notes.push('Two answers carry the same label, which is indistinguishable to a respondent.');
+            }
+            if (AUTO_GENERATED_COMPONENT_NAME.test(String(component.unique_name || ''))) {
+                notes.push('unique_name is still the generated default. This is the key the answer arrives under in the Inbox and the name a conditional-display rule refers to, so it is worth setting.');
+            }
+            if (component.conditionalDisplay) {
+                notes.push('Shown conditionally — this field is not always on the form. "Will each form show?" decodes the rule; the raw block is below.');
+            }
+
+            return {
+                form: `${formName} (${formId})`, page: pageName,
+                unique_name: component.unique_name, componentId: component.id,
+                type, expectedRole: mapping ? mapping.role : null,
+                optionRole: mapping && mapping.optionRole || null,
+                interactive: mapping ? mapping.interactive : null,
+                multiline: mapping && mapping.multiline || false,
+                label: data.label || null,
+                placeholder: data.placeHolder || null,
+                staticText: data.text || null,
+                required: !!validation.required,
+                regex: constrainedByRegex ? validation.regex : null,
+                autocompleteAttribute: autocomplete.value || null,
+                descriptiveErrorMessage: errorMessage || null,
+                answerCount: alternatives ? alternatives.length : null,
+                answers: alternatives ? alternatives.map(a => `${a.id} = ${a.label}`) : null,
+                conditionalDisplay: component.conditionalDisplay || null,
+                notes: notes.length ? notes : null
+            };
+        }
+
+        function buildComponentRolesReport() {
+            const merged = Object.assign({}, capturedFormDesignManifests, fetchedFormDefinitions);
+            const formIds = Object.keys(merged);
+            if (!formIds.length) return null;
+
+            const rows = [];
+            formIds.forEach(formId => {
+                const definition = merged[formId] || {};
+                const formName = definition.name || 'Unnamed form';
+                (definition.pages || []).forEach((page, index) => {
+                    const pageName = page.pageName || `Page ${index + 1}`;
+                    (page.components || []).forEach(component => {
+                        rows.push(describeFormComponent(component, formId, formName, pageName));
+                    });
+                });
+            });
+            return rows.length ? rows : null;
+        }
+
         const INSPECTOR_SUBJECTS = [
             {
                 id: 'onsite-config', label: 'Property configuration', editable: true,
@@ -8466,6 +8566,11 @@
                     return Object.keys(merged).length ? merged : null;
                 },
                 note: 'formDataV2 per form — pages, components, conditional display, design settings.'
+            },
+            {
+                id: 'component-roles', label: 'Component roles',
+                read: () => buildComponentRolesReport(),
+                note: 'Every field on every form: the role its type renders as, the key it submits under, its validation and what a screen reader is given to announce.'
             },
             {
                 id: 'targeting', label: 'Targeting rules (raw)',

@@ -2223,3 +2223,103 @@ def test_folding_a_panel_above_the_viewport_does_not_move_the_page(page):
     assert page.evaluate("(k) => collapsedPanelState[k]", key), "the panel did not fold"
     assert abs(after - landmark["top"]) <= 4, \
         f"the page moved {after - landmark['top']}px under the reader"
+
+
+# --------------------------------------------------------------------------------------------
+# Component roles.
+#
+# Web Debugger parity: per-field role information. Built from the form definition, because the
+# rendered form is in a cross-origin iframe and its DOM cannot be read from here — so the tests
+# that matter are the ones holding that honesty in place.
+# --------------------------------------------------------------------------------------------
+
+
+def test_component_roles_covers_every_field_on_every_form(page):
+    """One row per component, no form silently skipped: the subject is only trustworthy as a
+    field index if it indexes all of them."""
+    inject(page)
+    page.wait_for_timeout(4000)
+
+    counted = page.evaluate("""() => {
+        const merged = Object.assign({}, capturedFormDesignManifests, fetchedFormDefinitions);
+        let components = 0;
+        Object.values(merged).forEach(d => (d.pages || []).forEach(p => {
+            components += (p.components || []).length;
+        }));
+        return {forms: Object.keys(merged).length, components};
+    }""")
+    rows = page.evaluate("() => buildComponentRolesReport()")
+
+    assert counted["forms"] >= 4, f"the property lost its forms: {counted}"
+    assert len(rows) == counted["components"], \
+        f"{counted['components']} components in the definitions, {len(rows)} rows"
+    assert len({(r["form"], r["componentId"]) for r in rows}) == len(rows), "a component is listed twice"
+    assert all(r["unique_name"] and r["type"] for r in rows), "a row lost its identity"
+
+
+def test_an_unknown_component_type_is_reported_rather_than_guessed(page):
+    """The role comes from a lookup table, so a component type Medallia adds later has no entry.
+    Returning null quietly would read as "this field has no role"; it has to say it does not
+    know, or the subject lies by omission the first time the platform gains a field type."""
+    inject(page)
+    page.wait_for_timeout(4000)
+
+    described = page.evaluate("""() => describeFormComponent(
+        {id: 1, unique_name: 'made up', type: 'holographicSlider', data: {}, validation: {}},
+        '999', 'Fixture', 'Page 1')""")
+    assert described["expectedRole"] is None
+    assert described["notes"] and any("holographicSlider" in n for n in described["notes"]), \
+        f"an unmapped type was not flagged: {described['notes']}"
+
+    # and a type it does know is answered without a complaint about the mapping
+    known = page.evaluate("""() => describeFormComponent(
+        {id: 2, unique_name: 'q1', type: 'select', data: {label: 'Pick one'}, validation: {}},
+        '999', 'Fixture', 'Page 1')""")
+    assert known["expectedRole"] == "combobox"
+    assert not (known["notes"] and any("does not know what role" in n for n in known["notes"]))
+
+
+def test_a_required_field_with_no_error_message_is_called_out(page):
+    """The note that is worth the most: a required field whose only announcement on failure is
+    the generic page summary, so a screen reader user is told something failed but not what."""
+    inject(page)
+    page.wait_for_timeout(4000)
+
+    silent = page.evaluate("""() => describeFormComponent(
+        {id: 3, unique_name: 'email', type: 'textInput', data: {label: 'Email'},
+         validation: {required: true, regex: '/.+@.+/'}, descriptiveErrorMessage: ''},
+        '999', 'Fixture', 'Page 1')""")
+    assert silent["required"] and silent["regex"] == "/.+@.+/"
+    assert any("screen reader" in n for n in silent["notes"])
+    assert any("regex" in n for n in silent["notes"])
+
+    spoken = page.evaluate("""() => describeFormComponent(
+        {id: 4, unique_name: 'email', type: 'textInput', data: {label: 'Email',
+         autocompleteAttribute: {value: 'email'}},
+         validation: {required: true, regex: '/.+@.+/'},
+         descriptiveErrorMessage: 'Enter an address like name@example.com'},
+        '999', 'Fixture', 'Page 1')""")
+    assert not spoken["notes"] or not any("screen reader" in n for n in spoken["notes"])
+
+    # the SDK's default regex matches everything; treating it as a constraint would flag every
+    # field on every form
+    unconstrained = page.evaluate("""() => describeFormComponent(
+        {id: 5, unique_name: 'q', type: 'textArea', data: {label: 'Comments'},
+         validation: {required: false, regex: '/.*/'}}, '999', 'Fixture', 'Page 1')""")
+    assert unconstrained["regex"] is None
+
+
+def test_component_roles_is_reachable_as_an_inspector_subject(page):
+    """A subject nobody can select is a function, not a feature."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('inspect')")
+    page.wait_for_function("() => document.querySelectorAll('[data-inspector-subject]').length > 0",
+                           timeout=15000)
+    page.evaluate("""() => document.querySelector('[data-inspector-subject="component-roles"]').click()""")
+    page.wait_for_timeout(700)
+
+    assert page.evaluate("() => activeInspectorSubjectId") == "component-roles"
+    output = page.inner_text("#inspector-output")
+    assert "expectedRole" in output and "unique_name" in output, output[:400]
+    # it is not an editable subject: nothing here is a live object to write back to
+    assert page.eval_on_selector("#inspector-editor-wrap", "e => getComputedStyle(e).display") == "none"
