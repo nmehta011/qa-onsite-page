@@ -285,9 +285,18 @@
         .config-override-banner {
             position: sticky; top: calc(var(--nav-h, 62px) + var(--statusbar-h, 42px)); z-index: 870;
             display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-            background: rgba(139,92,246,0.16); border: 1px solid var(--accent-purple);
+            /* The tint is LAYERED OVER AN OPAQUE SURFACE, not used as the background. At 16%
+               alpha with nothing behind it, everything scrolling under the pinned banner showed
+               straight through -- the panel heading and its description read as torn in half.
+               Same treatment as every other sticky bar in this file. */
+            background: linear-gradient(rgba(139,92,246,0.16), rgba(139,92,246,0.16)), var(--surface-panel);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--accent-purple);
             border-radius: 10px; padding: 10px 14px; margin-bottom: 18px;
             font-size: 0.82rem; color: var(--text-max);
+            /* Pinned and opaque, it needs to read as floating above the page rather than as part
+               of whatever it happens to be covering. */
+            box-shadow: 0 6px 18px -8px rgba(0,0,0,0.55);
         }
         .config-override-banner strong { color: var(--accent-purple); }
         .diag-panel button.config-override-restore, button.config-override-restore {

@@ -3474,3 +3474,56 @@ def test_the_number_keys_still_switch_workspace_everywhere_else(page):
     page.wait_for_timeout(500)
     assert page.evaluate("() => activeWorkspaceKey") == "traffic", \
         "a number outside the Debugger stopped switching workspace"
+
+
+def test_the_override_banner_is_opaque_so_nothing_reads_through_it(page):
+    """It is sticky, so the page scrolls underneath it. At 16% alpha with nothing behind it, the
+    panel heading and its description showed straight through the pinned banner and read as torn
+    in half. Reported from a screenshot; this is the check that keeps it fixed."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => document.querySelectorAll('[data-inspector-subject]').length > 0",
+                           timeout=15000)
+
+    name = page.evaluate("""() => {
+        const c = readLiveOnsiteConfiguration();
+        const n = Object.keys(c.provisions).find(k => c.provisions[k] !== true);
+        setProvisionOverride(n, true);
+        return n;
+    }""")
+    page.wait_for_timeout(400)
+    assert page.eval_on_selector("#config-override-banner", "e => getComputedStyle(e).display") != "none"
+
+    probes = page.evaluate("""() => {
+        // The SDK's invitation container is a full-page overlay and would answer every hit test
+        // before the banner does — this app already has a separate test about that. Stand it
+        // aside so what is being measured is the banner's own opacity.
+        const sdkOverlay = document.getElementById('kampyleInviteContainer');
+        const restore = sdkOverlay ? sdkOverlay.style.display : null;
+        if (sdkOverlay) sdkOverlay.style.display = 'none';
+
+        window.scrollTo(0, 500);
+        const el = document.getElementById('config-override-banner');
+        const r = el.getBoundingClientRect();
+        const points = [[r.left + 30, r.top + 6], [r.left + r.width / 2, r.top + r.height / 2],
+                        [r.right - 30, r.bottom - 6]];
+        const results = points.map(([x, y]) => {
+            const hit = document.elementFromPoint(x, y);
+            return !!hit && (hit === el || el.contains(hit));
+        });
+
+        if (sdkOverlay) sdkOverlay.style.display = restore;
+        return results;
+    }""")
+    assert all(probes), f"something else paints inside the banner's box: {probes}"
+
+    style = page.eval_on_selector("#config-override-banner", """e => {
+        const cs = getComputedStyle(e);
+        return {image: cs.backgroundImage, colour: cs.backgroundColor};
+    }""")
+    # the tint is a layer OVER an opaque surface, never the background on its own
+    assert "gradient" in style["image"], style
+    assert "rgba(0, 0, 0, 0)" not in style["colour"], \
+        f"the banner has no opaque colour beneath its tint: {style}"
+
+    page.evaluate("(n) => releaseProvisionOverride(n)", name)
