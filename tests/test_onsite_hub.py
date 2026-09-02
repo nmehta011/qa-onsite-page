@@ -3153,3 +3153,324 @@ def test_the_flat_view_is_still_there_for_reading_end_to_end(page):
         document.getElementById('inspector-only-matching').checked = false;
         renderInspectorOutput({force: true});
     }""")
+
+
+# --------------------------------------------------------------------------------------------
+# Debugger roadmap, item 8: more than two editable subjects.
+#
+# Writing was hardcoded to "the configuration object, or its provisions branch". The places a
+# value can be written to are not alike — a configuration key is a property on a live object, a
+# storage key is an API call, and a cookie has to be expired to be removed at all — so each
+# editable subject owns its own write.
+# --------------------------------------------------------------------------------------------
+
+
+def test_browser_storage_can_be_edited_and_restored(page):
+    """Lifecycle dates, visit counts and the percentile all live here, and they are what the
+    SDK's targeting reads. Pasting a whole storage state is how a reported bug gets reproduced."""
+    inject(page)
+    _open_debugger(page, "storage")
+    assert page.eval_on_selector("#inspector-editor-wrap", "e => getComputedStyle(e).display") == "block", \
+        "storage did not become editable"
+
+    original = page.evaluate("() => localStorage.getItem('kampyleUserSession')")
+    assert original, "the property wrote no session key to edit"
+
+    page.evaluate("""() => {
+        const state = readBrowserStorageState();
+        state.localStorage.kampyleUserSession = '1234567890';
+        state.localStorage.qa_probe_key = 'hello';
+        state.cookies.qa_probe_cookie = 'yes';
+        document.getElementById('inspector-editor').value = JSON.stringify(state, null, 2);
+        applyInspectorJson();
+    }""")
+    page.wait_for_timeout(700)
+
+    assert page.evaluate("() => localStorage.getItem('kampyleUserSession')") == "1234567890"
+    assert page.evaluate("() => localStorage.getItem('qa_probe_key')") == "hello"
+    assert page.evaluate("() => document.cookie.includes('qa_probe_cookie')")
+    assert page.eval_on_selector("#config-override-banner", "e => getComputedStyle(e).display") != "none", \
+        "an edited storage state did not raise the banner"
+
+    page.evaluate("() => restorePropertyConfiguration()")
+    page.wait_for_timeout(700)
+    assert page.evaluate("() => localStorage.getItem('kampyleUserSession')") == original, \
+        "restore did not put the property's own value back"
+    assert page.evaluate("() => localStorage.getItem('qa_probe_key')") is None, \
+        "a key added by the edit survived restore"
+    assert not page.evaluate("() => document.cookie.includes('qa_probe_cookie')"), \
+        "a cookie cannot be removed by dropping the key — it has to be expired"
+
+
+def test_each_editable_subject_writes_through_its_own_path(page):
+    """The generalisation is the point: nothing should be reachable through a subject id
+    comparison buried in the apply function."""
+    inject(page)
+    _open_debugger(page)
+
+    wired = page.evaluate("""() => INSPECTOR_SUBJECTS.map(s => ({
+        id: s.id, editable: !!s.editable, hasWriter: typeof s.applyEdit === 'function'
+    }))""")
+    for subject in wired:
+        assert subject["editable"] == subject["hasWriter"], \
+            f"{subject['id']} claims editable={subject['editable']} but hasWriter={subject['hasWriter']}"
+
+    assert {s["id"] for s in wired if s["editable"]} == {"onsite-config", "provisions", "storage"}
+
+
+def test_custom_parameters_stay_read_only_and_say_why(page):
+    """A parameter's value is typed, and where it is written depends on its configured source —
+    URL, window variable or cookie. A raw JSON edit could set a string where the SDK will cast a
+    number and quietly change what a rule evaluates to."""
+    inject(page)
+    _open_debugger(page, "custom-params")
+
+    assert page.eval_on_selector("#inspector-editor-wrap", "e => getComputedStyle(e).display") == "none"
+    note = page.evaluate("() => INSPECTOR_SUBJECTS.find(s => s.id === 'custom-params').note")
+    assert "read-only" in note.lower() and "typed" in note.lower(), note
+
+    # and the path that would write them is still the one Setup uses, not a new one
+    assert page.evaluate("() => typeof writePropertyCustomParamValue === 'function'")
+
+
+# --------------------------------------------------------------------------------------------
+# Debugger roadmap, item 9: snapshot on event.
+#
+# No page-level API can suspend another script mid-run, so a tool offering to "pause the SDK"
+# would be lying. Capturing the complete state at the instant an event fires is most of what a
+# breakpoint is used for, and it is honest.
+# --------------------------------------------------------------------------------------------
+
+
+def test_a_snapshot_captures_every_subject_and_stays_frozen(page):
+    inject(page)
+    _open_debugger(page, "snapshots")
+    assert page.eval_on_selector("#debugger-snapshot-wrap", "e => getComputedStyle(e).display") == "block"
+
+    captured = page.evaluate("""() => {
+        const s = recordDebuggerSnapshot('probe');
+        return {reason: s.reason, subjects: Object.keys(s.subjects), url: s.url,
+                overridden: s.configurationWasOverridden};
+    }""")
+    assert "onsite-config" in captured["subjects"] and "storage" in captured["subjects"]
+    # a snapshot must not contain the list of snapshots, nor duplicate the change history
+    assert "snapshots" not in captured["subjects"] and "change-history" not in captured["subjects"]
+    assert captured["overridden"] is False, "the override flag has to travel with the snapshot"
+
+    frozen = page.evaluate("""() => {
+        const before = debuggerSnapshots[0].subjects['onsite-config'].websiteId;
+        readLiveOnsiteConfiguration().websiteId = 999999;
+        const after = debuggerSnapshots[0].subjects['onsite-config'].websiteId;
+        readLiveOnsiteConfiguration().websiteId = before;
+        return {before, after};
+    }""")
+    assert frozen["before"] == frozen["after"], \
+        "the snapshot moved when the live object did — it is a reference, not a capture"
+
+
+def test_arming_on_an_event_captures_that_event_and_nothing_else(page):
+    """Matching is a substring so "invite" catches every invitation event without anyone having
+    to know the exact names the SDK uses."""
+    inject(page)
+    _open_debugger(page, "snapshots")
+
+    page.evaluate("""() => {
+        document.getElementById('debugger-snapshot-input').value = 'invite';
+        armDebuggerSnapshotTrigger();
+    }""")
+    assert "Armed" in page.eval_on_selector("#debugger-snapshot-status", "e => e.innerText")
+
+    before = page.evaluate("() => debuggerSnapshots.length")
+    page.evaluate("""() => window.dispatchEvent(new CustomEvent('qa_sdk_custom_event',
+        {detail: {name: 'kmpl_invite_shown', source: 'test', data: {}}}))""")
+    page.wait_for_timeout(300)
+    matched = page.evaluate("() => debuggerSnapshots.length")
+    assert matched == before + 1, "a matching event did not fire a snapshot"
+    assert "invite" in page.evaluate("() => debuggerSnapshots[0].reason")
+
+    page.evaluate("""() => window.dispatchEvent(new CustomEvent('qa_sdk_custom_event',
+        {detail: {name: 'nothing_to_do_with_it', source: 'test', data: {}}}))""")
+    page.wait_for_timeout(300)
+    assert page.evaluate("() => debuggerSnapshots.length") == matched, \
+        "an unmatched event fired a snapshot"
+
+    page.evaluate("() => disarmDebuggerSnapshotTrigger()")
+    page.evaluate("""() => window.dispatchEvent(new CustomEvent('qa_sdk_custom_event',
+        {detail: {name: 'kmpl_invite_shown', source: 'test', data: {}}}))""")
+    page.wait_for_timeout(300)
+    assert page.evaluate("() => debuggerSnapshots.length") == matched, "disarming did not stop it"
+    assert "Not armed" in page.eval_on_selector("#debugger-snapshot-status", "e => e.innerText")
+
+
+def test_the_snapshot_controls_only_appear_on_their_own_subject(page):
+    inject(page)
+    _open_debugger(page, "onsite-config")
+    assert page.eval_on_selector("#debugger-snapshot-wrap", "e => getComputedStyle(e).display") == "none"
+    _open_debugger(page, "snapshots")
+    assert page.eval_on_selector("#debugger-snapshot-wrap", "e => getComputedStyle(e).display") == "block"
+    page.evaluate("() => { activeInspectorSubjectId = 'onsite-config'; renderInspectorView({force: true}); }")
+
+
+# --------------------------------------------------------------------------------------------
+# Debugger roadmap, item 10: the debug bundle.
+#
+# Bug Report gathers this app's findings. A developer filing an SDK issue with Medallia needs
+# the raw state those findings were derived from. Two exports beats one that tries to be both.
+# --------------------------------------------------------------------------------------------
+
+
+def test_the_bundle_carries_the_state_and_the_context_to_read_it(page):
+    inject(page)
+    _open_debugger(page)
+
+    bundle = page.evaluate("""() => {
+        const b = buildDebuggerBundle();
+        return {keys: Object.keys(b), subjects: Object.keys(b.subjects),
+                overridden: b.configurationWasOverridden, hasUa: !!b.userAgent,
+                hasFindings: !!b.findingsSummary, kb: Math.round(JSON.stringify(b).length / 1024)};
+    }""")
+    for required in ("takenAt", "url", "userAgent", "configurationWasOverridden",
+                     "provisionOverrides", "findingsSummary", "subjects", "redaction"):
+        assert required in bundle["keys"], f"the bundle has no {required}: {bundle['keys']}"
+    assert "onsite-config" in bundle["subjects"] and "requests" in bundle["subjects"]
+    assert bundle["kb"] > 10, "the bundle is suspiciously small"
+
+    # a reader cannot interpret any of it without knowing whether the config was someone's
+    # experiment, so that flag has to travel with it
+    name = page.evaluate("""() => {
+        const c = readLiveOnsiteConfiguration();
+        const n = Object.keys(c.provisions).find(k => c.provisions[k] !== true);
+        setProvisionOverride(n, true);
+        return n;
+    }""")
+    page.wait_for_timeout(300)
+    assert page.evaluate("() => buildDebuggerBundle().provisionOverrides")[name] is True
+    page.evaluate("(n) => releaseProvisionOverride(n)", name)
+
+
+def test_the_bundle_masks_personal_data_on_the_way_out(page):
+    """A bundle is a file that leaves this browser and goes into a ticket. The same patterns the
+    PII panel scans with are reused rather than a second list that could disagree with it."""
+    inject(page)
+    _open_debugger(page)
+
+    redacted = page.evaluate("""() => redactPiiFromBundleValue({
+        note: 'contact jane.doe@example.com',
+        nested: {phones: ['call 415-555-0142'], token: 'sk_abcdefghijklmnop1234'},
+        harmless: 'nothing here', count: 42, nothing: null
+    })""")
+    assert "jane.doe@example.com" not in redacted["note"] and "@example.com" in redacted["note"]
+    assert "415-555-0142" not in redacted["nested"]["phones"][0]
+    assert "abcdefghijklmnop1234" not in redacted["nested"]["token"], redacted["nested"]["token"]
+    assert redacted["harmless"] == "nothing here" and redacted["count"] == 42
+    assert redacted["nothing"] is None
+
+    # a global regex keeps lastIndex between calls, which silently skips every second match
+    both = page.evaluate("() => redactPiiFromBundleValue('a@b.com and c@d.com')")
+    assert "a@b.com" not in both and "c@d.com" not in both, both
+
+    # and the file says masking is a pattern match, not a guarantee
+    assert "not a guarantee" in page.evaluate("() => buildDebuggerBundle().redaction")
+
+
+# --------------------------------------------------------------------------------------------
+# Debugger roadmap, items 11 and 12: deep links, and driving it from the keyboard.
+# --------------------------------------------------------------------------------------------
+
+
+def test_a_debugger_link_carries_the_subject_and_the_search(page):
+    """Debugging is usually two people, and the best you could send a colleague before this was
+    "open the Debugger and search for it"."""
+    inject(page)
+    _open_debugger(page, "requests")
+    page.evaluate("""() => {
+        document.getElementById('inspector-search-input').value = 'POST';
+        updateActiveBrowserAddressBarQueryString(false);
+    }""")
+    page.wait_for_timeout(300)
+
+    search = page.evaluate("() => location.search")
+    assert "qa_view=debugger" in search and "qa_subject=requests" in search and "qa_find=POST" in search, search
+
+    page.goto(BASE + search, wait_until="domcontentloaded")
+    page.wait_for_function("() => document.querySelectorAll('#workspace-bar .workspace-tab').length > 0",
+                           timeout=15000)
+    page.wait_for_timeout(800)
+    restored = page.evaluate("""() => ({workspace: activeWorkspaceKey, subject: activeInspectorSubjectId,
+        find: document.getElementById('inspector-search-input').value})""")
+    assert restored == {"workspace": "debugger", "subject": "requests", "find": "POST"}, restored
+
+
+def test_an_ordinary_link_does_not_grow_debugger_parameters(page):
+    """Only carried while the Debugger is the active workspace — every other link would otherwise
+    pick up two parameters nobody asked for."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('targeting')")
+    page.evaluate("() => updateActiveBrowserAddressBarQueryString(false)")
+    page.wait_for_timeout(300)
+    search = page.evaluate("() => location.search")
+    assert "qa_subject" not in search and "qa_find" not in search, search
+
+
+def test_a_link_to_a_subject_that_no_longer_exists_still_lands(page):
+    """Same reasoning as the retired workspace keys: ignore what you cannot honour rather than
+    resetting the whole view and dropping someone somewhere unrelated."""
+    page.goto(BASE + "?qa_view=debugger&qa_subject=no-such-subject", wait_until="domcontentloaded")
+    page.wait_for_function("() => document.querySelectorAll('#workspace-bar .workspace-tab').length > 0",
+                           timeout=15000)
+    page.wait_for_timeout(700)
+    assert page.evaluate("() => activeWorkspaceKey") == "debugger"
+    assert page.evaluate("() => activeInspectorSubjectId") == "onsite-config"
+    assert page.eval_on_selector_all("[data-inspector-subject]", "e => e.length") > 0
+
+
+def test_the_debugger_can_be_driven_from_the_keyboard(page):
+    """A debugger you drive from the keyboard is one you use for hours. Inside it a number picks
+    a subject rather than jumping you out to another workspace."""
+    inject(page)
+    _open_debugger(page)
+    # The SDK's invitation holds a focus trap while it is open — this app already tells the user
+    # so — and it would swallow every keystroke below.
+    page.evaluate("() => { const el = document.getElementById('kampyleInvite'); if (el) el.remove(); document.body.focus(); }")
+    page.wait_for_timeout(250)
+
+    third = page.evaluate("() => INSPECTOR_SUBJECTS[2].id")
+    page.keyboard.press("3")
+    page.wait_for_timeout(400)
+    assert page.evaluate("() => activeInspectorSubjectId") == third, "a number did not pick a subject"
+    assert page.evaluate("() => activeWorkspaceKey") == "debugger", \
+        "a number inside the Debugger jumped to another workspace"
+
+    tree_before = page.evaluate("() => debuggerTreeViewEnabled")
+    page.keyboard.press("t")
+    page.wait_for_timeout(300)
+    assert page.evaluate("() => debuggerTreeViewEnabled") != tree_before
+    page.keyboard.press("t")
+    page.wait_for_timeout(200)
+
+    page.keyboard.press("/")
+    page.wait_for_timeout(300)
+    assert page.evaluate("() => document.activeElement.id") == "inspector-search-input"
+
+    # a number typed into a field is text, not a shortcut
+    subject_now = page.evaluate("() => activeInspectorSubjectId")
+    page.keyboard.type("web2")
+    page.wait_for_timeout(300)
+    assert page.evaluate("() => activeInspectorSubjectId") == subject_now
+    assert page.evaluate("() => document.getElementById('inspector-search-input').value") == "web2"
+
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(200)
+    assert page.evaluate("() => document.activeElement.id") != "inspector-search-input"
+
+
+def test_the_number_keys_still_switch_workspace_everywhere_else(page):
+    """The Debugger claims them only while it is on screen."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('targeting')")
+    page.evaluate("() => { const el = document.getElementById('kampyleInvite'); if (el) el.remove(); document.body.focus(); }")
+    page.wait_for_timeout(400)
+    page.keyboard.press("3")
+    page.wait_for_timeout(500)
+    assert page.evaluate("() => activeWorkspaceKey") == "traffic", \
+        "a number outside the Debugger stopped switching workspace"

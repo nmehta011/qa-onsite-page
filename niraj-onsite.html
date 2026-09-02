@@ -259,6 +259,7 @@
         .debugger-console-prompt { font-family: monospace; font-size: 1rem; color: var(--accent-green); flex-shrink: 0; }
         .debugger-console-entry .suite-input { flex: 1; min-width: 0; font-family: monospace; font-size: 0.78rem; height: 32px; }
         .debugger-console-palette { display: flex; flex-wrap: wrap; gap: 6px; }
+        .debugger-snapshot-armed { color: var(--accent-amber); font-weight: 700; }
         .diag-panel button.debugger-quick-call, button.debugger-quick-call { background: var(--surface-control); border: 1px solid var(--line); color: var(--text-soft); font-size: 0.7rem; padding: 3px 9px; border-radius: 5px; cursor: pointer; height: auto; box-shadow: none; font-family: monospace; }
         .diag-panel button.debugger-quick-call:hover { border-color: var(--accent-green); color: var(--accent-green); transform: none; }
 
@@ -2833,6 +2834,7 @@
             <div class="event-toolbar-row" style="border-bottom:1px solid var(--line); padding-bottom:12px;">
                 <h4 style="margin:0; border:none; padding:0; flex:1; min-width:200px;">🐞 SDK Debugger</h4>
                 <span id="inspector-subject-meta" class="status-pill pill-sdk">Nothing loaded</span>
+                <button class="lifecycle-btn" onclick="downloadDebuggerBundle()" title="Everything above as one JSON file, with PII masked — for attaching to a ticket">🧳 Bundle</button>
                 <button class="lifecycle-btn" onclick="copyInspectorOutputToClipboard()">📋 Copy</button>
                 <button class="lifecycle-btn" onclick="refreshInspectorOutput()">🔄 Refresh</button>
             </div>
@@ -2864,6 +2866,21 @@
                         <button class="lifecycle-btn" onclick="setEveryTreePath(false)" title="Expand every branch">Expand all</button>
                     </div>
                     <pre id="inspector-output" class="inspector-output" tabindex="0"></pre>
+                    <div id="debugger-snapshot-wrap" class="debugger-console-wrap" style="display:none;">
+                        <div class="inspector-editor-head">
+                            <span>Capture everything when an event fires</span>
+                            <span class="inspector-editor-note">a snapshot, not a breakpoint — nothing on this page can pause the SDK mid-run</span>
+                        </div>
+                        <div class="debugger-console-entry">
+                            <span class="debugger-console-prompt" aria-hidden="true">📸</span>
+                            <input type="text" id="debugger-snapshot-input" class="suite-input" spellcheck="false"
+                                   placeholder="Part of an event name, e.g. invite" aria-label="Event name to capture on">
+                            <button class="lifecycle-btn" onclick="armDebuggerSnapshotTrigger()">Arm</button>
+                            <button class="lifecycle-btn" onclick="disarmDebuggerSnapshotTrigger()">Disarm</button>
+                            <button class="lifecycle-btn" onclick="takeDebuggerSnapshotNow()">Capture now</button>
+                        </div>
+                        <span id="debugger-snapshot-status" class="inspector-editor-status">Not armed — 0 captured</span>
+                    </div>
                     <div id="debugger-console-wrap" class="debugger-console-wrap" style="display:none;">
                         <div class="inspector-editor-head">
                             <span>Evaluate against the SDK's own globals</span>
@@ -4023,6 +4040,19 @@
                 return;
             }
 
+            // The Debugger claims the number keys, '/' and 't' for itself while it is on screen:
+            // inside it a number should pick a subject, not jump you out to another workspace.
+            // It returns having handled the event, or having decided not to.
+            if (activeWorkspaceKey === 'debugger') {
+                const before = e.defaultPrevented;
+                handleDebuggerKeyboard(e);
+                if (!before && e.defaultPrevented) return;
+                if (isTypingTarget(document.activeElement)) return;
+                // A number inside the Debugger is a subject, never a workspace, even when the
+                // subject does not exist -- silently switching workspace would be worse.
+                if (e.key >= '1' && e.key <= '9') return;
+            }
+
             if (isTypingTarget(document.activeElement)) return;
 
             if (e.key >= '1' && Number(e.key) <= WORKSPACE_DEFINITIONS.length && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -4102,6 +4132,7 @@
         }
 
         window.addEventListener('qa_analytics_event', (e) => {
+            considerEventForSnapshot(e.detail.name, 'analytics');
             collectedAnalyticsEventsCacheList.push({
                 time: new Date().toLocaleTimeString(),
                 at: Date.now(),
@@ -4273,6 +4304,7 @@
         let activeSdkBusChipFilter = null;
 
         window.addEventListener('qa_sdk_custom_event', (e) => {
+            considerEventForSnapshot(e.detail.name, 'SDK bus');
             collectedSdkBusEventsCacheList.push({
                 time: new Date().toLocaleTimeString(),
                 at: Date.now(),
@@ -8812,11 +8844,13 @@
         const INSPECTOR_SUBJECTS = [
             {
                 id: 'onsite-config', label: 'Property configuration', editable: true, history: true,
+                applyEdit: parsed => mutateLiveConfigurationInPlace(parsed, false),
                 read: () => readLiveOnsiteConfiguration(),
                 note: 'The whole onsite configuration object the SDK is running on, live.'
             },
             {
                 id: 'provisions', label: 'Provisions', editable: true, history: true,
+                applyEdit: parsed => mutateLiveConfigurationInPlace(parsed, true),
                 read: () => { const c = readLiveOnsiteConfiguration(); return c ? c.provisions : null; },
                 note: 'Per-property feature flags. The Setup workspace has a switch per flag; this is the raw map.'
             },
@@ -8853,7 +8887,11 @@
             {
                 id: 'custom-params', label: 'Custom parameters', history: true,
                 read: () => (propertyCustomParamRegistry.length ? propertyCustomParamRegistry : null),
-                note: 'Each parameter with the key the SDK reads and its configured source.'
+                // Deliberately read-only. A parameter's value has a TYPE, and where it is written
+                // depends on its configured source -- URL, window variable or cookie -- so a raw
+                // JSON edit could set a string where the SDK will cast a number and quietly
+                // change what a rule evaluates to. Setup's typed controls own that write.
+                note: 'Each parameter with the key the SDK reads and its configured source. Read-only here on purpose: a value is typed and its source decides where it is written, so Setup\'s controls own that write.'
             },
             {
                 id: 'sdk-memory', label: 'SDK memory', history: true,
@@ -8870,16 +8908,22 @@
                 note: 'What the SDK is holding in memory this session — device, region, session counters.'
             },
             {
-                id: 'storage', label: 'Browser storage', history: true,
-                read: () => ({
-                    localStorage: Object.fromEntries(Object.keys(localStorage).map(k => [k, localStorage.getItem(k)])),
-                    sessionStorage: Object.fromEntries(Object.keys(sessionStorage).map(k => [k, sessionStorage.getItem(k)])),
-                    cookies: Object.fromEntries(document.cookie.split('; ').filter(Boolean).map(pair => {
-                        const at = pair.indexOf('=');
-                        return [pair.slice(0, at), pair.slice(at + 1)];
-                    }))
-                }),
-                note: 'Everything this origin holds, including the keys the SDK writes.'
+                id: 'storage', label: 'Browser storage', history: true, editable: true,
+                read: () => readBrowserStorageState(),
+                applyEdit: parsed => applyBrowserStorageEdit(parsed),
+                note: 'Everything this origin holds, including the lifecycle keys the SDK targets on. Editable: applying re-targets straight away, and Restore puts back what was here before your first edit.'
+            },
+            {
+                id: 'snapshots', label: 'Snapshots',
+                startsEmpty: true,
+                read: () => (debuggerSnapshots.length ? debuggerSnapshots.map(snapshot => ({
+                    at: new Date(snapshot.at).toISOString(),
+                    reason: snapshot.reason,
+                    url: snapshot.url,
+                    configurationWasOverridden: snapshot.configurationWasOverridden,
+                    subjects: snapshot.subjects
+                })) : null),
+                note: 'The whole state, frozen at the moment a chosen event fired. Not a breakpoint — nothing can pause the SDK from this page — but it answers the same question after the fact.'
             },
             {
                 id: 'sdk-console', label: 'SDK console',
@@ -9342,6 +9386,225 @@
             });
         }
 
+        // --- SNAPSHOT ON EVENT ---
+        // The honest version of a breakpoint. No page-level API can suspend another script
+        // mid-run, so a tool that offered to "pause the SDK" would be lying. What it CAN do is
+        // capture the complete state at the instant a chosen event fires, which is most of what
+        // a breakpoint is actually used for. Named snapshot everywhere, never breakpoint.
+        const DEBUGGER_SNAPSHOT_LIMIT = 25;
+        const debuggerSnapshots = [];             // newest first
+        let debuggerSnapshotTrigger = '';         // event name to match, '' = armed for nothing
+        let debuggerSnapshotArmed = false;
+
+        // Also the whole of what a debug bundle is, which is why it is a function rather than
+        // inline: item 10 exports exactly this.
+        function captureEverySubjectNow(reason) {
+            const subjects = {};
+            INSPECTOR_SUBJECTS.forEach(subject => {
+                // Skipped so a snapshot does not contain the list of snapshots, and so the
+                // history of changes is not duplicated into every one of them.
+                if (subject.id === 'snapshots' || subject.id === 'change-history') return;
+                let value = null;
+                try { value = readInspectorSubjectValue(subject); } catch (err) { value = `<unreadable: ${err.message}>`; }
+                try { subjects[subject.id] = JSON.parse(JSON.stringify(value)); }
+                catch (err) { subjects[subject.id] = `<could not be frozen: ${err.message}>`; }
+            });
+            return {
+                at: Date.now(),
+                reason,
+                url: window.location.href,
+                // A snapshot is worth nothing if you cannot tell which state of the app produced
+                // it, and an override changes what every other subject means.
+                configurationWasOverridden: configurationHasBeenOverridden,
+                subjects
+            };
+        }
+
+        function recordDebuggerSnapshot(reason) {
+            const snapshot = captureEverySubjectNow(reason);
+            debuggerSnapshots.unshift(snapshot);
+            if (debuggerSnapshots.length > DEBUGGER_SNAPSHOT_LIMIT) debuggerSnapshots.length = DEBUGGER_SNAPSHOT_LIMIT;
+            writeLog(`📸 Debugger snapshot taken: ${reason}.`, 'info');
+            return snapshot;
+        }
+
+        // Called from the two event taps this file already installs. Matching is a substring so
+        // "invite" catches every invitation event without anyone having to know the exact names.
+        function considerEventForSnapshot(eventName, source) {
+            if (!debuggerSnapshotArmed || !debuggerSnapshotTrigger) return;
+            if (!String(eventName || '').toLowerCase().includes(debuggerSnapshotTrigger.toLowerCase())) return;
+            recordDebuggerSnapshot(`${source} event "${eventName}"`);
+            renderDebuggerSnapshotControls();
+        }
+
+        function armDebuggerSnapshotTrigger() {
+            const field = document.getElementById('debugger-snapshot-input');
+            if (!field) return;
+            debuggerSnapshotTrigger = String(field.value || '').trim();
+            debuggerSnapshotArmed = !!debuggerSnapshotTrigger;
+            if (!debuggerSnapshotArmed) { toast('Type part of an event name to arm a snapshot.', 'warn'); return; }
+            toast(`Armed. The next event matching "${debuggerSnapshotTrigger}" is captured whole.`, 'info');
+            writeLog(`📸 Snapshot armed on events matching "${debuggerSnapshotTrigger}".`, 'info');
+            renderDebuggerSnapshotControls();
+        }
+
+        function disarmDebuggerSnapshotTrigger() {
+            debuggerSnapshotArmed = false;
+            debuggerSnapshotTrigger = '';
+            renderDebuggerSnapshotControls();
+        }
+
+        function takeDebuggerSnapshotNow() {
+            recordDebuggerSnapshot('taken by hand');
+            renderInspectorView({ force: true });
+        }
+
+        function renderDebuggerSnapshotControls() {
+            const wrap = document.getElementById('debugger-snapshot-wrap');
+            const status = document.getElementById('debugger-snapshot-status');
+            if (!wrap) return;
+            wrap.style.display = activeInspectorSubjectId === 'snapshots' ? 'block' : 'none';
+            if (!status) return;
+            status.innerText = debuggerSnapshotArmed
+                ? `Armed on "${debuggerSnapshotTrigger}" — ${debuggerSnapshots.length} captured`
+                : `Not armed — ${debuggerSnapshots.length} captured`;
+            status.className = debuggerSnapshotArmed ? 'inspector-editor-status debugger-snapshot-armed' : 'inspector-editor-status';
+        }
+
+        // --- DEBUG BUNDLE ---
+        // The Bug Report panel gathers this app's FINDINGS. A developer filing an SDK issue with
+        // Medallia needs the raw state those findings were derived from: config, provisions,
+        // forms, component roles, the request log, the console, storage, versions, timestamps.
+        // Two exports beats one that tries to be both -- Bug Report owns the verdicts, this owns
+        // the evidence.
+        //
+        // Redacted on the way out, because a bundle is a file that leaves this browser and goes
+        // into a ticket. The same patterns the PII panel scans with are reused rather than a
+        // second list that could disagree with the panel about what counts as personal.
+        function redactPiiFromBundleValue(value, depth) {
+            const level = depth || 0;
+            if (level > 30) return value;                       // a cycle guard, not a real limit
+            if (typeof value === 'string') {
+                let out = value;
+                PII_SCAN_PATTERNS.forEach(pattern => {
+                    // A fresh RegExp per pass: the shared ones may carry /g, and a global regex
+                    // keeps lastIndex between calls, which silently skips matches.
+                    const flags = pattern.regex.flags.includes('g') ? pattern.regex.flags : pattern.regex.flags + 'g';
+                    out = out.replace(new RegExp(pattern.regex.source, flags),
+                        match => (pattern.validate && !pattern.validate(match)) ? match : pattern.mask(match));
+                });
+                return out;
+            }
+            if (Array.isArray(value)) return value.map(item => redactPiiFromBundleValue(item, level + 1));
+            if (value && typeof value === 'object') {
+                const out = {};
+                Object.keys(value).forEach(key => { out[key] = redactPiiFromBundleValue(value[key], level + 1); });
+                return out;
+            }
+            return value;
+        }
+
+        function buildDebuggerBundle() {
+            const captured = captureEverySubjectNow('debug bundle');
+            const snapshot = window.KAMPYLE_ONSITE_SDK ? buildGlobalStatusSnapshot() : null;
+            return redactPiiFromBundleValue({
+                bundleVersion: 1,
+                takenAt: new Date(captured.at).toISOString(),
+                url: captured.url,
+                userAgent: navigator.userAgent,
+                viewport: `${window.innerWidth}x${window.innerHeight}`,
+                hubBuild: typeof buildStampLine === 'function' ? buildStampLine() : null,
+                // Without this a reader cannot tell whether they are looking at the property's
+                // own configuration or someone's experiment, which changes what every other
+                // section of the bundle means.
+                configurationWasOverridden: captured.configurationWasOverridden,
+                provisionOverrides: readStoredProvisionOverrides(),
+                findingsSummary: snapshot,
+                changeHistory: debuggerChangeHistory.slice(0, 50),
+                snapshots: debuggerSnapshots.slice(0, 5),
+                subjects: captured.subjects,
+                redaction: 'Values matching this tool\'s PII patterns are masked. Read the file before sharing it — masking is a pattern match, not a guarantee.'
+            });
+        }
+
+        function downloadDebuggerBundle() {
+            let text;
+            try { text = JSON.stringify(buildDebuggerBundle(), null, 2); }
+            catch (err) { toast(`The bundle could not be built: ${err.message}`, 'warn'); return; }
+
+            const blob = new Blob([text], { type: 'application/json;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+            link.setAttribute('download', `medallia-debug-bundle-${stamp}.json`);
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            writeLog(`🧳 Debug bundle exported (${(text.length / 1024).toFixed(0)} KB, PII masked).`, 'success');
+            toast('Debug bundle downloaded. Read it before attaching it to a ticket.', 'success');
+        }
+
+        // Restores a link that names a subject and a search. A subject that no longer exists is
+        // ignored rather than resetting the workspace -- the link still lands somewhere useful,
+        // which is the same reasoning as the retired-workspace keys.
+        function restoreDebuggerDeepLinkFromTheAddressBar() {
+            const params = new URLSearchParams(window.location.search);
+            const subject = params.get('qa_subject');
+            const find = params.get('qa_find');
+            if (!subject && !find) return;
+
+            if (subject && INSPECTOR_SUBJECTS.some(entry => entry.id === subject)) {
+                activeInspectorSubjectId = subject;
+            }
+            if (find) {
+                const field = document.getElementById('inspector-search-input');
+                if (field) field.value = find;
+            }
+            renderInspectorView({ force: true });
+        }
+
+        // --- KEYBOARD ---
+        // A debugger you drive from the keyboard is one you use for hours. The app already has
+        // the vocabulary -- number keys for workspaces, / for the active filter, Cmd-K for the
+        // palette -- and the Debugger inherited none of it internally. These only bind while the
+        // workspace is on screen, so they cannot collide with the page-level shortcuts.
+        function handleDebuggerKeyboard(event) {
+            if (activeWorkspaceKey !== 'debugger') return;
+            if (event.metaKey || event.ctrlKey) {
+                // Cmd/Ctrl-Enter previews and applies without reaching for the mouse, which is
+                // the one action here worth a chord rather than a bare key.
+                if (event.key === 'Enter' && activeInspectorSubject().editable && inspectorEditorIsDirty) {
+                    event.preventDefault();
+                    previewInspectorJsonApply();
+                }
+                return;
+            }
+            if (isTypingTarget(document.activeElement)) {
+                // Escape gets out of a field first, so the keys below become reachable again.
+                if (event.key === 'Escape') document.activeElement.blur();
+                return;
+            }
+
+            // Subjects are numbered in the order they are listed, so the number matches what the
+            // eye sees rather than an internal index.
+            if (event.key >= '1' && event.key <= '9') {
+                const subject = INSPECTOR_SUBJECTS[Number(event.key) - 1];
+                if (!subject) return;
+                event.preventDefault();
+                activeInspectorSubjectId = subject.id;
+                inspectorEditorIsDirty = false;
+                renderInspectorView({ force: true });
+                return;
+            }
+            if (event.key === '/') {
+                const field = document.getElementById('inspector-search-input');
+                if (!field) return;
+                event.preventDefault();
+                field.focus(); field.select();
+                return;
+            }
+            if (event.key === 't' || event.key === 'T') { event.preventDefault(); toggleDebuggerTreeView(); }
+        }
+
         let activeInspectorSubjectId = 'onsite-config';
 
         function activeInspectorSubject() {
@@ -9685,6 +9948,7 @@
             renderInspectorSubjects();
             renderSubjectFilterControls();
             renderSdkConsoleControls();
+            renderDebuggerSnapshotControls();
             renderInspectorOutput(options);
             const subject = activeInspectorSubject();
             const wrap = document.getElementById('inspector-editor-wrap');
@@ -9914,6 +10178,78 @@
                  </div>`;
         }
 
+        // Writing was hardcoded to "the configuration object, or its provisions branch". Each
+        // editable subject owns its write now, because the places a value can be written to are
+        // not alike: a configuration key is a property on a live object, a storage key is an API
+        // call, and a cookie needs an expiry to be removed at all.
+        function mutateLiveConfigurationInPlace(parsed, provisionsOnly) {
+            const config = readLiveOnsiteConfiguration();
+            if (!config) return { ok: false, message: 'No property is loaded, so there is nothing to apply to.' };
+            // Mutated in place, never reassigned: the SDK holds this exact object, so replacing
+            // the reference would leave it reading the original and the edit doing nothing --
+            // the same trap the cached-configuration bug fell into.
+            const target = provisionsOnly ? config.provisions : config;
+            Object.keys(target).forEach(key => { if (!(key in parsed)) delete target[key]; });
+            Object.keys(parsed).forEach(key => { target[key] = parsed[key]; });
+            return { ok: true };
+        }
+
+        // Captured before the first storage edit so Restore can put back what the property was
+        // actually running on, exactly as it does for the configuration.
+        let originalBrowserStorageSnapshot = null;
+
+        function readBrowserStorageState() {
+            return {
+                localStorage: Object.fromEntries(Object.keys(localStorage).map(k => [k, localStorage.getItem(k)])),
+                sessionStorage: Object.fromEntries(Object.keys(sessionStorage).map(k => [k, sessionStorage.getItem(k)])),
+                cookies: Object.fromEntries(document.cookie.split('; ').filter(Boolean).map(pair => {
+                    const at = pair.indexOf('=');
+                    return [pair.slice(0, at), pair.slice(at + 1)];
+                }))
+            };
+        }
+
+        function applyBrowserStorageEdit(parsed) {
+            if (!parsed || typeof parsed !== 'object') return { ok: false, message: 'Expected an object with localStorage, sessionStorage and cookies.' };
+            if (!originalBrowserStorageSnapshot) originalBrowserStorageSnapshot = readBrowserStorageState();
+
+            const writeStore = (store, wanted) => {
+                const target = wanted || {};
+                Object.keys(store).forEach(key => { if (!(key in target)) store.removeItem(key); });
+                Object.keys(target).forEach(key => store.setItem(key, String(target[key])));
+            };
+            writeStore(localStorage, parsed.localStorage);
+            writeStore(sessionStorage, parsed.sessionStorage);
+
+            // A cookie is not removed by deleting a key -- it has to be expired, and only on the
+            // path it was set with. Everything this app writes uses path=/, which is the only
+            // path a page-level script can reliably clear.
+            const wantedCookies = parsed.cookies || {};
+            const currentCookies = readBrowserStorageState().cookies;
+            Object.keys(currentCookies).forEach(name => {
+                if (!(name in wantedCookies)) document.cookie = `${name}=; path=/; max-age=0;`;
+            });
+            Object.keys(wantedCookies).forEach(name => {
+                document.cookie = `${name}=${encodeURIComponent(String(wantedCookies[name]))}; path=/; max-age=3600;`;
+            });
+
+            // The SDK reads these on its next evaluation rather than watching them, so the
+            // re-target is what makes an edit here visible.
+            if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
+                try { window.KAMPYLE_ONSITE_SDK.updatePageView(); }
+                catch (err) { recordCaughtSdkException(err, 'KAMPYLE_ONSITE_SDK.updatePageView()'); }
+            }
+            refreshOnsiteLifecycleStateValues();
+            return { ok: true };
+        }
+
+        function restoreBrowserStorageIfEdited() {
+            if (!originalBrowserStorageSnapshot) return false;
+            applyBrowserStorageEdit(originalBrowserStorageSnapshot);
+            originalBrowserStorageSnapshot = null;
+            return true;
+        }
+
         function applyInspectorJson() {
             const subject = activeInspectorSubject();
             const editor = document.getElementById('inspector-editor');
@@ -9923,19 +10259,17 @@
             try { parsed = JSON.parse(editor.value); }
             catch (err) { toast(`That is not valid JSON: ${err.message}`, 'warn'); return; }
 
-            const config = readLiveOnsiteConfiguration();
-            if (!config) { toast('No property is loaded, so there is nothing to apply to.', 'warn'); return; }
-            captureOriginalConfigurationOnce();
+            if (subject.id !== 'storage') {
+                const config = readLiveOnsiteConfiguration();
+                if (!config) { toast('No property is loaded, so there is nothing to apply to.', 'warn'); return; }
+                captureOriginalConfigurationOnce();
+            }
             // Snapshotted before the mutation below: afterwards the live object IS the edit, so
             // there would be nothing left to diff against to count what was settled.
             const currentBeforeApply = JSON.parse(JSON.stringify(readInspectorSubjectValue(subject)));
 
-            // Mutated in place, never reassigned: the SDK holds this exact object, so replacing
-            // the reference would leave it reading the original and the edit doing nothing --
-            // the same trap the cached-configuration bug fell into.
-            const target = subject.id === 'provisions' ? config.provisions : config;
-            Object.keys(target).forEach(key => { if (!(key in parsed)) delete target[key]; });
-            Object.keys(parsed).forEach(key => { target[key] = parsed[key]; });
+            const written = subject.applyEdit(parsed);
+            if (!written.ok) { toast(written.message || 'That could not be applied.', 'warn'); return; }
 
             configurationHasBeenOverridden = true;
             inspectorEditorIsDirty = false;   // applied, so the live value is the truth again
@@ -9979,6 +10313,10 @@
             const overrides = readStoredProvisionOverrides();
             Object.keys(overrides).forEach(name => delete provisionValuesBeforeOverride[name]);
             writeStoredProvisionOverrides({});
+            // Storage edits are the other thing that is "not the property's own state", so
+            // Restore has to reach them too or the banner would clear while a hand-edited
+            // lifecycle date was still deciding what shows.
+            const storageWasRestored = restoreBrowserStorageIfEdited();
             configurationHasBeenOverridden = false;
             originalOnsiteConfigurationSnapshot = null;
 
@@ -10876,6 +11214,11 @@
             const url = new URL(window.location.href.split('?')[0]);
             if (activeDeviceEmulationKey) url.searchParams.set('qa_device', activeDeviceEmulationKey);
             if (activeWorkspaceKey && activeWorkspaceKey !== 'targeting') url.searchParams.set('qa_view', activeWorkspaceKey);
+            if (activeWorkspaceKey === 'debugger') {
+                if (activeInspectorSubjectId && activeInspectorSubjectId !== 'onsite-config') url.searchParams.set('qa_subject', activeInspectorSubjectId);
+                const debuggerSearch = document.getElementById('inspector-search-input');
+                if (debuggerSearch && debuggerSearch.value.trim()) url.searchParams.set('qa_find', debuggerSearch.value.trim());
+            }
             if (activePage !== 'main-page') url.searchParams.set('qa_page', activePage);
             url.searchParams.set('qa_script', compressToUrlParam(script));
 
@@ -13642,6 +13985,15 @@
             if (IS_NESTED_PREVIEW_FRAME) queryParams.set('qa_frame', '1');
             // Carried so a reload, a deep link or an emulated tab reopens the same workspace.
             if (activeWorkspaceKey && activeWorkspaceKey !== 'targeting') queryParams.set('qa_view', activeWorkspaceKey);
+            // Debugging is usually two people, and the best you could send a colleague before
+            // this was "open the Debugger and search for it". Only carried while the Debugger is
+            // the active workspace, so an ordinary link does not grow two parameters nobody asked
+            // for.
+            if (activeWorkspaceKey === 'debugger') {
+                if (activeInspectorSubjectId && activeInspectorSubjectId !== 'onsite-config') queryParams.set('qa_subject', activeInspectorSubjectId);
+                const search = document.getElementById('inspector-search-input');
+                if (search && search.value.trim()) queryParams.set('qa_find', search.value.trim());
+            }
             if (!servesVirtualRoutes && activePage !== 'main-page') queryParams.set('qa_page', activePage);
             Object.keys(virtualQueriesObject).forEach(k => queryParams.set(k, virtualQueriesObject[k].val));
 
@@ -13955,6 +14307,7 @@
                 renderPanelRail();
                 const requestedWorkspace = new URLSearchParams(window.location.search).get('qa_view');
                 setActiveWorkspace(requestedWorkspace || 'targeting', { skipUrlUpdate: true, skipScroll: true });
+                restoreDebuggerDeepLinkFromTheAddressBar();
             }
 
             if (activeDeviceEmulationProfile) {
