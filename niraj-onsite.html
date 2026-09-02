@@ -199,6 +199,27 @@
         .inspector-editor:focus { outline: none; border-color: var(--accent-purple); }
         .inspector-editor-actions { display: flex; align-items: center; gap: 9px; margin-top: 9px; flex-wrap: wrap; }
         .inspector-editor-status { font-size: 0.75rem; color: var(--accent-red); }
+        /* Watches sit above the output: the point of one is being glanceable while you read
+           something else. */
+        .debugger-watch-strip { border: 1px solid var(--line); border-radius: 7px; padding: 9px 11px; margin-bottom: 10px; background: var(--surface-sunken); }
+        .debugger-watch-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; font-size: 0.76rem; font-weight: 700; color: var(--text-soft); margin-bottom: 7px; }
+        .debugger-watch-head .suite-input { height: 28px; font-size: 0.75rem; flex: 1; min-width: 190px; max-width: 420px; }
+        .debugger-watch-note { font-weight: 400; font-size: 0.71rem; color: var(--text-dim); margin-left: auto; }
+        .debugger-watch-empty { font-size: 0.74rem; color: var(--text-dim); line-height: 1.6; }
+        .debugger-watch-empty code { background: var(--surface-control); padding: 1px 4px; border-radius: 3px; font-size: 0.95em; }
+        .debugger-watch-row { display: flex; align-items: center; gap: 9px; font-family: monospace; font-size: 0.73rem; padding: 4px 0; border-bottom: 1px solid var(--surface-control); }
+        .debugger-watch-row:last-child { border-bottom: none; }
+        .debugger-watch-subject { color: var(--text-dim); flex-shrink: 0; }
+        .debugger-watch-path { color: var(--accent-sky); flex-shrink: 0; }
+        .debugger-watch-value { color: var(--text-firm); word-break: break-all; flex: 1; min-width: 0; }
+        .debugger-watch-missing { color: var(--text-faint); font-style: italic; }
+        /* Marked rather than flashed: a blink inside a three-second loop is easy to miss, and
+           the mark persists until the value moves again. */
+        .debugger-watch-changed .debugger-watch-value { color: var(--accent-amber); }
+        .debugger-watch-flag { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--accent-amber); border: 1px solid rgba(245,158,11,0.4); border-radius: 4px; padding: 0 5px; flex-shrink: 0; }
+        .diag-panel button.debugger-watch-drop, button.debugger-watch-drop { background: transparent; border: none; color: var(--text-faint); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 3px; box-shadow: none; height: auto; flex-shrink: 0; }
+        .diag-panel button.debugger-watch-drop:hover { color: var(--accent-red); transform: none; }
+
         .inspector-diff { margin-top: 11px; border-top: 1px solid var(--line); padding-top: 11px; }
         .inspector-diff-row { font-family: monospace; font-size: 0.73rem; padding: 3px 0; display: flex; gap: 8px; }
         .inspector-diff-path { color: var(--text-soft); flex-shrink: 0; }
@@ -2615,6 +2636,15 @@
             <div class="inspector-body">
                 <div class="inspector-subjects" id="inspector-subjects" role="tablist" aria-label="Inspector subjects"></div>
                 <div class="inspector-main">
+                    <div class="debugger-watch-strip" id="debugger-watch-strip">
+                        <div class="debugger-watch-head">
+                            <span>👁️ Watches</span>
+                            <input type="text" id="debugger-watch-input" class="suite-input" placeholder="Path to watch in this subject, e.g. provisions.someFlag" aria-label="Path to watch">
+                            <button class="lifecycle-btn" onclick="addWatchFromTheInput()">Watch</button>
+                            <span class="debugger-watch-note" id="debugger-history-count">nothing has changed yet</span>
+                        </div>
+                        <div id="debugger-watch-rows"></div>
+                    </div>
                     <div class="inspector-toolbar">
                         <input type="text" id="inspector-search-input" class="suite-input" placeholder="Search this output…" aria-label="Search the inspector output" oninput="renderInspectorOutput({force:true})">
                         <span id="inspector-match-count" class="inspector-match-count"></span>
@@ -8554,17 +8584,17 @@
 
         const INSPECTOR_SUBJECTS = [
             {
-                id: 'onsite-config', label: 'Property configuration', editable: true,
+                id: 'onsite-config', label: 'Property configuration', editable: true, history: true,
                 read: () => readLiveOnsiteConfiguration(),
                 note: 'The whole onsite configuration object the SDK is running on, live.'
             },
             {
-                id: 'provisions', label: 'Provisions', editable: true,
+                id: 'provisions', label: 'Provisions', editable: true, history: true,
                 read: () => { const c = readLiveOnsiteConfiguration(); return c ? c.provisions : null; },
                 note: 'Per-property feature flags. The Setup workspace has a switch per flag; this is the raw map.'
             },
             {
-                id: 'forms', label: 'Published forms',
+                id: 'forms', label: 'Published forms', history: true,
                 read: () => readPublishedFormRegistryFromSdk(),
                 note: 'What KAMPYLE_DATA.getAllForms() returns, plus each form\'s live state.'
             },
@@ -8594,12 +8624,12 @@
                 note: 'The undecoded rule blocks behind "Will each form show?".'
             },
             {
-                id: 'custom-params', label: 'Custom parameters',
+                id: 'custom-params', label: 'Custom parameters', history: true,
                 read: () => (propertyCustomParamRegistry.length ? propertyCustomParamRegistry : null),
                 note: 'Each parameter with the key the SDK reads and its configured source.'
             },
             {
-                id: 'sdk-memory', label: 'SDK memory',
+                id: 'sdk-memory', label: 'SDK memory', history: true,
                 read: () => {
                     if (!window.KAMPYLE_DATA || !window.KAMPYLE_CONSTANT) return null;
                     const fields = KAMPYLE_CONSTANT.MEMORY_DATA_FIELDS || {};
@@ -8613,7 +8643,7 @@
                 note: 'What the SDK is holding in memory this session — device, region, session counters.'
             },
             {
-                id: 'storage', label: 'Browser storage',
+                id: 'storage', label: 'Browser storage', history: true,
                 read: () => ({
                     localStorage: Object.fromEntries(Object.keys(localStorage).map(k => [k, localStorage.getItem(k)])),
                     sessionStorage: Object.fromEntries(Object.keys(sessionStorage).map(k => [k, sessionStorage.getItem(k)])),
@@ -8625,6 +8655,17 @@
                 note: 'Everything this origin holds, including the keys the SDK writes.'
             },
             {
+                id: 'change-history', label: 'Change history',
+                read: () => (debuggerChangeHistory.length ? debuggerChangeHistory.map(entry => ({
+                    at: new Date(entry.at).toISOString(),
+                    subject: entry.label,
+                    source: entry.source,
+                    changes: entry.changeCount,
+                    paths: entry.paths.map(p => `${p.path}: ${JSON.stringify(p.from)} → ${JSON.stringify(p.to)}`)
+                })) : null),
+                note: 'Every change seen since this workspace was opened, newest first — plus every change this tool made, wherever you were when you made it.'
+            },
+            {
                 id: 'console', label: 'Console output',
                 read: () => (capturedSdkConsoleMessages.length ? capturedSdkConsoleMessages.map(entry => ({
                     level: entry.level, from: (RUNTIME_EXCEPTION_ORIGINS[entry.origin] || {}).label,
@@ -8634,6 +8675,160 @@
                 note: 'Everything written to the console since load, with the caller kept. Diagnostics explains the errors and warnings out of this same capture.'
             }
         ];
+
+        // --- CHANGE HISTORY AND WATCHES ---
+        // Answers "it worked a minute ago". diffConfigurationObjects() already computes exactly
+        // these diffs and has only ever been used once, for the Apply preview, and then thrown
+        // away; this keeps them.
+        //
+        // Cost is the constraint that shapes the design. Every readLiveOnsiteConfiguration()
+        // emits a deprecation warning from the SDK -- measured, one console message per call --
+        // so sweeping all subjects on the global render tick would push twenty messages a minute
+        // into the console capture that Diagnostics and the Console subject both read, polluting
+        // the thing the debugger exists to show. But renderInspectorSubjects() ALREADY reads
+        // every subject on every render, for the size counts, and only runs while the workspace
+        // is on screen. So history rides on reads that were happening anyway, and the strip says
+        // plainly that it records while the Debugger is open.
+        //
+        // Mutations this app makes itself are recorded wherever you are, because those it knows
+        // about without reading anything.
+        const DEBUGGER_HISTORY_LIMIT = 250;
+        const DEBUGGER_HISTORY_PATHS_PER_ENTRY = 12;
+        const debuggerChangeHistory = [];          // newest first
+        const debuggerLastSeenBySubject = {};
+
+        // Deliberately does NOT re-render the strip. A watch that changed records an entry from
+        // inside evaluateDebuggerWatches(), and re-rendering from here called that again --
+        // infinite recursion, caught the first time a watched provision moved. The callers
+        // render; this only records.
+        function recordDebuggerHistoryEntry(entry) {
+            debuggerChangeHistory.unshift(Object.assign({ at: Date.now() }, entry));
+            if (debuggerChangeHistory.length > DEBUGGER_HISTORY_LIMIT) debuggerChangeHistory.length = DEBUGGER_HISTORY_LIMIT;
+        }
+
+        // `value` is the one renderInspectorSubjects() just read, passed in rather than re-read.
+        function noteSubjectValueForHistory(subject, value) {
+            if (!subject.history) return;
+            let serialised;
+            try { serialised = JSON.stringify(value); } catch (err) { return; }   // unserialisable: nothing to compare
+            const previous = debuggerLastSeenBySubject[subject.id];
+            debuggerLastSeenBySubject[subject.id] = { serialised, value };
+            if (!previous) return;                          // first sight is not a change
+            if (previous.serialised === serialised) return;
+
+            // The watch list is stored in localStorage, so adding a watch showed up in the
+            // browser-storage subject as a change -- the tool recording itself. Provision
+            // overrides in that same store DO belong: those are changes to what is being
+            // debugged, not to the debugger.
+            const changes = diffConfigurationObjects(previous.value, value)
+                .filter(change => !String(change.path).includes(DEBUGGER_WATCH_STORAGE_KEY));
+            if (!changes.length) return;
+            recordDebuggerHistoryEntry({
+                subject: subject.id, label: subject.label, source: 'observed',
+                changeCount: changes.length,
+                paths: changes.slice(0, DEBUGGER_HISTORY_PATHS_PER_ENTRY)
+                    .map(c => ({ path: c.path, from: c.from, to: c.to }))
+            });
+        }
+
+        // Watches. A watch is a subject plus a dotted path, held across subject switches and
+        // across a re-injection, which is the point: the configuration object the SDK hands out
+        // is REPLACED once its own data loads, and a watch on a path is what makes that visible
+        // rather than mysterious. It has caused two separate bugs in this app already.
+        const DEBUGGER_WATCH_STORAGE_KEY = 'qa_debugger_watches_v1';
+        // How long a watch keeps saying it moved. A mark that lasted only until the next render
+        // was worse than none: the strip redraws every three seconds and on every override, so
+        // the first version cleared the flag before anyone could look up. Held long enough to
+        // notice, and labelled with how long ago rather than left as a bare highlight.
+        const DEBUGGER_WATCH_CHANGE_WINDOW_MS = 30000;
+        let debuggerWatches = [];
+        const debuggerWatchLastValues = {};
+        const debuggerWatchChangedAt = {};
+
+        function readStoredDebuggerWatches() {
+            try { return JSON.parse(localStorage.getItem(DEBUGGER_WATCH_STORAGE_KEY)) || []; }
+            catch (err) { return []; }
+        }
+
+        function writeStoredDebuggerWatches() {
+            if (debuggerWatches.length) localStorage.setItem(DEBUGGER_WATCH_STORAGE_KEY, JSON.stringify(debuggerWatches));
+            else localStorage.removeItem(DEBUGGER_WATCH_STORAGE_KEY);
+        }
+
+        // Dotted, with bracket indexes: provisions.someFlag, formNodes[0].id, localStorage.key.
+        // A key containing a dot is reachable with brackets and a quoted string.
+        function resolveWatchPath(root, path) {
+            const steps = String(path).match(/[^.[\]"']+|\["'][^"']*["']/g) || [];
+            let node = root;
+            for (const rawStep of steps) {
+                const step = rawStep.replace(/^["']|["']$/g, '');
+                if (node === null || node === undefined) return { found: false, value: undefined };
+                if (!(step in Object(node))) return { found: false, value: undefined };
+                node = node[step];
+            }
+            return { found: true, value: node };
+        }
+
+        function addDebuggerWatch(subjectId, path) {
+            const trimmed = String(path || '').trim();
+            if (!trimmed) { toast('Type a path to watch, like provisions.someFlag', 'warn'); return; }
+            if (debuggerWatches.some(w => w.subject === subjectId && w.path === trimmed)) {
+                toast('That path is already being watched.', 'info');
+                return;
+            }
+            debuggerWatches.push({ subject: subjectId, path: trimmed });
+            writeStoredDebuggerWatches();
+            renderDebuggerWatchStrip();
+            writeLog(`👁️ Watching ${subjectId} → ${trimmed}.`, 'info');
+        }
+
+        function removeDebuggerWatch(subjectId, path) {
+            debuggerWatches = debuggerWatches.filter(w => !(w.subject === subjectId && w.path === path));
+            delete debuggerWatchLastValues[`${subjectId}/${path}`];
+            delete debuggerWatchChangedAt[`${subjectId}/${path}`];
+            writeStoredDebuggerWatches();
+            renderDebuggerWatchStrip();
+        }
+
+        function addWatchFromTheInput() {
+            const field = document.getElementById('debugger-watch-input');
+            if (!field) return;
+            addDebuggerWatch(activeInspectorSubjectId, field.value);
+            field.value = '';
+        }
+
+        // Values come from the same read the subject list just did, so a watch costs no extra
+        // call into the SDK.
+        function evaluateDebuggerWatches(valuesBySubjectId) {
+            return debuggerWatches.map(watch => {
+                const key = `${watch.subject}/${watch.path}`;
+                const root = valuesBySubjectId[watch.subject];
+                const resolved = root === null || root === undefined
+                    ? { found: false, value: undefined }
+                    : resolveWatchPath(root, watch.path);
+                let text;
+                try { text = resolved.found ? JSON.stringify(resolved.value) : null; }
+                catch (err) { text = '(unserialisable)'; }
+
+                const previous = debuggerWatchLastValues[key];
+                if (previous !== undefined && previous !== text) {
+                    debuggerWatchChangedAt[key] = Date.now();
+                    recordDebuggerHistoryEntry({
+                        subject: watch.subject, label: `Watch: ${watch.path}`, source: 'watch',
+                        changeCount: 1, paths: [{ path: watch.path, from: previous, to: text }]
+                    });
+                }
+                debuggerWatchLastValues[key] = text;
+
+                const changedAt = debuggerWatchChangedAt[key];
+                const sinceChange = changedAt ? Date.now() - changedAt : null;
+                return Object.assign({}, watch, {
+                    found: resolved.found, text,
+                    changed: sinceChange !== null && sinceChange < DEBUGGER_WATCH_CHANGE_WINDOW_MS,
+                    secondsSinceChange: sinceChange === null ? null : Math.max(0, Math.round(sinceChange / 1000))
+                });
+            });
+        }
 
         let activeInspectorSubjectId = 'onsite-config';
 
@@ -8648,8 +8843,13 @@
         function renderInspectorSubjects() {
             const list = document.getElementById('inspector-subjects');
             if (!list) return;
+            // The values read here are handed to the history and watch passes rather than being
+            // read a second time -- see the deprecation-warning cost noted above.
+            const valuesBySubjectId = {};
             list.innerHTML = INSPECTOR_SUBJECTS.map(subject => {
                 const value = readInspectorSubjectValue(subject);
+                valuesBySubjectId[subject.id] = value;
+                noteSubjectValueForHistory(subject, value);
                 const size = value === null || value === undefined ? '—'
                     : Array.isArray(value) ? String(value.length)
                     : typeof value === 'object' ? String(Object.keys(value).length) : '1';
@@ -8661,6 +8861,8 @@
                             <span class="inspector-subject-size">${size}</span>
                         </button>`;
             }).join('');
+            renderDebuggerWatchStrip(valuesBySubjectId);
+
             list.querySelectorAll('[data-inspector-subject]').forEach(button => {
                 button.onclick = () => {
                     activeInspectorSubjectId = button.getAttribute('data-inspector-subject');
@@ -8683,6 +8885,54 @@
             if (!output || !selection || selection.isCollapsed || !selection.rangeCount) return false;
             const range = selection.getRangeAt(0);
             return output.contains(range.commonAncestorContainer) && String(selection).length > 0;
+        }
+
+        // The strip sits above the output because a watch is meant to be glanceable while you
+        // read something else. A row that just changed is marked, and stays marked until the
+        // next change so a blink in a three-second loop is not the only signal.
+        function renderDebuggerWatchStrip(valuesBySubjectId) {
+            const strip = document.getElementById('debugger-watch-strip');
+            const body = document.getElementById('debugger-watch-rows');
+            const historyCount = document.getElementById('debugger-history-count');
+            if (!strip || !body) return;
+
+            if (historyCount) {
+                historyCount.innerText = debuggerChangeHistory.length
+                    ? `${debuggerChangeHistory.length} change${debuggerChangeHistory.length === 1 ? '' : 's'} recorded`
+                    : 'nothing has changed yet';
+            }
+
+            if (!debuggerWatches.length) {
+                body.innerHTML = '<div class="debugger-watch-empty">Nothing watched. Type a path — <code>provisions.someFlag</code>, <code>formNodes[0].id</code> — to pin its value here and record it when it moves.</div>';
+                return;
+            }
+
+            // Called from the render sweep with values in hand; called from add/remove without,
+            // in which case only the subjects a watch actually needs are read.
+            let values = valuesBySubjectId;
+            if (!values) {
+                values = {};
+                new Set(debuggerWatches.map(w => w.subject)).forEach(id => {
+                    const subject = INSPECTOR_SUBJECTS.find(s => s.id === id);
+                    values[id] = subject ? readInspectorSubjectValue(subject) : null;
+                });
+            }
+
+            body.innerHTML = evaluateDebuggerWatches(values).map(watch => {
+                const label = INSPECTOR_SUBJECTS.find(s => s.id === watch.subject);
+                return `<div class="debugger-watch-row${watch.changed ? ' debugger-watch-changed' : ''}">
+                            <span class="debugger-watch-subject">${escapeMarkupForSafeRender((label && label.label) || watch.subject)}</span>
+                            <span class="debugger-watch-path">${escapeMarkupForSafeRender(watch.path)}</span>
+                            <span class="debugger-watch-value${watch.found ? '' : ' debugger-watch-missing'}">${escapeMarkupForSafeRender(watch.found ? String(watch.text) : 'not present')}</span>
+                            ${watch.changed ? `<span class="debugger-watch-flag">changed ${watch.secondsSinceChange}s ago</span>` : ''}
+                            <button class="debugger-watch-drop" data-drop-subject="${escapeMarkupForSafeRender(watch.subject)}" data-drop-path="${escapeMarkupForSafeRender(watch.path)}" aria-label="Stop watching ${escapeMarkupForSafeRender(watch.path)}">&times;</button>
+                        </div>`;
+            }).join('');
+
+            body.querySelectorAll('[data-drop-path]').forEach(button => {
+                button.onclick = () => removeDebuggerWatch(button.getAttribute('data-drop-subject'),
+                                                           button.getAttribute('data-drop-path'));
+            });
         }
 
         function renderInspectorOutput(options) {
@@ -9012,8 +9262,13 @@
                 return;
             }
 
-            const settledCount = diffConfigurationObjects(currentBeforeApply, parsed)
-                .filter(change => describeStartupSettledPath(change.path)).length;
+            const appliedChanges = diffConfigurationObjects(currentBeforeApply, parsed);
+            const settledCount = appliedChanges.filter(change => describeStartupSettledPath(change.path)).length;
+            recordDebuggerHistoryEntry({ subject: subject.id, label: subject.label, source: 'apply',
+                changeCount: appliedChanges.length,
+                paths: appliedChanges.slice(0, DEBUGGER_HISTORY_PATHS_PER_ENTRY)
+                    .map(c => ({ path: c.path, from: c.from, to: c.to })) });
+            renderDebuggerWatchStrip();
             writeLog(`🔧 Applied an edited ${subject.label} to the live configuration. This tab only.`, 'warn');
             toast(settledCount
                 ? `Applied. ${settledCount} of these were settled at startup, so re-inject to see them take effect.`
@@ -9037,6 +9292,9 @@
             renderConfigOverrideBanner();
             renderProvisionsPanel();
             renderInspectorView({ force: true });
+            recordDebuggerHistoryEntry({ subject: 'onsite-config', label: 'Property configuration',
+                source: 'restore', changeCount: 0, paths: [] });
+            renderDebuggerWatchStrip();
             writeLog('🔧 Restored the property\'s own configuration. Anything the SDK reads from now on sees the real values.', 'success');
             toast('Restored. Provisions the SDK read at startup need a re-inject to go back.', 'success');
         }
@@ -9120,6 +9378,9 @@
             overrides[name] = value;
             writeStoredProvisionOverrides(overrides);
 
+            recordDebuggerHistoryEntry({ subject: 'provisions', label: 'Provisions', source: 'override',
+                changeCount: 1, paths: [{ path: name, from: provisionValuesBeforeOverride[name], to: value }] });
+            renderDebuggerWatchStrip();
             writeLog(`🎛️ Provision override: ${name} → ${value}. The SDK reads this on its next check.`, 'warn');
             renderConfigOverrideBanner();
             toast(`${name} overridden to ${value}. Anything the SDK checks from now on sees it; re-inject for what it read at startup.`, 'warn');
@@ -12950,6 +13211,7 @@
             // Event-driven, not polled: recordRuntimeException re-renders when something
             // arrives. This first call is only here to paint the empty state.
             renderDiagnosticsPanel();
+            debuggerWatches = readStoredDebuggerWatches();
             renderInspectorView();
 
             // Before anything else reads session/local storage: a repro link's script and

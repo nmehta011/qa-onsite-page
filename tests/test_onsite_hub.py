@@ -2553,3 +2553,165 @@ def test_apply_reads_the_values_back_and_reports_any_that_did_not_stick(page):
     assert page.evaluate("() => readLiveOnsiteConfiguration().textAreaLimit") == 4242
     assert page.eval_on_selector("#config-override-banner", "e => getComputedStyle(e).display") != "none"
     page.evaluate("() => restorePropertyConfiguration()")
+
+
+# --------------------------------------------------------------------------------------------
+# Debugger roadmap, items 2 and 3: change history, and watches on top of it.
+#
+# Both ride on reads renderInspectorSubjects() was already making for the size counts. That is
+# not an optimisation, it is the design constraint: every readLiveOnsiteConfiguration() emits a
+# deprecation warning from the SDK, so sweeping subjects on the global tick would push twenty
+# messages a minute into the console capture the debugger exists to show.
+# --------------------------------------------------------------------------------------------
+
+
+def _clear_debugger_watches(pg):
+    pg.evaluate("""() => {
+        debuggerWatches = [];
+        writeStoredDebuggerWatches();
+        debuggerChangeHistory.length = 0;
+        Object.keys(debuggerWatchChangedAt).forEach(k => delete debuggerWatchChangedAt[k]);
+        Object.keys(debuggerWatchLastValues).forEach(k => delete debuggerWatchLastValues[k]);
+    }""")
+
+
+def test_a_watch_reports_a_value_moving_and_survives_a_reload(page):
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => document.querySelectorAll('[data-inspector-subject]').length > 0",
+                           timeout=15000)
+    _clear_debugger_watches(page)
+
+    name = page.evaluate("""() => {
+        const c = readLiveOnsiteConfiguration();
+        const n = Object.keys(c.provisions).find(k => c.provisions[k] !== true);
+        addDebuggerWatch('onsite-config', 'provisions.' + n);
+        addDebuggerWatch('onsite-config', 'websiteId');
+        return n;
+    }""")
+    page.wait_for_timeout(300)
+    assert page.eval_on_selector_all(".debugger-watch-row", "e => e.length") == 2
+
+    page.evaluate("(n) => setProvisionOverride(n, true)", name)
+    page.evaluate("() => renderInspectorView({force: true})")
+    page.wait_for_timeout(400)
+
+    rows = page.eval_on_selector_all(".debugger-watch-row", "e => e.map(x => x.innerText)")
+    moved = [r for r in rows if name in r]
+    assert moved and "true" in moved[0], f"the watch did not follow the value: {rows}"
+    assert "CHANGED" in moved[0].upper(), f"the change was not marked: {moved[0]}"
+
+    # and the mark outlives the next render — the first version cleared it on the redraw that
+    # followed the change, which on a three-second loop meant nobody ever saw it
+    page.evaluate("() => renderInspectorView({force: true})")
+    page.evaluate("() => renderInspectorView({force: true})")
+    page.wait_for_timeout(300)
+    still = [r for r in page.eval_on_selector_all(".debugger-watch-row", "e => e.map(x => x.innerText)")
+             if name in r]
+    assert "CHANGED" in still[0].upper(), f"the mark was consumed by a redraw: {still[0]}"
+    # the one that did not move is not marked
+    steady = [r for r in rows if "websiteId" in r]
+    assert steady and "CHANGED" not in steady[0].upper(), f"an unchanged watch was marked: {steady}"
+
+    # persisted, so a watch survives the reload that a re-injection needs
+    assert len(page.evaluate("() => readStoredDebuggerWatches()")) == 2
+    page.evaluate("(n) => releaseProvisionOverride(n)", name)
+    _clear_debugger_watches(page)
+
+
+def test_a_watch_on_a_path_that_is_not_there_says_so_rather_than_reading_empty(page):
+    """"not present" and "present and null" are different answers, and a debugger that shows
+    both as blank is worse than useless on exactly the bug you are chasing."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => document.querySelectorAll('[data-inspector-subject]').length > 0",
+                           timeout=15000)
+    _clear_debugger_watches(page)
+
+    resolved = page.evaluate("""() => {
+        const c = readLiveOnsiteConfiguration();
+        return {
+            plain:   resolveWatchPath(c, 'websiteId'),
+            nested:  resolveWatchPath(c, 'formNodes[0].formId'),
+            missing: resolveWatchPath(c, 'nope.nothing'),
+            nulled:  resolveWatchPath(c, 'onsiteDataUrl')
+        };
+    }""")
+    assert resolved["plain"]["found"] and resolved["plain"]["value"] == 165099
+    assert resolved["nested"]["found"], "a bracket index did not resolve"
+    assert resolved["missing"]["found"] is False
+    assert resolved["nulled"]["found"] is True and resolved["nulled"]["value"] is None, \
+        "a present-but-null value must not read as absent"
+
+    page.evaluate("() => addDebuggerWatch('onsite-config', 'nope.nothing')")
+    page.wait_for_timeout(300)
+    assert "not present" in page.inner_text(".debugger-watch-row")
+    _clear_debugger_watches(page)
+
+
+def test_history_records_what_changed_without_recording_itself(page):
+    """The watch list lives in localStorage, so adding a watch showed up in the browser-storage
+    subject as a change — the tool recording itself. Provision overrides in that same store do
+    belong there: those are changes to what is being debugged."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => document.querySelectorAll('[data-inspector-subject]').length > 0",
+                           timeout=15000)
+    _clear_debugger_watches(page)
+
+    page.evaluate("() => addDebuggerWatch('onsite-config', 'websiteId')")
+    page.evaluate("() => renderInspectorView({force: true})")
+    page.wait_for_timeout(400)
+    paths = page.evaluate("""() => debuggerChangeHistory.flatMap(e => e.paths.map(p => p.path))""")
+    assert not any("qa_debugger_watches" in p for p in paths), \
+        f"the debugger recorded its own bookkeeping: {paths}"
+
+    name = page.evaluate("""() => {
+        const c = readLiveOnsiteConfiguration();
+        const n = Object.keys(c.provisions).find(k => c.provisions[k] !== true);
+        setProvisionOverride(n, true);
+        return n;
+    }""")
+    page.wait_for_timeout(300)
+    sources = page.evaluate("() => debuggerChangeHistory.map(e => e.source)")
+    assert "override" in sources, f"an override this tool made was not recorded: {sources}"
+    recorded = page.evaluate("""(n) => debuggerChangeHistory
+        .filter(e => e.source === 'override').flatMap(e => e.paths.map(p => p.path)).includes(n)""", name)
+    assert recorded, "the override recorded no path"
+
+    # and it is readable as a subject, like everything else here
+    page.evaluate("""() => { activeInspectorSubjectId = 'change-history'; renderInspectorView({force: true}); }""")
+    page.wait_for_timeout(300)
+    assert "override" in page.inner_text("#inspector-output")
+
+    page.evaluate("(n) => releaseProvisionOverride(n)", name)
+    _clear_debugger_watches(page)
+    page.evaluate("() => { activeInspectorSubjectId = 'onsite-config'; }")
+
+
+def test_recording_a_change_does_not_reenter_the_watch_pass(page):
+    """A watch that moved records a history entry from inside evaluateDebuggerWatches(). The
+    first version re-rendered the strip from the recorder, which called that again — infinite
+    recursion, and the stack blew the first time a watched provision was flipped."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => document.querySelectorAll('[data-inspector-subject]').length > 0",
+                           timeout=15000)
+    _clear_debugger_watches(page)
+
+    name = page.evaluate("""() => {
+        const c = readLiveOnsiteConfiguration();
+        const n = Object.keys(c.provisions).find(k => c.provisions[k] !== true);
+        addDebuggerWatch('onsite-config', 'provisions.' + n);
+        return n;
+    }""")
+    before = len(page.errors)
+    for value in (True, False, True):
+        page.evaluate("(a) => setProvisionOverride(a[0], a[1])", [name, value])
+        page.evaluate("() => renderInspectorView({force: true})")
+        page.wait_for_timeout(250)
+    assert len(page.errors) == before, f"the watch pass threw: {page.errors[before:]}"
+    assert page.eval_on_selector_all(".debugger-watch-row", "e => e.length") == 1
+
+    page.evaluate("(n) => releaseProvisionOverride(n)", name)
+    _clear_debugger_watches(page)
