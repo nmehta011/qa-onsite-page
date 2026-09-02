@@ -2335,3 +2335,110 @@ def test_a_link_to_the_retired_inspect_workspace_still_opens_the_debugger(page):
     assert page.evaluate("() => activeWorkspaceKey") == "debugger"
     assert page.eval_on_selector_all("[data-inspector-subject]", "els => els.length") > 0, \
         "the debugger did not render for someone arriving on the old link"
+
+
+# --------------------------------------------------------------------------------------------
+# Three defects found by reviewing the Debugger rather than by using it. Each was invisible in
+# normal use, which is exactly why each needs a test rather than a fix alone.
+# --------------------------------------------------------------------------------------------
+
+
+def test_a_poor_performance_verdict_actually_raises_something(page):
+    """buildGlobalStatusSnapshot() sets 'block' | 'watch' | 'pass'. Two readers compared against
+    'poor' and 'needs-improvement', which it has never produced, so the rail dot never left green
+    and the triage item never fired no matter how bad the page got. Driven with a doctored
+    snapshot: the point is the vocabulary agreeing, not the measurement."""
+    inject(page)
+
+    dot = page.evaluate("""(verdict) => {
+        const snapshot = Object.assign(buildGlobalStatusSnapshot(), {perfVerdict: verdict});
+        return RAIL_PANEL_STATUS['Performance & Core Web Vitals'](snapshot);
+    }""", "block")
+    assert dot and dot["tone"] == "alert", f"a blocking verdict left the rail dot at {dot}"
+
+    watching = page.evaluate("""(verdict) => {
+        const snapshot = Object.assign(buildGlobalStatusSnapshot(), {perfVerdict: verdict});
+        return RAIL_PANEL_STATUS['Performance & Core Web Vitals'](snapshot);
+    }""", "watch")
+    assert watching and watching["tone"] == "watch", f"'watch' did not reach the dot: {watching}"
+
+    passing = page.evaluate("""() => {
+        const snapshot = Object.assign(buildGlobalStatusSnapshot(), {perfVerdict: 'pass'});
+        return RAIL_PANEL_STATUS['Performance & Core Web Vitals'](snapshot);
+    }""")
+    assert passing and passing["tone"] == "live", f"a good verdict should be quiet, got {passing}"
+
+    titles = page.evaluate("""() => buildTriageItems(
+        Object.assign(buildGlobalStatusSnapshot(), {perfVerdict: 'block'})).map(i => i.title)""")
+    assert any("Core Web Vitals" in t for t in titles), \
+        f"a blocking verdict did not reach triage: {titles}"
+
+    quiet = page.evaluate("""() => buildTriageItems(
+        Object.assign(buildGlobalStatusSnapshot(), {perfVerdict: 'pass'})).map(i => i.title)""")
+    assert not any("Core Web Vitals" in t for t in quiet), "a good verdict raised a triage item"
+
+
+def test_the_debugger_refresh_waits_while_you_have_text_selected(page):
+    """The pane is rebuilt with innerHTML every three seconds, which destroys the nodes a
+    selection is anchored to — measured at 70 characters selected becoming 0. On a pane roughly
+    14,800px tall, selecting a block of JSON to copy was a race against a timer."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => document.getElementById('inspector-output').textContent.length > 500",
+                           timeout=15000)
+
+    selected = page.evaluate("""() => {
+        const pre = document.getElementById('inspector-output');
+        const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+        const node = walker.nextNode();
+        const range = document.createRange();
+        range.setStart(node, 5); range.setEnd(node, Math.min(70, node.length));
+        const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+        return String(sel).length;
+    }""")
+    assert selected > 10, "could not make a selection to test with"
+
+    page.evaluate("() => renderInspectorOutput()")          # the automatic loop
+    assert page.evaluate("() => String(getSelection()).length") == selected, \
+        "the automatic refresh ate the selection"
+
+    # a deliberate act still redraws: the reader asked for it, and the search box would be inert
+    page.evaluate("() => renderInspectorOutput({force: true})")
+    assert page.evaluate("() => String(getSelection()).length") == 0, \
+        "a forced redraw should not defer to a selection"
+
+    # and with nothing selected the loop is unaffected
+    page.evaluate("() => renderInspectorOutput()")
+    assert page.evaluate("() => document.getElementById('inspector-output').textContent.length") > 500
+
+
+def test_copy_reports_a_subject_it_cannot_serialise_instead_of_throwing(page):
+    """renderInspectorOutput() degrades to "could not serialise"; Copy called JSON.stringify bare.
+    Nothing on this property is circular today, but SDK memory is the SDK's own object graph and
+    is the plausible one to acquire a back-reference — at which point the pane would still render
+    and the button would throw, blaming this app in the exception store."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => document.querySelectorAll('[data-inspector-subject]').length > 0",
+                           timeout=15000)
+
+    page.evaluate("""() => {
+        INSPECTOR_SUBJECTS.push({id: 'circular-fixture', label: 'Circular fixture',
+                                 read: () => { const o = {name: 'loop'}; o.self = o; return o; },
+                                 note: 'test fixture'});
+        activeInspectorSubjectId = 'circular-fixture';
+    }""")
+
+    before = len(page.errors)
+    page.evaluate("() => copyInspectorOutputToClipboard()")
+    page.wait_for_timeout(300)
+    assert len(page.errors) == before, f"Copy threw: {page.errors[before:]}"
+
+    # the pane itself already survived this, and must still
+    page.evaluate("() => renderInspectorOutput({force: true})")
+    assert "could not serialise" in page.inner_text("#inspector-output")
+
+    page.evaluate("""() => {
+        INSPECTOR_SUBJECTS.pop();
+        activeInspectorSubjectId = 'onsite-config';
+    }""")

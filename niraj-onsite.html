@@ -2608,9 +2608,9 @@
                 <div class="inspector-subjects" id="inspector-subjects" role="tablist" aria-label="Inspector subjects"></div>
                 <div class="inspector-main">
                     <div class="inspector-toolbar">
-                        <input type="text" id="inspector-search-input" class="suite-input" placeholder="Search this output…" aria-label="Search the inspector output" oninput="renderInspectorOutput()">
+                        <input type="text" id="inspector-search-input" class="suite-input" placeholder="Search this output…" aria-label="Search the inspector output" oninput="renderInspectorOutput({force:true})">
                         <span id="inspector-match-count" class="inspector-match-count"></span>
-                        <label class="inspector-only-matching"><input type="checkbox" id="inspector-only-matching" onchange="renderInspectorOutput()"> Matching lines only</label>
+                        <label class="inspector-only-matching"><input type="checkbox" id="inspector-only-matching" onchange="renderInspectorOutput({force:true})"> Matching lines only</label>
                     </div>
                     <pre id="inspector-output" class="inspector-output" tabindex="0"></pre>
                     <div id="inspector-editor-wrap" class="inspector-editor-wrap" style="display:none;">
@@ -8659,13 +8659,29 @@
                     const search = document.getElementById('inspector-search-input');
                     if (search) search.value = '';
                     inspectorEditorIsDirty = false;   // a different subject means a different document
-                    renderInspectorView();
+                    renderInspectorView({ force: true });
                 };
             });
         }
 
-        function renderInspectorOutput() {
+        // The output pane is rebuilt with innerHTML, which destroys the nodes any selection is
+        // anchored to -- measured as 70 selected characters becoming 0 after one refresh, on a
+        // pane about 14,800px tall. Highlighting a block of JSON to copy it was a race against a
+        // three-second timer. Same treatment the editor already gets from inspectorEditorIsDirty:
+        // while the reader is holding something, the loop waits.
+        function inspectorOutputHoldsASelection() {
             const output = document.getElementById('inspector-output');
+            const selection = window.getSelection();
+            if (!output || !selection || selection.isCollapsed || !selection.rangeCount) return false;
+            const range = selection.getRangeAt(0);
+            return output.contains(range.commonAncestorContainer) && String(selection).length > 0;
+        }
+
+        function renderInspectorOutput(options) {
+            const output = document.getElementById('inspector-output');
+            // A manual Refresh is the reader asking for new content and outranks their selection;
+            // only the automatic loop defers.
+            if (!(options && options.force) && inspectorOutputHoldsASelection()) return;
             const meta = document.getElementById('inspector-subject-meta');
             const matchCount = document.getElementById('inspector-match-count');
             if (!output) return;
@@ -8716,9 +8732,9 @@
             }
         }
 
-        function renderInspectorView() {
+        function renderInspectorView(options) {
             renderInspectorSubjects();
-            renderInspectorOutput();
+            renderInspectorOutput(options);
             const subject = activeInspectorSubject();
             const wrap = document.getElementById('inspector-editor-wrap');
             if (wrap) wrap.style.display = subject.editable ? 'block' : 'none';
@@ -8727,16 +8743,21 @@
         }
 
         function refreshInspectorOutput() {
-            renderInspectorView();
-            toast('Inspector refreshed from the SDK.', 'info');
+            renderInspectorView({ force: true });
+            toast('Debugger refreshed from the SDK.', 'info');
         }
 
         function copyInspectorOutputToClipboard() {
             const subject = activeInspectorSubject();
             const value = readInspectorSubjectValue(subject);
             if (value === null || value === undefined) { toast('Nothing to copy yet.', 'warn'); return; }
-            const text = JSON.stringify(value, null, 2);
-            if (!navigator.clipboard) { writeLog('Clipboard unavailable — inspector output written to the log.', 'warn'); writeLog(text, 'info'); return; }
+            // renderInspectorOutput() already degrades to "could not serialise" here; this did
+            // not, so a subject the SDK ever gives a back-reference to would throw out of the
+            // Copy button and be recorded against this app rather than reported to the reader.
+            let text;
+            try { text = JSON.stringify(value, null, 2); }
+            catch (err) { toast(`${subject.label} cannot be copied: ${err.message}`, 'warn'); return; }
+            if (!navigator.clipboard) { writeLog('Clipboard unavailable — debugger output written to the log.', 'warn'); writeLog(text, 'info'); return; }
             navigator.clipboard.writeText(text)
                 .then(() => toast(`${subject.label} copied as JSON.`, 'success'))
                 .catch(err => toast(`Clipboard write rejected: ${err.message}`, 'warn'));
@@ -8878,7 +8899,7 @@
             configurationHasBeenOverridden = true;
             inspectorEditorIsDirty = false;   // applied, so the live value is the truth again
             renderConfigOverrideBanner();
-            renderInspectorView();
+            renderInspectorView({ force: true });
             renderProvisionsPanel();
             writeLog(`🔧 Applied an edited ${subject.label} to the live configuration. This tab only.`, 'warn');
             toast('Applied to this tab\'s live configuration. The banner stays until you restore.', 'warn');
@@ -8900,7 +8921,7 @@
 
             renderConfigOverrideBanner();
             renderProvisionsPanel();
-            renderInspectorView();
+            renderInspectorView({ force: true });
             writeLog('🔧 Restored the property\'s own configuration. Anything the SDK reads from now on sees the real values.', 'success');
             toast('Restored. Provisions the SDK read at startup need a re-inject to go back.', 'success');
         }
@@ -9140,9 +9161,9 @@
         // must never do.
         const TRIAGE_SEVERITY_RANK = { blocker: 0, warning: 1, info: 2 };
 
-        function buildTriageItems() {
-            const snapshot = buildGlobalStatusSnapshot();
-            if (!snapshot.injected) return [];
+        function buildTriageItems(snapshot) {
+            const state = snapshot || buildGlobalStatusSnapshot();
+            if (!state.injected) return [];
             const items = [];
 
             // Diagnostics already explains itself in plain English, so it is passed through
@@ -9158,7 +9179,7 @@
                 });
             });
 
-            if (snapshot.blockedForms) {
+            if (state.blockedForms) {
                 // The reasons come from the matrix's own decoder, so the sentence here and the
                 // verdict on the card cannot disagree.
                 const reasons = new Set();
@@ -9170,7 +9191,7 @@
                 const reasonText = reasons.size ? [...reasons].slice(0, 4).join(', ') : 'targeting rules';
                 items.push({
                     severity: 'warning',
-                    title: `${snapshot.blockedForms} of ${snapshot.formCount} forms cannot show right now`,
+                    title: `${state.blockedForms} of ${state.formCount} forms cannot show right now`,
                     detail: `Blocked by ${reasonText}. Each card carries a one-click fix where the rule can be satisfied from here.`,
                     goLabel: 'Why?',
                     target: '#targeting-matrix-container'
@@ -9178,23 +9199,23 @@
             }
 
             const audits = [
-                { count: snapshot.contrastFailures, checked: snapshot.contrastChecked, severity: 'blocker',
+                { count: state.contrastFailures, checked: state.contrastChecked, severity: 'blocker',
                   title: n => `${n} colour pair${n === 1 ? '' : 's'} below the WCAG minimum`,
                   detail: 'Text or a control that does not meet its contrast threshold.',
                   goLabel: 'Contrast', target: '#contrast-audit-container', cleanLabel: 'Contrast' },
-                { count: snapshot.a11yFailures, checked: snapshot.a11yChecked, severity: 'blocker',
+                { count: state.a11yFailures, checked: state.a11yChecked, severity: 'blocker',
                   title: n => `${n} accessibility check${n === 1 ? '' : 's'} failing`,
                   detail: 'Keyboard reachability, labelling or roles on the rendered widget.',
                   goLabel: 'Accessibility', target: '#a11y-audit-container', cleanLabel: 'Accessibility' },
-                { count: snapshot.designMismatches, checked: snapshot.designChecked, severity: 'warning',
+                { count: state.designMismatches, checked: state.designChecked, severity: 'warning',
                   title: n => `${n} design value${n === 1 ? '' : 's'} do not match the configuration`,
                   detail: 'What rendered differs from what the property is configured to show.',
                   goLabel: 'Design', target: '#design-validator-container', cleanLabel: 'Design' },
-                { count: snapshot.securityFailures, checked: snapshot.securityChecked, severity: 'warning',
+                { count: state.securityFailures, checked: state.securityChecked, severity: 'warning',
                   title: n => `${n} security check${n === 1 ? '' : 's'} failing`,
                   detail: 'How the SDK is loaded and what it is permitted to reach.',
                   goLabel: 'Security', target: '#security-posture-container', cleanLabel: 'Security' },
-                { count: snapshot.piiFindings, checked: snapshot.injected, severity: 'blocker',
+                { count: state.piiFindings, checked: state.injected, severity: 'blocker',
                   title: n => `${n} value${n === 1 ? '' : 's'} that look like personal data`,
                   detail: 'Found in an outbound analytics payload or a custom parameter. Shown masked.',
                   goLabel: 'PII scan', target: '#pii-scan-container', cleanLabel: 'No PII in payloads' }
@@ -9207,16 +9228,20 @@
 
             // A poor verdict is worth the landing; "needs improvement" stays a chip, since it is
             // a nudge rather than something to act on before shipping.
-            if (snapshot.perfVerdict === 'poor') {
+            //
+            // The word is 'block'. This read 'poor' for as long as the check has existed, which
+            // buildGlobalStatusSnapshot() has never produced -- it sets 'block' | 'watch' |
+            // 'pass' -- so the branch was dead and a genuinely poor property never raised this.
+            if (state.perfVerdict === 'block') {
                 items.push({ severity: 'warning',
                     title: 'Core Web Vitals are poor since injection',
                     detail: 'Layout shift or long tasks measured in the window after the SDK loaded.',
                     goLabel: 'Performance', target: '#perf-waterfall-container' });
             }
 
-            if (snapshot.consentViolations) {
+            if (state.consentViolations) {
                 items.push({ severity: 'blocker',
-                    title: `${snapshot.consentViolations} request${snapshot.consentViolations === 1 ? '' : 's'} sent before consent`,
+                    title: `${state.consentViolations} request${state.consentViolations === 1 ? '' : 's'} sent before consent`,
                     detail: 'SDK traffic left this page while consent was denied.',
                     goLabel: 'Consent', target: '#consent-gate-container' });
             }
@@ -9315,7 +9340,9 @@
             'Full Accessibility Audit': s => (s.a11yFailures ? { tone: 'alert', count: s.a11yFailures } : s.a11yChecked ? { tone: 'live' } : null),
             'Security Posture': s => (s.securityFailures ? { tone: 'alert', count: s.securityFailures } : s.securityChecked ? { tone: 'live' } : null),
             'Privacy / PII Leak Scan': s => (s.piiFindings ? { tone: 'alert', count: s.piiFindings } : s.injected ? { tone: 'live' } : null),
-            'Performance & Core Web Vitals': s => (s.perfVerdict === 'poor' ? { tone: 'alert' } : s.perfVerdict === 'needs-improvement' ? { tone: 'watch' } : s.perfVerdict ? { tone: 'live' } : null),
+            // Same three words as everywhere else -- this compared against 'poor' and
+            // 'needs-improvement', which nothing produces, so the dot never left green.
+            'Performance & Core Web Vitals': s => (s.perfVerdict === 'block' ? { tone: 'alert' } : s.perfVerdict === 'watch' ? { tone: 'watch' } : s.perfVerdict ? { tone: 'live' } : null),
             'Feedback Submission Inspector': s => (s.submissions ? { tone: 'live', count: s.submissions } : null),
             'Live Analytics Events Tracking': () => (collectedAnalyticsEventsCacheList.length ? { tone: 'live', count: collectedAnalyticsEventsCacheList.length } : null),
             'Native SDK Custom Event Bus': () => (collectedSdkBusEventsCacheList.length ? { tone: 'live', count: collectedSdkBusEventsCacheList.length } : null),
