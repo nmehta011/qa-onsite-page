@@ -1849,13 +1849,24 @@ def test_the_inspector_shows_the_sdk_own_objects_not_this_apps_reading_of_them(p
     assert text.strip().startswith("{"), text[:120]
     assert "provisions" in text
 
-    # each subject has to resolve to something real, or it is a dead entry in the list
+    # Each subject has to resolve to something real, or it is a dead entry in the list. The
+    # exception is a subject that is empty because nothing has been ASKED of it yet — the SDK
+    # console holds what you evaluated — which is not the same as having nothing behind it.
     populated = page.evaluate("""() => INSPECTOR_SUBJECTS.map(s => {
         const v = readInspectorSubjectValue(s);
-        return {id: s.id, empty: v === null || v === undefined};
+        return {id: s.id, empty: v === null || v === undefined, startsEmpty: !!s.startsEmpty};
     })""")
-    dead = [s["id"] for s in populated if s["empty"]]
+    dead = [s["id"] for s in populated if s["empty"] and not s["startsEmpty"]]
     assert not dead, f"subjects with nothing behind them: {dead}"
+
+    # and one that starts empty still has to say so properly rather than rendering blank
+    page.evaluate("""() => {
+        activeInspectorSubjectId = INSPECTOR_SUBJECTS.find(s => s.startsEmpty).id;
+        renderInspectorView({force: true});
+    }""")
+    page.wait_for_timeout(300)
+    assert "Nothing to show yet" in page.inner_text("#inspector-output")
+    page.evaluate("() => { activeInspectorSubjectId = 'onsite-config'; renderInspectorView({force: true}); }")
 
 
 def test_inspector_search_highlights_without_letting_config_inject_markup(page):
@@ -2909,3 +2920,93 @@ def test_the_request_log_bands_outcomes_instead_of_listing_status_codes(page):
     assert methods == ["POST"], f"the method filter let others through: {methods}"
 
     page.evaluate("() => { setSubjectFilter('requests', 'method', ''); activeInspectorSubjectId = 'onsite-config'; }")
+
+
+# --------------------------------------------------------------------------------------------
+# Debugger roadmap, item 6: the SDK console.
+#
+# Before this, exactly one SDK call was reachable without leaving the page. Everything else
+# meant opening DevTools and typing against globals — the habit this tool exists to replace.
+# --------------------------------------------------------------------------------------------
+
+
+def test_the_console_evaluates_against_the_sdks_own_globals(page):
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => document.querySelectorAll('[data-inspector-subject]').length > 0",
+                           timeout=15000)
+
+    forms = page.evaluate("() => evaluateSdkConsoleExpression('KAMPYLE_DATA.getAllForms().length')")
+    assert forms["type"] == "number" and forms["result"] >= 4, forms
+    assert forms["ms"] is not None and forms["ranAs"] == "expression"
+
+    # the answer agrees with what the rest of the app reads, or one of them is lying
+    assert forms["result"] == page.evaluate("() => readPublishedFormRegistryFromSdk().length")
+
+
+def test_a_thrown_expression_is_answered_not_recorded_as_a_finding(page):
+    """A typo in an expression you just typed is not a defect in the property. Recording it in
+    the exception store would put noise into Diagnostics that a tester then has to explain."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => document.querySelectorAll('[data-inspector-subject]').length > 0",
+                           timeout=15000)
+
+    before = page.evaluate("() => countSdkAttributedExceptions()")
+    thrown = page.evaluate("() => evaluateSdkConsoleExpression('nope.missing')")
+    assert thrown["type"] == "error" and "not defined" in thrown["error"]["message"]
+    assert page.evaluate("() => countSdkAttributedExceptions()") == before, \
+        "a console typo was recorded against the SDK"
+    assert page.errors == [] or all("nope" not in e for e in page.errors)
+
+
+def test_the_console_represents_values_json_cannot_carry(page):
+    """A function, a DOM node and a circular object all have to survive being put in a JSON pane.
+    JSON.stringify turns the first two into null and throws on the third."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => document.querySelectorAll('[data-inspector-subject]').length > 0",
+                           timeout=15000)
+
+    assert "<body>" in page.evaluate("() => evaluateSdkConsoleExpression('document.body').result")
+    assert "function" in page.evaluate(
+        "() => evaluateSdkConsoleExpression('KAMPYLE_ONSITE_SDK.updatePageView').result")
+    circular = page.evaluate(
+        "() => evaluateSdkConsoleExpression('(function(){const o={};o.self=o;return o;})()').result")
+    assert circular["self"] == "[circular]", circular
+
+    # statements run, and say plainly that a block of statements has no value rather than
+    # silently reporting undefined and looking broken
+    statements = page.evaluate("() => evaluateSdkConsoleExpression('var qaProbe = 5; qaProbe * 3')")
+    assert statements["ranAs"] == "statements"
+    assert "no value" in str(statements["result"]), statements
+
+    # a TypeError from inside a call is a real answer and must not be retried as a statement,
+    # which would run its side effects twice
+    retried = page.evaluate("() => evaluateSdkConsoleExpression('KAMPYLE_DATA.getAllForms(null).nope.deeper')")
+    assert retried["type"] == "error" and retried["ranAs"] == "expression"
+
+
+def test_the_console_only_offers_calls_that_exist_and_recalls_what_you_ran(page):
+    """A palette of calls that throw is worse than no palette, and which of them exist depends on
+    the SDK build the property is running."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => document.querySelectorAll('[data-inspector-subject]').length > 0",
+                           timeout=15000)
+    page.evaluate("() => { activeInspectorSubjectId = 'sdk-console'; renderInspectorView({force: true}); }")
+    page.wait_for_timeout(400)
+
+    offered = page.eval_on_selector_all(".debugger-quick-call", "els => els.map(e => e.title)")
+    assert offered, "no quick calls were offered at all"
+    for expression in offered:
+        result = page.evaluate("(e) => evaluateSdkConsoleExpression(e)", expression)
+        assert result["type"] != "error", f"{expression} was offered and threw: {result['error']}"
+
+    assert page.evaluate("() => quickCallIsAvailable('KAMPYLE_DATA.thisWillNeverExist()')") is False
+    assert page.evaluate("() => quickCallIsAvailable('NOT_A_GLOBAL.anything()')") is False
+
+    # the console panel is only shown for its own subject
+    page.evaluate("() => { activeInspectorSubjectId = 'onsite-config'; renderInspectorView({force: true}); }")
+    page.wait_for_timeout(300)
+    assert page.eval_on_selector("#debugger-console-wrap", "e => getComputedStyle(e).display") == "none"
