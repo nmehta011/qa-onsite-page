@@ -247,6 +247,39 @@
         .diag-panel button.tree-action:hover { border-color: var(--accent-sky-strong); color: var(--accent-sky-strong); transform: none; }
         .tree-truncated { color: var(--accent-amber); font-size: 0.73rem; padding: 8px 0 0 14px; font-style: italic; }
 
+        /* A value on an editable subject looks like what it is. On a read-only one it stays
+           plain text, because something that looks clickable and is not is the worse lie. */
+        .diag-panel button.tree-leaf-editable, button.tree-leaf-editable {
+            background: transparent; border: none; border-bottom: 1px dashed transparent;
+            padding: 0; font-family: monospace; font-size: inherit; cursor: text;
+            box-shadow: none; height: auto; text-align: left; word-break: break-all;
+        }
+        .diag-panel button.tree-leaf-editable:hover { border-bottom-color: currentColor; transform: none; }
+        /* The panel-wide button rule sets `color: white` and outranks the leaf-type classes,
+           which are a single class each. Left alone every editable value rendered white -- fine
+           on the dark ground, invisible on the light one. Stated per type at matching
+           specificity rather than with !important, so the types stay readable as themselves. */
+        .diag-panel button.tree-leaf-editable.tree-string { color: var(--accent-green); }
+        .diag-panel button.tree-leaf-editable.tree-number { color: var(--accent-amber); }
+        .diag-panel button.tree-leaf-editable.tree-boolean { color: var(--accent-purple); }
+        .diag-panel button.tree-leaf-editable.tree-null { color: var(--text-faint); font-style: italic; }
+        .diag-panel button.tree-leaf-editable.tree-other { color: var(--text-soft); }
+        .tree-edit-field {
+            font-family: monospace; font-size: 0.74rem; background: var(--surface-control);
+            color: var(--text-max); border: 1px solid var(--accent-sky-strong); border-radius: 4px;
+            padding: 1px 5px; min-width: 120px; flex: 1;
+        }
+        /* The editor was 229px of permanent furniture around a box used occasionally. It opens
+           when you press edit on a branch, and stays out of the way otherwise. */
+        .inspector-editor-scope { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 9px; font-size: 0.75rem; color: var(--text-dim); }
+        .inspector-editor-scope-label b { color: var(--accent-sky); font-family: monospace; }
+        .inspector-editor-scope-lines { color: var(--text-faint); }
+        .inspector-editor-scope-hint { color: var(--text-faint); font-style: italic; }
+        .inspector-editor-collapsed .inspector-editor-head,
+        .inspector-editor-collapsed .inspector-editor,
+        .inspector-editor-collapsed .inspector-editor-actions,
+        .inspector-editor-collapsed .inspector-diff { display: none; }
+
         .inspector-facets { display: inline-flex; gap: 9px; align-items: center; flex-wrap: wrap; }
         .inspector-facet { display: inline-flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--text-dim); white-space: nowrap; }
         .inspector-facet select { background: var(--surface-control); color: var(--text-firm); border: 1px solid var(--line); border-radius: 5px; font-size: 0.72rem; padding: 3px 6px; font-family: inherit; cursor: pointer; }
@@ -2905,6 +2938,7 @@
                         <div class="debugger-console-palette" id="debugger-console-palette"></div>
                     </div>
                     <div id="inspector-editor-wrap" class="inspector-editor-wrap" style="display:none;">
+                        <div class="inspector-editor-scope" id="inspector-editor-scope"></div>
                         <div class="inspector-editor-head">
                             <span>Edit and apply — changes this tab's live configuration only</span>
                             <span class="inspector-editor-note">nothing is sent to Medallia; a reload restores the property's own values</span>
@@ -9113,16 +9147,48 @@
 
         // Dotted, with bracket indexes: provisions.someFlag, formNodes[0].id, localStorage.key.
         // A key containing a dot is reachable with brackets and a quoted string.
+        //
+        // One splitter for reading and writing. They were separate for about ten minutes and
+        // that is exactly long enough for a path that resolves to read but not to write.
+        function splitDebuggerPath(path) {
+            return (String(path || '').match(/[^.[\]"']+|\["'][^"']*["']/g) || [])
+                .map(step => step.replace(/^["']|["']$/g, ''));
+        }
+
         function resolveWatchPath(root, path) {
-            const steps = String(path).match(/[^.[\]"']+|\["'][^"']*["']/g) || [];
+            const steps = splitDebuggerPath(path);
             let node = root;
-            for (const rawStep of steps) {
-                const step = rawStep.replace(/^["']|["']$/g, '');
+            for (const step of steps) {
                 if (node === null || node === undefined) return { found: false, value: undefined };
                 if (!(step in Object(node))) return { found: false, value: undefined };
                 node = node[step];
             }
             return { found: true, value: node };
+        }
+
+        // Returns the mutated root, or null if the path does not lead anywhere writable. Callers
+        // work on a clone, so a broken path costs nothing.
+        function setValueAtDebuggerPath(root, path, value) {
+            const steps = splitDebuggerPath(path);
+            if (!steps.length) return value;
+            let node = root;
+            for (let index = 0; index < steps.length - 1; index++) {
+                const step = steps[index];
+                if (node === null || typeof node !== 'object' || !(step in node)) return null;
+                node = node[step];
+            }
+            const last = steps[steps.length - 1];
+            if (node === null || typeof node !== 'object') return null;
+            node[last] = value;
+            return root;
+        }
+
+        // What a console does: try to read it as JSON, and treat anything else as the string it
+        // is. Typing `true` into a boolean must not leave the string "true" behind, which is the
+        // classic way an edit "applies" and changes nothing.
+        function parseTypedDebuggerValue(text) {
+            const trimmed = String(text);
+            try { return JSON.parse(trimmed); } catch (err) { return trimmed; }
         }
 
         function addDebuggerWatch(subjectId, path) {
@@ -9614,6 +9680,121 @@
             if (event.key === 't' || event.key === 'T') { event.preventDefault(); toggleDebuggerTreeView(); }
         }
 
+        // --- INLINE EDITING, AND AN EDITOR THAT FOLLOWS YOUR SELECTION ---
+        // The tree could find any key in two clicks and then not change it, while the editor
+        // below held the whole subject -- 760 lines of JSON scrolling through a six-line window
+        // on the property configuration. They were two views of the same thing, and neither was
+        // connected to the other.
+        //
+        // They are two tools for different jobs now. The tree edits VALUES, which is almost
+        // every real edit: flip a flag, change a number, change a string. The editor edits
+        // SHAPE -- adding keys, removing them, pasting a whole configuration from a colleague --
+        // and it opens scoped to whatever branch you were looking at.
+        let debuggerInlineEditPath = null;      // the leaf currently open for editing
+        let debuggerEditorPath = '';            // '' = the whole subject, as before
+
+        function beginInlineTreeEdit(path) {
+            debuggerInlineEditPath = path;
+            renderInspectorOutput({ force: true });
+            const field = document.querySelector('[data-inline-edit-field]');
+            if (field) { field.focus(); field.select(); }
+        }
+
+        function cancelInlineTreeEdit() {
+            debuggerInlineEditPath = null;
+            renderInspectorOutput({ force: true });
+        }
+
+        function commitInlineTreeEdit(path, rawText) {
+            const subject = activeInspectorSubject();
+            if (!subject.editable || typeof subject.applyEdit !== 'function') {
+                toast(`${subject.label} is read-only.`, 'warn');
+                debuggerInlineEditPath = null;
+                return;
+            }
+
+            const current = readInspectorSubjectValue(subject);
+            let draft;
+            try { draft = JSON.parse(JSON.stringify(current)); }
+            catch (err) { toast(`This subject cannot be edited: ${err.message}`, 'warn'); return; }
+
+            const written = setValueAtDebuggerPath(draft, path, parseTypedDebuggerValue(rawText));
+            if (written === null) { toast(`${path} is no longer there to write to.`, 'warn'); debuggerInlineEditPath = null; return; }
+
+            if (subject.id !== 'storage') captureOriginalConfigurationOnce();
+            const before = resolveWatchPath(current, path).value;
+            const result = subject.applyEdit(written);
+            if (!result.ok) { toast(result.message || 'That could not be applied.', 'warn'); return; }
+
+            const after = resolveWatchPath(readInspectorSubjectValue(subject), path).value;
+            // The same read-back the JSON editor does. An inline edit is smaller, not more
+            // trustworthy -- the SDK can still have swapped the object underneath it.
+            if (JSON.stringify(after) !== JSON.stringify(parseTypedDebuggerValue(rawText))) {
+                toast(`${path} did not stick — the SDK may have replaced its configuration object.`, 'warn');
+            } else {
+                const settled = describeStartupSettledPath(path);
+                toast(settled
+                    ? `${path} set. ${settled.why}`
+                    : `${path} set to ${JSON.stringify(after)}.`, settled ? 'warn' : 'success');
+            }
+
+            configurationHasBeenOverridden = true;
+            recordDebuggerHistoryEntry({ subject: subject.id, label: subject.label, source: 'inline edit',
+                changeCount: 1, paths: [{ path, from: before, to: after }] });
+            debuggerInlineEditPath = null;
+            renderConfigOverrideBanner();
+            renderInspectorView({ force: true });
+            if (subject.id === 'provisions' || subject.id === 'onsite-config') renderProvisionsPanel();
+        }
+
+        function handleInlineEditKeydown(event, path) {
+            if (event.key === 'Enter') { event.preventDefault(); commitInlineTreeEdit(path, event.target.value); }
+            else if (event.key === 'Escape') { event.preventDefault(); cancelInlineTreeEdit(); }
+        }
+
+        // Scoping the editor. The path is remembered per subject so switching away and back does
+        // not silently widen an edit you had narrowed.
+        const debuggerEditorPathBySubject = {};
+
+        function setDebuggerEditorPath(path) {
+            debuggerEditorPath = path || '';
+            debuggerEditorPathBySubject[activeInspectorSubjectId] = debuggerEditorPath;
+            debuggerEditorIsCollapsed = false;
+            inspectorEditorIsDirty = false;
+            renderInspectorView({ force: true });
+            const editor = document.getElementById('inspector-editor');
+            if (editor) editor.focus();
+        }
+
+        function readDebuggerEditorScope() {
+            const subject = activeInspectorSubject();
+            const whole = readInspectorSubjectValue(subject);
+            if (!debuggerEditorPath) return { path: '', value: whole, found: true };
+            const resolved = resolveWatchPath(whole, debuggerEditorPath);
+            // A path that has gone away falls back to the whole subject rather than showing an
+            // empty box that would apply as a deletion.
+            if (!resolved.found) return { path: '', value: whole, found: false };
+            return { path: debuggerEditorPath, value: resolved.value, found: true };
+        }
+
+        // Merges a scoped edit back where it came from, so Apply always receives the shape the
+        // subject's own writer expects -- one write path, whatever the editor was showing.
+        function widenScopedEditToWholeSubject(parsed) {
+            if (!debuggerEditorPath) return parsed;
+            const subject = activeInspectorSubject();
+            let draft;
+            try { draft = JSON.parse(JSON.stringify(readInspectorSubjectValue(subject))); }
+            catch (err) { return null; }
+            return setValueAtDebuggerPath(draft, debuggerEditorPath, parsed);
+        }
+
+        let debuggerEditorIsCollapsed = true;
+
+        function toggleDebuggerEditorCollapsed() {
+            debuggerEditorIsCollapsed = !debuggerEditorIsCollapsed;
+            renderInspectorView({ force: true });
+        }
+
         let activeInspectorSubjectId = 'onsite-config';
 
         function activeInspectorSubject() {
@@ -9825,10 +10006,22 @@
             const hasChildren = childKeys.length > 0;
             const collapsed = hasChildren && treePathIsCollapsed(path, childKeys.length, depth);
 
+            const subjectIsEditable = !!activeInspectorSubject().editable;
+
             let valueMarkup;
             if (!isBranch) {
                 const leaf = summariseTreeLeaf(value);
-                valueMarkup = `<span class="tree-leaf tree-${leaf.kind}">${highlightTreeText(leaf.text, needle)}</span>`;
+                if (debuggerInlineEditPath === path && path) {
+                    valueMarkup = `<input class="tree-edit-field" data-inline-edit-field data-inline-edit-path="${escapeMarkupForSafeRender(path)}"
+                                          value="${escapeMarkupForSafeRender(leaf.text)}" spellcheck="false"
+                                          aria-label="New value for ${escapeMarkupForSafeRender(path)}">`;
+                } else {
+                    // Only on an editable subject: a value that looks clickable and is not is a
+                    // worse lie than one that plainly is not editable.
+                    valueMarkup = subjectIsEditable && path
+                        ? `<button class="tree-leaf tree-leaf-editable tree-${leaf.kind}" data-inline-edit-open="${escapeMarkupForSafeRender(path)}" title="Click to edit ${escapeMarkupForSafeRender(path)}">${highlightTreeText(leaf.text, needle)}</button>`
+                        : `<span class="tree-leaf tree-${leaf.kind}">${highlightTreeText(leaf.text, needle)}</span>`;
+                }
             } else if (!hasChildren) {
                 valueMarkup = `<span class="tree-leaf tree-other">${Array.isArray(value) ? '[]' : '{}'}</span>`;
             } else {
@@ -9842,6 +10035,8 @@
                 `<span class="tree-key">${highlightTreeText(isArrayIndex ? key : `"${key}"`, needle)}</span><span class="tree-colon">:</span>` +
                 valueMarkup +
                 (path ? `<span class="tree-actions">
+                            ${hasChildren && subjectIsEditable
+                                ? `<button class="tree-action" data-tree-scope="${escapeMarkupForSafeRender(path)}" title="Edit this branch as JSON">edit</button>` : ''}
                             <button class="tree-action" data-tree-copy="${escapeMarkupForSafeRender(path)}" title="Copy this branch as JSON">copy</button>
                             <button class="tree-action" data-tree-watch="${escapeMarkupForSafeRender(path)}" title="Watch this path">watch</button>
                          </span>` : '') +
@@ -9944,6 +10139,17 @@
             output.querySelectorAll('[data-tree-watch]').forEach(button => {
                 button.onclick = () => watchTreePath(button.getAttribute('data-tree-watch'));
             });
+            output.querySelectorAll('[data-tree-scope]').forEach(button => {
+                button.onclick = () => setDebuggerEditorPath(button.getAttribute('data-tree-scope'));
+            });
+            output.querySelectorAll('[data-inline-edit-open]').forEach(button => {
+                button.onclick = () => beginInlineTreeEdit(button.getAttribute('data-inline-edit-open'));
+            });
+            output.querySelectorAll('[data-inline-edit-field]').forEach(field => {
+                const path = field.getAttribute('data-inline-edit-path');
+                field.onkeydown = event => handleInlineEditKeydown(event, path);
+                field.onblur = () => cancelInlineTreeEdit();
+            });
         }
 
         function toggleDebuggerTreeView() {
@@ -9962,7 +10168,14 @@
             const subject = activeInspectorSubject();
             const wrap = document.getElementById('inspector-editor-wrap');
             if (wrap) wrap.style.display = subject.editable ? 'block' : 'none';
-            if (subject.editable && !inspectorEditorIsDirty) loadInspectorEditorFromLive();
+            if (subject.editable) {
+                debuggerEditorPath = debuggerEditorPathBySubject[subject.id] || '';
+                if (wrap) wrap.classList.toggle('inspector-editor-collapsed', debuggerEditorIsCollapsed);
+                if (!inspectorEditorIsDirty) loadInspectorEditorFromLive();
+                // After the load, never before: the bar reports how many lines are in the box,
+                // and reading that first reported the previous scope's count.
+                renderDebuggerEditorScopeBar();
+            }
             renderConfigOverrideBanner();
         }
 
@@ -10107,12 +10320,30 @@
             focusPropertyInjectorOnActivePage();
         }
 
+        function renderDebuggerEditorScopeBar() {
+            const bar = document.getElementById('inspector-editor-scope');
+            if (!bar) return;
+            const scope = readDebuggerEditorScope();
+            const editor = document.getElementById('inspector-editor');
+            const lines = editor && editor.value ? editor.value.split('\n').length : 0;
+
+            bar.innerHTML =
+                `<button class="lifecycle-btn" onclick="toggleDebuggerEditorCollapsed()">${debuggerEditorIsCollapsed ? '▸ Edit as JSON' : '▾ Hide editor'}</button>` +
+                `<span class="inspector-editor-scope-label">Editing <b>${escapeMarkupForSafeRender(scope.path || 'the whole subject')}</b>` +
+                `<span class="inspector-editor-scope-lines"> · ${lines} line${lines === 1 ? '' : 's'}</span></span>` +
+                (scope.path
+                    ? `<button class="tree-action" onclick="setDebuggerEditorPath('')">whole subject</button>`
+                    : '<span class="inspector-editor-scope-hint">press <b>edit</b> on a branch above to narrow this</span>');
+        }
+
         function loadInspectorEditorFromLive() {
             const editor = document.getElementById('inspector-editor');
             const status = document.getElementById('inspector-editor-status');
             const diff = document.getElementById('inspector-diff');
             if (!editor) return;
-            const value = readInspectorSubjectValue(activeInspectorSubject());
+            const scope = readDebuggerEditorScope();
+            if (!scope.found) debuggerEditorPath = '';
+            const value = scope.value;
             editor.value = value === null || value === undefined ? '' : JSON.stringify(value, null, 2);
             inspectorEditorIsDirty = false;
             editor.oninput = () => { inspectorEditorIsDirty = true; };
@@ -10135,6 +10366,12 @@
                 return;
             }
             if (status) status.innerText = '';
+
+            // Widened first, so the diff below names full paths -- provisions.someFlag, not
+            // someFlag -- however narrow the editor was scoped. The guard rails match on those
+            // full paths, and a scoped edit must not slip past them.
+            parsed = widenScopedEditToWholeSubject(parsed);
+            if (parsed === null) { if (status) status.innerText = 'That branch is no longer there.'; return; }
 
             const current = readInspectorSubjectValue(subject);
             const changes = diffConfigurationObjects(current, parsed);
@@ -10267,6 +10504,9 @@
             let parsed;
             try { parsed = JSON.parse(editor.value); }
             catch (err) { toast(`That is not valid JSON: ${err.message}`, 'warn'); return; }
+
+            parsed = widenScopedEditToWholeSubject(parsed);
+            if (parsed === null) { toast('That branch is no longer there to write to.', 'warn'); return; }
 
             if (subject.id !== 'storage') {
                 const config = readLiveOnsiteConfiguration();
