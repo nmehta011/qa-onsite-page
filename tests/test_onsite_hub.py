@@ -2442,3 +2442,114 @@ def test_copy_reports_a_subject_it_cannot_serialise_instead_of_throwing(page):
         INSPECTOR_SUBJECTS.pop();
         activeInspectorSubjectId = 'onsite-config';
     }""")
+
+
+# --------------------------------------------------------------------------------------------
+# Debugger roadmap, item 1: guard rails on Apply.
+#
+# The preview named every path and applied them all as though they were equal. Some of these
+# values were consumed while the SDK started up: the edit lands in the object, and nothing
+# happens. A debugger that looks like it worked is worse than one that says it cannot.
+# --------------------------------------------------------------------------------------------
+
+
+def test_a_change_that_cannot_take_effect_yet_says_so_before_you_apply_it(page):
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => !!document.getElementById('inspector-editor').value", timeout=15000)
+
+    page.evaluate("""() => {
+        const edited = JSON.parse(JSON.stringify(readLiveOnsiteConfiguration()));
+        edited.isSpa = !edited.isSpa;            // settled during startup
+        edited.textAreaLimit = 250;              // read per use, not at startup
+        document.getElementById('inspector-editor').value = JSON.stringify(edited, null, 2);
+        inspectorEditorIsDirty = true;
+        previewInspectorJsonApply();
+    }""")
+    page.wait_for_timeout(400)
+
+    rows = page.eval_on_selector_all(".inspector-diff-row", "els => els.map(e => e.innerText)")
+    settled = [r for r in rows if "SETTLED" in r.upper()]
+    assert len(rows) == 2, f"expected two changed paths, got {rows}"
+    assert len(settled) == 1 and "isSpa" in settled[0], f"the wrong row was marked: {rows}"
+    assert "textAreaLimit" not in settled[0], "a per-use key was marked as settled"
+    assert page.eval_on_selector_all(".inspector-diff-warning", "e => e.length") == 1
+
+    # the reason is printed once per distinct reason, not once per path — a hundred provision
+    # edits must not print the same paragraph a hundred times
+    page.evaluate("""() => {
+        const edited = JSON.parse(JSON.stringify(readLiveOnsiteConfiguration()));
+        Object.keys(edited.provisions).slice(0, 12).forEach(n => { edited.provisions[n] = !edited.provisions[n]; });
+        document.getElementById('inspector-editor').value = JSON.stringify(edited, null, 2);
+        previewInspectorJsonApply();
+    }""")
+    page.wait_for_timeout(400)
+    assert page.eval_on_selector_all(".inspector-diff-settled", "e => e.length") == 12
+    assert page.eval_on_selector_all(".inspector-diff-reason", "e => e.length") == 1, \
+        "the same reason was printed once per path"
+
+
+def test_a_provision_edit_can_be_pinned_instead_of_applied(page):
+    """A provision the SDK read at startup needs a re-inject, and the pinning machinery for that
+    already exists behind the switches. The preview offers that route rather than letting someone
+    apply a change that cannot reach what already read it."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => !!document.getElementById('inspector-editor').value", timeout=15000)
+
+    name = page.evaluate("""() => {
+        const edited = JSON.parse(JSON.stringify(readLiveOnsiteConfiguration()));
+        const n = Object.keys(edited.provisions).find(k => edited.provisions[k] !== true);
+        edited.provisions[n] = true;
+        document.getElementById('inspector-editor').value = JSON.stringify(edited, null, 2);
+        previewInspectorJsonApply();
+        return n;
+    }""")
+    page.wait_for_timeout(400)
+    assert page.eval_on_selector_all(".inspector-pin", "e => e.length") == 1, "no pin route offered"
+
+    page.evaluate("() => document.querySelector('.inspector-pin').click()")
+    page.wait_for_timeout(500)
+
+    # pinned through the same storage the switches use, so Release still works on it
+    assert page.evaluate("(n) => readStoredProvisionOverrides()[n]", name) is True
+    assert page.evaluate("(n) => KAMPYLE_FUNC.checkProvision(n)", name) is True, \
+        "the pin did not also take effect for checks made from now on"
+    page.evaluate("(n) => releaseProvisionOverride(n)", name)
+    assert page.evaluate("(n) => n in readStoredProvisionOverrides()", name) is False
+
+
+def test_apply_reads_the_values_back_and_reports_any_that_did_not_stick(page):
+    """The failure this app has already shipped once: the SDK swaps its configuration object, a
+    write lands on the detached one, and 'Applied' is reported over a change that never happened."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => !!document.getElementById('inspector-editor').value", timeout=15000)
+
+    # the honest case: the write lands, and the check agrees
+    landed = page.evaluate("""() => {
+        const subject = activeInspectorSubject();
+        const edited = JSON.parse(JSON.stringify(readLiveOnsiteConfiguration()));
+        edited.textAreaLimit = 4242;
+        return verifyAppliedPathsLanded(subject, Object.assign(
+            JSON.parse(JSON.stringify(readLiveOnsiteConfiguration())), {textAreaLimit: readLiveOnsiteConfiguration().textAreaLimit}));
+    }""")
+    assert landed == [], f"an unchanged object reported keys that did not land: {landed}"
+
+    # and the dishonest one: a value the live object does not carry is reported, not swallowed
+    missed = page.evaluate("""() => verifyAppliedPathsLanded(activeInspectorSubject(),
+        Object.assign(JSON.parse(JSON.stringify(readLiveOnsiteConfiguration())),
+                      {textAreaLimit: 'never-written'}))""")
+    assert missed == ["textAreaLimit"], f"a key that did not stick was not reported: {missed}"
+
+    # a real apply still works end to end and reads back clean
+    page.evaluate("""() => {
+        const edited = JSON.parse(JSON.stringify(readLiveOnsiteConfiguration()));
+        edited.textAreaLimit = 4242;
+        document.getElementById('inspector-editor').value = JSON.stringify(edited, null, 2);
+        applyInspectorJson();
+    }""")
+    page.wait_for_timeout(500)
+    assert page.evaluate("() => readLiveOnsiteConfiguration().textAreaLimit") == 4242
+    assert page.eval_on_selector("#config-override-banner", "e => getComputedStyle(e).display") != "none"
+    page.evaluate("() => restorePropertyConfiguration()")

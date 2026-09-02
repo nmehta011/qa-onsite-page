@@ -204,8 +204,16 @@
         .inspector-diff-path { color: var(--text-soft); flex-shrink: 0; }
         .inspector-diff-from { color: var(--accent-red); text-decoration: line-through; }
         .inspector-diff-to { color: var(--accent-green); }
-        .inspector-diff-actions { display: flex; gap: 9px; margin-top: 11px; align-items: center; }
+        .inspector-diff-actions { display: flex; gap: 9px; margin-top: 11px; align-items: center; flex-wrap: wrap; }
         .diag-panel button.inspector-apply, button.inspector-apply { background: var(--accent-purple-deep); border: none; color: #fff; font-size: 0.78rem; font-weight: 600; padding: 6px 14px; border-radius: 6px; cursor: pointer; height: auto; box-shadow: none; }
+        /* A change that is already settled reads amber all the way across, so it is separated
+           from the ones that will actually do something without having to read the marker. */
+        .inspector-diff-warning { font-size: 0.75rem; color: var(--accent-amber); background: rgba(245,158,11,0.10); border: 1px solid rgba(245,158,11,0.32); border-radius: 6px; padding: 7px 10px; margin-bottom: 9px; line-height: 1.5; }
+        .inspector-diff-row-settled .inspector-diff-path { color: var(--accent-amber); }
+        .inspector-diff-settled { font-size: 0.63rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--accent-amber); border: 1px solid rgba(245,158,11,0.4); border-radius: 4px; padding: 0 5px; margin-left: auto; flex-shrink: 0; align-self: center; }
+        .inspector-diff-reason { font-family: inherit; font-size: 0.73rem; color: var(--text-muted); line-height: 1.5; padding: 2px 0 8px 14px; border-left: 2px solid rgba(245,158,11,0.35); margin: 0 0 4px 4px; }
+        .diag-panel button.inspector-pin, button.inspector-pin { background: transparent; border: 1px solid var(--accent-amber); color: var(--accent-amber); font-size: 0.78rem; font-weight: 600; padding: 6px 14px; border-radius: 6px; cursor: pointer; height: auto; box-shadow: none; }
+        .diag-panel button.inspector-pin:hover { background: rgba(245,158,11,0.12); transform: none; }
 
         /* Impossible to miss, and it follows you into every workspace: an overridden
            configuration is a state no real property is in, and forgetting that is how an hour
@@ -8818,6 +8826,71 @@
             return collected;
         }
 
+        // --- APPLY GUARD RAILS ---
+        // The preview names every path that will change and then applies them all as though they
+        // were equal. They are not. Some of these values were consumed while the SDK started up;
+        // the edit still lands in the object, and the SDK will read the new value if it ever
+        // reads it again, but the thing that value decided has already been decided. Applying one
+        // and watching nothing happen is how a debugger loses someone's trust.
+        //
+        // Each entry says WHAT already happened rather than "this may not work" — the structural
+        // argument (the fetch has been made, the registry is built, the domain check has run) is
+        // checkable by the reader, where a bare warning is just noise to click past.
+        const CONFIG_PATHS_SETTLED_AT_STARTUP = [
+            { match: /^provisions(\.|$)/, pinnable: true,
+              why: 'A provision is re-read on every check, so this does take effect for anything checked from now on. One the SDK consulted while starting up — module registration, the domain check — has already been read, and only a re-inject can change that.' },
+            { match: /^domainsConfiguration(\.|$)/,
+              why: 'The SDK decided during startup whether it was allowed to run on this domain. That decision has been made for this page load.' },
+            { match: /^formNodes(\.|\[|$)/,
+              why: 'The published-form registry was built at load from this list. Editing it here does not register or unregister a form.' },
+            { match: /^(region|websiteId|accountId|onsiteDataUrl|globalResourcesUrl)$/,
+              why: 'This forms part of the URL the SDK already fetched its configuration from. That fetch has happened.' },
+            { match: /^(isSpa|isFormsPreloaded)$/,
+              why: 'This selects behaviour the SDK wired up during startup — route hooks, form preloading — rather than something it checks per form.' },
+            { match: /^(packageVersion|modificationDate)$/,
+              why: 'Descriptive only. Nothing reads this to decide anything, so changing it changes nothing.' }
+        ];
+
+        function describeStartupSettledPath(path) {
+            return CONFIG_PATHS_SETTLED_AT_STARTUP.find(entry => entry.match.test(String(path))) || null;
+        }
+
+        // Applying writes into the object the SDK holds. Whether the write LANDED is a separate
+        // question from whether it took effect, and it is the one this app has been bitten by:
+        // the SDK swaps its configuration object once its own data loads, and a write to the
+        // detached one succeeds silently and does nothing. So the values are read back.
+        function verifyAppliedPathsLanded(subject, parsed) {
+            const live = subject.id === 'provisions'
+                ? (readLiveOnsiteConfiguration() || {}).provisions
+                : readLiveOnsiteConfiguration();
+            if (!live) return ['(the configuration went away between applying and reading it back)'];
+            return Object.keys(parsed).filter(key =>
+                JSON.stringify(live[key]) !== JSON.stringify(parsed[key]));
+        }
+
+        function pinProvisionEditAndReinject() {
+            const editor = document.getElementById('inspector-editor');
+            if (!editor) return;
+            let parsed;
+            try { parsed = JSON.parse(editor.value); }
+            catch (err) { toast(`That is not valid JSON: ${err.message}`, 'warn'); return; }
+
+            const config = readLiveOnsiteConfiguration();
+            if (!config) { toast('No property is loaded.', 'warn'); return; }
+            const subject = activeInspectorSubject();
+            const provisions = subject.id === 'provisions' ? parsed : parsed.provisions;
+            if (!provisions) { toast('That edit does not contain any provisions to pin.', 'warn'); return; }
+
+            // Routed through setProvisionOverride so a pinned edit is indistinguishable from one
+            // made with the switches: same storage key, same release path, same banner.
+            const changed = Object.keys(provisions)
+                .filter(name => JSON.stringify(config.provisions[name]) !== JSON.stringify(provisions[name]));
+            changed.forEach(name => setProvisionOverride(name, provisions[name]));
+            toast(`Pinned ${changed.length} provision override(s). Re-inject the property to apply them from startup.`, 'warn');
+            writeLog(`🎛️ Pinned ${changed.length} provision override(s) from an edited ${subject.label}. They re-apply on the next injection.`, 'warn');
+            focusPropertyInjectorOnActivePage();
+        }
+
         function loadInspectorEditorFromLive() {
             const editor = document.getElementById('inspector-editor');
             const status = document.getElementById('inspector-editor-status');
@@ -8860,18 +8933,40 @@
                 const text = JSON.stringify(value);
                 return text && text.length > 60 ? text.slice(0, 60) + '…' : String(text);
             };
+            // A path whose effect already happened is the difference between an edit that works
+            // and one that appears to. Marked per row, and summarised, so it is read before the
+            // Apply button rather than discovered afterwards.
+            const settled = changes.filter(change => describeStartupSettledPath(change.path));
+            const pinnable = settled.filter(change => (describeStartupSettledPath(change.path) || {}).pinnable);
+            const reasonsGiven = new Set();
+
             diffBox.style.display = 'block';
             diffBox.innerHTML =
                 `<div class="design-note" style="margin-bottom:8px;"><b>${changes.length} change${changes.length === 1 ? '' : 's'}</b> — applied to this tab's live configuration only. Nothing is sent to Medallia.</div>` +
-                changes.slice(0, 40).map(change => `
-                    <div class="inspector-diff-row">
+                (settled.length
+                    ? `<div class="inspector-diff-warning">⚠ <b>${settled.length} of these ${settled.length === 1 ? 'is' : 'are'} already settled.</b> The edit lands in the object, but what the value decided was decided while the SDK started up. Each one says what below.</div>`
+                    : '') +
+                changes.slice(0, 40).map(change => {
+                    const settledBy = describeStartupSettledPath(change.path);
+                    // The reason is printed once per distinct reason, not once per path: a
+                    // hundred provision edits should not print the same paragraph a hundred times.
+                    let reason = '';
+                    if (settledBy && !reasonsGiven.has(settledBy.why)) {
+                        reasonsGiven.add(settledBy.why);
+                        reason = `<div class="inspector-diff-reason">${escapeMarkupForSafeRender(settledBy.why)}</div>`;
+                    }
+                    return `
+                    <div class="inspector-diff-row${settledBy ? ' inspector-diff-row-settled' : ''}">
                         <span class="inspector-diff-path">${escapeMarkupForSafeRender(change.path)}</span>
                         <span class="inspector-diff-from">${escapeMarkupForSafeRender(short(change.from))}</span>
                         <span class="inspector-diff-to">→ ${escapeMarkupForSafeRender(short(change.to))}</span>
-                    </div>`).join('') +
+                        ${settledBy ? '<span class="inspector-diff-settled">settled at startup</span>' : ''}
+                    </div>${reason}`;
+                }).join('') +
                 (changes.length > 40 ? `<div class="design-note">…and ${changes.length - 40} more.</div>` : '') +
                 `<div class="inspector-diff-actions">
                     <button class="inspector-apply" onclick="applyInspectorJson()">Apply ${changes.length} change${changes.length === 1 ? '' : 's'}</button>
+                    ${pinnable.length ? `<button class="inspector-pin" onclick="pinProvisionEditAndReinject()">Pin ${pinnable.length} provision${pinnable.length === 1 ? '' : 's'} &amp; re-inject</button>` : ''}
                     <span class="design-note" style="margin:0;">Reversible — Restore puts the property's own values back.</span>
                  </div>`;
         }
@@ -8888,6 +8983,9 @@
             const config = readLiveOnsiteConfiguration();
             if (!config) { toast('No property is loaded, so there is nothing to apply to.', 'warn'); return; }
             captureOriginalConfigurationOnce();
+            // Snapshotted before the mutation below: afterwards the live object IS the edit, so
+            // there would be nothing left to diff against to count what was settled.
+            const currentBeforeApply = JSON.parse(JSON.stringify(readInspectorSubjectValue(subject)));
 
             // Mutated in place, never reassigned: the SDK holds this exact object, so replacing
             // the reference would leave it reading the original and the edit doing nothing --
@@ -8898,11 +8996,28 @@
 
             configurationHasBeenOverridden = true;
             inspectorEditorIsDirty = false;   // applied, so the live value is the truth again
+
+            // Read straight back out of the SDK. A write that silently did nothing is the exact
+            // failure this app has already shipped once, and reporting "applied" over it would
+            // send someone off debugging a change that was never made.
+            const didNotLand = verifyAppliedPathsLanded(subject, parsed);
+
             renderConfigOverrideBanner();
             renderInspectorView({ force: true });
             renderProvisionsPanel();
+
+            if (didNotLand.length) {
+                writeLog(`🔧 Applied an edited ${subject.label}, but ${didNotLand.length} key(s) did not read back: ${didNotLand.slice(0, 8).join(', ')}. The SDK may have replaced its configuration object.`, 'error');
+                toast(`${didNotLand.length} key(s) did not stick — the SDK may have swapped its configuration object. Re-inject and try again.`, 'warn');
+                return;
+            }
+
+            const settledCount = diffConfigurationObjects(currentBeforeApply, parsed)
+                .filter(change => describeStartupSettledPath(change.path)).length;
             writeLog(`🔧 Applied an edited ${subject.label} to the live configuration. This tab only.`, 'warn');
-            toast('Applied to this tab\'s live configuration. The banner stays until you restore.', 'warn');
+            toast(settledCount
+                ? `Applied. ${settledCount} of these were settled at startup, so re-inject to see them take effect.`
+                : 'Applied to this tab\'s live configuration. The banner stays until you restore.', 'warn');
         }
 
         function restorePropertyConfiguration() {
