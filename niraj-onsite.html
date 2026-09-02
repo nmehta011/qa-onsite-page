@@ -220,6 +220,12 @@
         .diag-panel button.debugger-watch-drop, button.debugger-watch-drop { background: transparent; border: none; color: var(--text-faint); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 3px; box-shadow: none; height: auto; flex-shrink: 0; }
         .diag-panel button.debugger-watch-drop:hover { color: var(--accent-red); transform: none; }
 
+        /* Facets appear only for the subjects that are logs rather than documents. */
+        .inspector-facets { display: inline-flex; gap: 9px; align-items: center; flex-wrap: wrap; }
+        .inspector-facet { display: inline-flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--text-dim); white-space: nowrap; }
+        .inspector-facet select { background: var(--surface-control); color: var(--text-firm); border: 1px solid var(--line); border-radius: 5px; font-size: 0.72rem; padding: 3px 6px; font-family: inherit; cursor: pointer; }
+        .inspector-facet select:focus-visible { outline: 2px solid var(--accent-sky-strong); outline-offset: 1px; }
+
         .inspector-diff { margin-top: 11px; border-top: 1px solid var(--line); padding-top: 11px; }
         .inspector-diff-row { font-family: monospace; font-size: 0.73rem; padding: 3px 0; display: flex; gap: 8px; }
         .inspector-diff-path { color: var(--text-soft); flex-shrink: 0; }
@@ -2284,6 +2290,139 @@
         // performance.getEntriesByType('resource') down to genuinely SDK-caused requests without
         // hardcoding any tenant's domain.
         const knownSdkOrigins = new Set();
+        // --- REQUEST LOG ---
+        // The most common reason to abandon a purpose-built tool for DevTools. Failed requests
+        // were already streamed, and the Performance panel drew a resource waterfall bounded to
+        // its measurement window -- but the request that SUCCEEDED and returned the wrong
+        // configuration was invisible, and that is the one you are usually looking for.
+        //
+        // Recorded from the fetch / XHR / sendBeacon wrappers this file already installs, so no
+        // new interception is introduced. Response bodies are read from a clone, the same way
+        // the onsiteData / formData / invitationData captures below already do it.
+        const DEBUGGER_REQUEST_LOG_LIMIT = 400;
+        const DEBUGGER_BODY_CAPTURE_LIMIT = 24000;   // characters kept per body
+        // A session left open all afternoon is the normal case for a debugging tool, so the
+        // bodies are budgeted in total rather than only per body: 400 records each holding the
+        // per-body maximum would be nearly ten megabytes of strings held live. Past the budget
+        // the rows keep being recorded and say why the body is missing, which is far better than
+        // silently dropping requests or quietly growing without bound.
+        const DEBUGGER_BODY_BUDGET = 3000000;
+        const debuggerRequestLog = [];               // newest first
+        let debuggerRequestSequence = 0;
+        let debuggerCapturedBodyBytes = 0;
+
+        // URL SHAPE, never hostname. Assuming a tenant's domain has burned this app twice: the
+        // SDK supports fully custom domains, so `resources.oarazi.com` is as valid as
+        // `.medallia.com`. Origins learned from traffic already recognised as the SDK's are
+        // trusted too, which is what catches the per-tenant analytics and feedback hosts.
+        const SDK_REQUEST_URL_SHAPES = [
+            /onsiteData.*\.json/i, /formData.*\.json/i, /invitationData.*\.json/i,
+            /domains-configuration\.json/i, /\/onsite\/embed\.js/i, /generic\d+\.js/i,
+            /api\/web\/events/i, /feedback\/api\//i, /\/onsite\//i
+        ];
+
+        function looksLikeSdkTraffic(url) {
+            const text = String(url || '');
+            if (!text) return false;
+            if (SDK_REQUEST_URL_SHAPES.some(shape => shape.test(text))) return true;
+            try { return knownSdkOrigins.has(new URL(text, window.location.href).origin); }
+            catch (err) { return false; }
+        }
+
+        function trimCapturedBody(body) {
+            if (body === null || body === undefined) return null;
+            if (debuggerCapturedBodyBytes >= DEBUGGER_BODY_BUDGET) {
+                return '(body not kept — this session has recorded its budget of request bodies; earlier ones are still here)';
+            }
+            let text;
+            if (typeof body === 'string') text = body;
+            else if (body instanceof Blob || body instanceof ArrayBuffer) return `(${body instanceof Blob ? 'Blob' : 'ArrayBuffer'}, ${body.size || body.byteLength} bytes)`;
+            else if (body instanceof FormData || body instanceof URLSearchParams) text = String(body);
+            else { try { text = JSON.stringify(body); } catch (err) { return '(unserialisable body)'; } }
+            const kept = text.length > DEBUGGER_BODY_CAPTURE_LIMIT
+                ? text.slice(0, DEBUGGER_BODY_CAPTURE_LIMIT) + `\n… ${text.length - DEBUGGER_BODY_CAPTURE_LIMIT} more characters`
+                : text;
+            debuggerCapturedBodyBytes += kept.length;
+            return kept;
+        }
+
+        function beginDebuggerRequestRecord(method, url, transport, requestBody, ownedByThisApp) {
+            if (!looksLikeSdkTraffic(url)) return null;
+            const record = {
+                id: ++debuggerRequestSequence,
+                method: String(method || 'GET').toUpperCase(),
+                url: String(url),
+                transport, startedAt: Date.now(), startedAtMs: performance.now(),
+                status: null, ok: null, durationMs: null,
+                requestBody: trimCapturedBody(requestBody),
+                responseBody: null,
+                // This app re-fetches the property configuration and form definitions for its own
+                // panels. Those are real requests, but they are not the SDK's -- reading them as
+                // SDK behaviour would be a lie the whole log rests on, so they are labelled.
+                madeBy: ownedByThisApp ? 'this tool' : 'SDK'
+            };
+            debuggerRequestLog.unshift(record);
+            if (debuggerRequestLog.length > DEBUGGER_REQUEST_LOG_LIMIT) debuggerRequestLog.length = DEBUGGER_REQUEST_LOG_LIMIT;
+            return record;
+        }
+
+        // fetch and XHR are wrapped, but a <script src> or an image is loaded by the browser and
+        // never passes through either -- the SDK's own embed.js and generic*.js arrive that way.
+        // Leaving them out would make the log quietly incomplete on exactly the requests that
+        // start everything, so resource timing fills them in. No body is available for these and
+        // the row says so rather than showing an empty one.
+        function collectSdkResourceTimingsMissingFromTheLog() {
+            if (!window.performance || !performance.getEntriesByType) return [];
+            const alreadyLogged = new Set(debuggerRequestLog.map(record => record.url));
+            return performance.getEntriesByType('resource')
+                .filter(entry => !alreadyLogged.has(entry.name) && looksLikeSdkTraffic(entry.name))
+                .map(entry => ({
+                    id: null,
+                    method: 'GET',
+                    url: entry.name,
+                    transport: entry.initiatorType || 'resource',
+                    startedAt: Math.round(performance.timeOrigin + entry.startTime),
+                    // A resource-timing entry only exists for a load that finished, so a missing
+                    // responseStatus (not every browser exposes it) means "the browser did not
+                    // say", never "still going" -- which is what null was being read as.
+                    status: entry.responseStatus || 'loaded',
+                    ok: null,
+                    durationMs: Math.round(entry.duration),
+                    requestBody: null,
+                    responseBody: null,
+                    madeBy: 'SDK',
+                    bodyUnavailable: 'loaded by the browser, not through fetch or XHR — no body is recorded'
+                }));
+        }
+
+        // Banded rather than shown as raw statuses: "failed" is the question, and a filter with
+        // one entry per distinct status code is a filter nobody can use.
+        function describeRequestOutcome(record) {
+            if (record.status === null || record.status === undefined) return 'in flight';
+            if (record.status === 'FAILED' || record.ok === false) return 'failed';
+            if (record.status === 'queued') return 'queued';
+            const numeric = Number(record.status);
+            if (!Number.isFinite(numeric)) return String(record.status);
+            if (numeric >= 500) return 'server error';
+            if (numeric >= 400) return 'client error';
+            if (numeric >= 300) return 'redirect';
+            return 'ok';
+        }
+
+        function buildDebuggerRequestLog() {
+            const merged = debuggerRequestLog.concat(collectSdkResourceTimingsMissingFromTheLog());
+            return merged.sort((a, b) => b.startedAt - a.startedAt);
+        }
+
+        function completeDebuggerRequestRecord(record, status, ok, responseBody) {
+            if (!record) return;
+            record.status = status;
+            record.ok = ok;
+            record.durationMs = Math.round(performance.now() - record.startedAtMs);
+            if (responseBody !== undefined) record.responseBody = trimCapturedBody(responseBody);
+        }
+
+
         function registerKnownSdkOrigin(url) {
             try {
                 knownSdkOrigins.add(new URL(url, window.location.href).origin);
@@ -2294,14 +2433,32 @@
         const originalFetch = window.fetch;
         window.fetch = async function(...args) {
             const requestUrl = args[0] instanceof Request ? args[0].url : args[0];
+            const init = args[1] || {};
             if (isAnalyticsCollectorEndpoint(requestUrl)) {
                 registerKnownSdkOrigin(requestUrl);
-                const requestBody = args[0] instanceof Request ? null : (args[1] && args[1].body);
+                const requestBody = args[0] instanceof Request ? null : init.body;
                 if (requestBody) triggerAnalyticsPayloadEvaluation(requestBody, 'FETCH');
             }
+            // `qaHubOwned` is a non-standard init key. fetch() ignores keys it does not know, so
+            // this never reaches the wire and cannot trigger a CORS preflight -- which ruled out
+            // marking our own traffic with a header.
+            const record = beginDebuggerRequestRecord(
+                (args[0] instanceof Request ? args[0].method : init.method) || 'GET',
+                requestUrl, 'fetch',
+                args[0] instanceof Request ? null : init.body,
+                !!init.qaHubOwned);
             try {
                 const response = await originalFetch.apply(this, args);
                 if (!response.ok) triggerNetworkErrorLog(response.status, 'FETCH', requestUrl);
+                if (record) {
+                    completeDebuggerRequestRecord(record, response.status, response.ok);
+                    // Read from a clone, exactly as the manifest captures below do, so the body
+                    // the SDK receives is untouched.
+                    const bodyClone = response.clone();
+                    bodyClone.text()
+                        .then(text => { record.responseBody = trimCapturedBody(text); })
+                        .catch(() => { record.responseBody = '(response body could not be read)'; });
+                }
                 if (/onsiteData.*\.json/i.test(requestUrl)) {
                     registerKnownSdkOrigin(requestUrl);
                     const clone = response.clone();
@@ -2320,6 +2477,7 @@
                 return response;
             } catch (err) {
                 triggerNetworkErrorLog('FAILED', 'FETCH', requestUrl);
+                completeDebuggerRequestRecord(record, 'FAILED', false, String(err && err.message || err));
                 throw err;
             }
         };
@@ -2328,7 +2486,12 @@
             const originalSendBeacon = navigator.sendBeacon.bind(navigator);
             navigator.sendBeacon = function(url, data) {
                 if (isAnalyticsCollectorEndpoint(url) && data) triggerAnalyticsPayloadEvaluation(data, 'BEACON');
-                return originalSendBeacon(url, data);
+                // A beacon is fire-and-forget: the browser reports only whether it was queued,
+                // never a status, so the record is completed with that and nothing more.
+                const record = beginDebuggerRequestRecord('POST', url, 'sendBeacon', data, false);
+                const queued = originalSendBeacon(url, data);
+                completeDebuggerRequestRecord(record, queued ? 'queued' : 'refused', queued, undefined);
+                return queued;
             };
         }
 
@@ -2337,19 +2500,29 @@
 
         window.XMLHttpRequest.prototype.open = function(method, url, ...args) {
             this._urlContext = url; this._methodContext = method;
+            this._qaDebuggerRecord = beginDebuggerRequestRecord(method, url, 'xhr', null, false);
             this.addEventListener('load', function() {
+                // responseText throws on a non-text responseType rather than returning null.
+                let body;
+                try { body = this.responseText; } catch (err) { body = `(${this.responseType} response)`; }
+                completeDebuggerRequestRecord(this._qaDebuggerRecord, this.status, this.status < 400, body);
                 if (this.status >= 400) triggerNetworkErrorLog(this.status, 'XHR', url);
                 if (isAnalyticsCollectorEndpoint(url)) registerKnownSdkOrigin(url);
                 if (/onsiteData.*\.json/i.test(url)) { registerKnownSdkOrigin(url); triggerProvisionsManifestEvaluation(this.responseText); }
                 if (/invitationData.*\.json/i.test(url)) { registerKnownSdkOrigin(url); captureInvitationDesignManifest(this.responseText); }
                 if (/formData.*\.json/i.test(url)) { registerKnownSdkOrigin(url); captureFormDesignManifest(this.responseText); }
             });
-            this.addEventListener('error', function() { triggerNetworkErrorLog('FAILED', 'XHR', url); });
+            this.addEventListener('error', function() {
+                completeDebuggerRequestRecord(this._qaDebuggerRecord, 'FAILED', false, undefined);
+                triggerNetworkErrorLog('FAILED', 'XHR', url);
+            });
             return originalXcounter.apply(this, [method, url, ...args]);
         };
 
         window.XMLHttpRequest.prototype.send = function(body) {
             if (body && isAnalyticsCollectorEndpoint(this._urlContext)) triggerAnalyticsPayloadEvaluation(body, 'XHR');
+            // The body is only known at send(), not at open(), which is where the record starts.
+            if (this._qaDebuggerRecord && body) this._qaDebuggerRecord.requestBody = trimCapturedBody(body);
             return originalSend.apply(this, [body]);
         };
 
@@ -2646,6 +2819,7 @@
                         <div id="debugger-watch-rows"></div>
                     </div>
                     <div class="inspector-toolbar">
+                        <span id="inspector-subject-filters" class="inspector-facets"></span>
                         <input type="text" id="inspector-search-input" class="suite-input" placeholder="Search this output…" aria-label="Search the inspector output" oninput="renderInspectorOutput({force:true})">
                         <span id="inspector-match-count" class="inspector-match-count"></span>
                         <label class="inspector-only-matching"><input type="checkbox" id="inspector-only-matching" onchange="renderInspectorOutput({force:true})"> Matching lines only</label>
@@ -7859,7 +8033,7 @@
             formDefinitionFetchAttempted.add(key);
             const language = (node.formLocalizationSettings && node.formLocalizationSettings.defaultLanguage) || 'en';
             const url = String(node.formDataUrl).replace('###LANGUAGE_CODE###', language);
-            fetch(url)
+            fetch(url, { qaHubOwned: true })
                 .then(response => (response.ok ? response.json() : null))
                 .then(definition => {
                     if (!definition || !Array.isArray(definition.pages)) return;
@@ -8655,6 +8829,42 @@
                 note: 'Everything this origin holds, including the keys the SDK writes.'
             },
             {
+                id: 'requests', label: 'Request log',
+                filters: [
+                    { id: 'method', label: 'Method', options: () => countsToFacetOptions(
+                        buildDebuggerRequestLog().reduce((counts, r) => {
+                            counts[r.method] = (counts[r.method] || 0) + 1; return counts; }, {})) },
+                    { id: 'outcome', label: 'Outcome', options: () => countsToFacetOptions(
+                        buildDebuggerRequestLog().reduce((counts, r) => {
+                            const band = describeRequestOutcome(r);
+                            counts[band] = (counts[band] || 0) + 1; return counts; }, {})) },
+                    { id: 'madeBy', label: 'Made by', options: () => countsToFacetOptions(
+                        buildDebuggerRequestLog().reduce((counts, r) => {
+                            counts[r.madeBy] = (counts[r.madeBy] || 0) + 1; return counts; }, {})) }
+                ],
+                read: () => {
+                    const method = activeFilterValue('requests', 'method');
+                    const outcome = activeFilterValue('requests', 'outcome');
+                    const madeBy = activeFilterValue('requests', 'madeBy');
+                    const log = buildDebuggerRequestLog()
+                        .filter(r => !method || r.method === method)
+                        .filter(r => !outcome || describeRequestOutcome(r) === outcome)
+                        .filter(r => !madeBy || r.madeBy === madeBy);
+                    return log.length ? log.map(record => ({
+                        at: new Date(record.startedAt).toISOString(),
+                        method: record.method,
+                        status: record.status === null ? 'in flight' : record.status,
+                        ms: record.durationMs,
+                        madeBy: record.madeBy,
+                        transport: record.transport,
+                        url: record.url,
+                        requestBody: record.requestBody,
+                        responseBody: record.bodyUnavailable || record.responseBody
+                    })) : null;
+                },
+                note: 'Every SDK request since this page loaded, newest first, with the body it sent and the body it got back. Script and image loads are filled in from resource timing, which carries no body. Requests this tool made for its own panels are labelled as such.'
+            },
+            {
                 id: 'change-history', label: 'Change history',
                 read: () => (debuggerChangeHistory.length ? debuggerChangeHistory.map(entry => ({
                     at: new Date(entry.at).toISOString(),
@@ -8667,12 +8877,34 @@
             },
             {
                 id: 'console', label: 'Console output',
-                read: () => (capturedSdkConsoleMessages.length ? capturedSdkConsoleMessages.map(entry => ({
-                    level: entry.level, from: (RUNTIME_EXCEPTION_ORIGINS[entry.origin] || {}).label,
-                    count: entry.count, message: entry.message,
-                    at: new Date(entry.lastSeenAt).toISOString(), frame: extractLeadingStackFrame(entry.stack)
-                })) : null),
-                note: 'Everything written to the console since load, with the caller kept. Diagnostics explains the errors and warnings out of this same capture.'
+                filters: [
+                    { id: 'level', label: 'Level', options: () => countsToFacetOptions(
+                        capturedSdkConsoleMessages.reduce((counts, entry) => {
+                            counts[entry.level] = (counts[entry.level] || 0) + 1; return counts; }, {})) },
+                    { id: 'from', label: 'From', options: () => countsToFacetOptions(
+                        capturedSdkConsoleMessages.reduce((counts, entry) => {
+                            const label = describeConsoleOrigin(entry.origin);
+                            counts[label] = (counts[label] || 0) + 1; return counts; }, {})) }
+                ],
+                read: () => {
+                    const level = activeFilterValue('console', 'level');
+                    const from = activeFilterValue('console', 'from');
+                    const rows = capturedSdkConsoleMessages
+                        .filter(entry => !level || entry.level === level)
+                        .filter(entry => !from || describeConsoleOrigin(entry.origin) === from)
+                        .map(entry => ({
+                            level: entry.level, from: describeConsoleOrigin(entry.origin),
+                            count: entry.count, message: entry.message,
+                            at: new Date(entry.lastSeenAt).toISOString(),
+                            frame: extractLeadingStackFrame(entry.stack),
+                            // The whole stack, not only the leading frame: the frame answers
+                            // "who", the stack answers "how did it get there", and the capture
+                            // has been holding it all along without ever showing it.
+                            stack: entry.stack ? String(entry.stack).split('\n').map(line => line.trim()).filter(Boolean) : null
+                        }));
+                    return rows.length ? rows : null;
+                },
+                note: 'Everything written to the console since load, with the caller and the full stack kept. Diagnostics explains the errors and warnings out of this same capture.'
             }
         ];
 
@@ -8828,6 +9060,59 @@
                     secondsSinceChange: sinceChange === null ? null : Math.max(0, Math.round(sinceChange / 1000))
                 });
             });
+        }
+
+        // --- SUBJECT FILTERS ---
+        // Two subjects are logs rather than documents -- the console capture and the request log
+        // -- and on a log the useful question is "show me only the warnings" or "only what
+        // failed", not a substring search. A subject declares the facets it can be narrowed by;
+        // the toolbar renders them only while that subject is active, and the subject's own
+        // read() applies them. Generic on purpose: the console needed it first, the request log
+        // needed the same thing an hour later.
+        const debuggerSubjectFilters = {};        // subjectId -> {facetId: value}
+
+        function activeFilterValue(subjectId, facetId) {
+            return (debuggerSubjectFilters[subjectId] || {})[facetId] || '';
+        }
+
+        function setSubjectFilter(subjectId, facetId, value) {
+            debuggerSubjectFilters[subjectId] = debuggerSubjectFilters[subjectId] || {};
+            debuggerSubjectFilters[subjectId][facetId] = value;
+            renderInspectorView({ force: true });
+        }
+
+        function renderSubjectFilterControls() {
+            const host = document.getElementById('inspector-subject-filters');
+            if (!host) return;
+            const subject = activeInspectorSubject();
+            if (!subject.filters || !subject.filters.length) { host.innerHTML = ''; return; }
+
+            host.innerHTML = subject.filters.map(facet => {
+                let options;
+                try { options = facet.options() || []; } catch (err) { options = []; }
+                const current = activeFilterValue(subject.id, facet.id);
+                return `<label class="inspector-facet">${escapeMarkupForSafeRender(facet.label)}
+                            <select data-facet="${escapeMarkupForSafeRender(facet.id)}" aria-label="${escapeMarkupForSafeRender(facet.label)}">
+                                <option value=""${current ? '' : ' selected'}>all</option>
+                                ${options.map(option => {
+                                    const value = String(option.value);
+                                    return `<option value="${escapeMarkupForSafeRender(value)}"${value === current ? ' selected' : ''}>${escapeMarkupForSafeRender(option.label)}</option>`;
+                                }).join('')}
+                            </select>
+                        </label>`;
+            }).join('');
+
+            host.querySelectorAll('[data-facet]').forEach(select => {
+                select.onchange = () => setSubjectFilter(subject.id, select.getAttribute('data-facet'), select.value);
+            });
+        }
+
+        function describeConsoleOrigin(origin) {
+            return (RUNTIME_EXCEPTION_ORIGINS[origin] || {}).label || 'Unattributed';
+        }
+
+        function countsToFacetOptions(counts) {
+            return Object.keys(counts).sort().map(key => ({ value: key, label: `${key} (${counts[key]})` }));
         }
 
         let activeInspectorSubjectId = 'onsite-config';
@@ -8992,6 +9277,7 @@
 
         function renderInspectorView(options) {
             renderInspectorSubjects();
+            renderSubjectFilterControls();
             renderInspectorOutput(options);
             const subject = activeInspectorSubject();
             const wrap = document.getElementById('inspector-editor-wrap');
@@ -12375,7 +12661,7 @@
             if (!url) return null;
             // Not `no-store`: the configuration file's name carries a build timestamp, so a
             // republished property is a different URL and the cached copy can never be stale.
-            const response = await fetch(url);
+            const response = await fetch(url, { qaHubOwned: true });
             if (!response.ok) throw new Error(`the property's configuration file answered ${response.status}`);
             const config = await response.json();
             // Captured on the way past. The diagnostics panel needs the domain allow-list to

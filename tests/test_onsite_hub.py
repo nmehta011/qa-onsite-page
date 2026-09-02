@@ -2715,3 +2715,197 @@ def test_recording_a_change_does_not_reenter_the_watch_pass(page):
 
     page.evaluate("(n) => releaseProvisionOverride(n)", name)
     _clear_debugger_watches(page)
+
+
+# --------------------------------------------------------------------------------------------
+# Debugger roadmap, item 4: the request log.
+#
+# The most common reason to abandon a purpose-built tool for DevTools. Failed requests were
+# already streamed and the Performance panel drew a bounded waterfall, but the request that
+# SUCCEEDED and returned the wrong configuration was invisible — and that is the one you are
+# usually looking for.
+# --------------------------------------------------------------------------------------------
+
+
+def test_the_request_log_records_what_was_sent_and_what_came_back(page):
+    inject(page)
+    # a completed one: a record exists from the moment the request starts, and asserting on a
+    # status that has not come back yet would be flaky rather than wrong
+    page.wait_for_function(
+        """() => debuggerRequestLog.some(r => r.status !== null && /api\\/web\\/events/.test(r.url))
+                 && debuggerRequestLog.some(r => r.responseBody && /formData.*\\.json/i.test(r.url))""",
+        timeout=30000)
+
+    analytics = page.evaluate("""() => {
+        // newest-first, and the newest may still be in flight — take a finished one
+        const r = debuggerRequestLog.find(x => x.method === 'POST' && x.status !== null
+                                               && /api\\/web\\/events/.test(x.url));
+        return r && {status: r.status, hasRequestBody: !!r.requestBody, ms: r.durationMs,
+                     madeBy: r.madeBy, transport: r.transport};
+    }""")
+    assert analytics, "the analytics POST was not logged"
+    assert analytics["status"] == 200 and analytics["hasRequestBody"], analytics
+    assert analytics["madeBy"] == "SDK" and analytics["ms"] is not None
+
+    definition = page.evaluate("""() => {
+        const r = debuggerRequestLog.find(x => /formData.*\\.json/i.test(x.url) && x.responseBody);
+        return r && {status: r.status, bodyChars: r.responseBody.length, madeBy: r.madeBy};
+    }""")
+    assert definition and definition["bodyChars"] > 500, \
+        f"a config response was logged without its body: {definition}"
+
+
+def test_the_log_separates_the_sdk_from_this_tool(page):
+    """This app re-fetches the property configuration and form definitions for its own panels.
+    Those are real requests, but reading them as SDK behaviour would be a lie the whole log rests
+    on. Marked through a non-standard fetch init key, which never reaches the wire — a header
+    would have triggered a CORS preflight."""
+    inject(page)
+    page.wait_for_function("() => debuggerRequestLog.some(r => r.madeBy === 'this tool')", timeout=25000)
+
+    makers = page.evaluate("""() => {
+        const o = {};
+        debuggerRequestLog.forEach(r => { o[r.madeBy] = (o[r.madeBy] || 0) + 1; });
+        return o;
+    }""")
+    assert makers.get("SDK", 0) > 0 and makers.get("this tool", 0) > 0, \
+        f"one side of the split is empty: {makers}"
+
+    # and the marker really is absent from the wire
+    assert page.evaluate("""() => {
+        const r = debuggerRequestLog.find(x => x.madeBy === 'this tool');
+        return /formData|onsiteData/i.test(r.url);
+    }"""), "the tool-owned request was not one of the config fetches"
+
+
+def test_script_loads_are_filled_in_from_resource_timing(page):
+    """embed.js and generic*.js arrive as <script src>, which never passes through fetch or XHR.
+    Leaving them out would make the log quietly incomplete on exactly the requests that start
+    everything. No body exists for these and the row says so rather than showing an empty one."""
+    inject(page)
+    page.wait_for_function("() => debuggerRequestLog.length > 3", timeout=25000)
+
+    recovered = page.evaluate("""() => collectSdkResourceTimingsMissingFromTheLog()
+        .map(r => ({transport: r.transport, url: r.url, note: r.bodyUnavailable}))""")
+    assert any("embed.js" in r["url"] for r in recovered), \
+        f"the embed script was not recovered: {[r['url'] for r in recovered]}"
+    assert all(r["note"] for r in recovered), "a recovered row claimed a body it cannot have"
+
+    merged = page.evaluate("() => buildDebuggerRequestLog()")
+    wrapped = page.evaluate("() => debuggerRequestLog.length")
+    assert len(merged) == wrapped + len(recovered), "the merge lost or duplicated a request"
+    assert all(merged[i - 1]["startedAt"] >= merged[i]["startedAt"] for i in range(1, len(merged))), \
+        "the merged log is not newest-first"
+
+
+def test_request_bodies_are_budgeted_so_a_long_session_does_not_grow_without_bound(page):
+    """400 records each holding the per-body maximum would be nearly ten megabytes of strings
+    held live, and a debugging session left open all afternoon is the normal case here."""
+    inject(page)
+    page.wait_for_function("() => debuggerRequestLog.length > 3", timeout=25000)
+
+    assert page.evaluate("() => debuggerCapturedBodyBytes") > 0, "nothing was accounted for"
+
+    spent = page.evaluate("""() => {
+        const before = debuggerCapturedBodyBytes;
+        debuggerCapturedBodyBytes = DEBUGGER_BODY_BUDGET;
+        const over = trimCapturedBody('x'.repeat(500));
+        debuggerCapturedBodyBytes = before;
+        return over;
+    }""")
+    assert "budget" in spent, f"past the budget a body was still kept: {spent[:80]}"
+
+    # and a body under the per-body cap is kept whole, not silently truncated
+    kept = page.evaluate("() => trimCapturedBody('y'.repeat(100))")
+    assert kept == "y" * 100
+    oversized = page.evaluate("() => trimCapturedBody('z'.repeat(DEBUGGER_BODY_CAPTURE_LIMIT + 50))")
+    assert "more characters" in oversized and len(oversized) < 25000
+
+
+# --------------------------------------------------------------------------------------------
+# Debugger roadmap, item 5: filters on the subjects that are logs.
+#
+# Two subjects are logs rather than documents. On a log the useful question is "only the
+# warnings" or "only what failed", which a substring search answers badly. Built generically
+# because the console needed it first and the request log needed exactly the same thing.
+# --------------------------------------------------------------------------------------------
+
+
+def test_only_the_log_subjects_offer_filters(page):
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => document.querySelectorAll('[data-inspector-subject]').length > 0",
+                           timeout=15000)
+
+    def facets_for(subject_id):
+        page.evaluate("(s) => { activeInspectorSubjectId = s; renderInspectorView({force: true}); }", subject_id)
+        page.wait_for_timeout(250)
+        return page.eval_on_selector_all(".inspector-facet select", "els => els.length")
+
+    assert facets_for("onsite-config") == 0, "a document subject grew filters"
+    assert facets_for("component-roles") == 0
+    assert facets_for("console") == 2, "the console lost its level/origin filters"
+    assert facets_for("requests") == 3, "the request log lost its method/outcome/maker filters"
+
+    page.evaluate("() => { activeInspectorSubjectId = 'onsite-config'; }")
+
+
+def test_filtering_the_console_narrows_it_and_keeps_the_stack(page):
+    """The capture has carried level, origin and the full stack all along; the subject flattened
+    them away and showed everything undifferentiated."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => capturedSdkConsoleMessages.length > 0", timeout=20000)
+    page.evaluate("() => { activeInspectorSubjectId = 'console'; renderInspectorView({force: true}); }")
+    page.wait_for_timeout(300)
+
+    everything = page.evaluate("() => (activeInspectorSubject().read() || []).length")
+    assert everything > 0
+
+    level = page.evaluate("() => (activeInspectorSubject().read() || [])[0].level")
+    page.evaluate("(l) => setSubjectFilter('console', 'level', l)", level)
+    page.wait_for_timeout(300)
+    narrowed = page.evaluate("() => (activeInspectorSubject().read() || []).map(r => r.level)")
+    assert narrowed and set(narrowed) == {level}, f"the level filter let others through: {set(narrowed)}"
+    assert len(narrowed) <= everything
+
+    # the whole stack, not just the leading frame — the frame answers who, the stack answers how
+    row = page.evaluate("() => (activeInspectorSubject().read() || [])[0]")
+    assert row["frame"] is not None or row["stack"] is not None
+    if row["stack"]:
+        assert isinstance(row["stack"], list) and len(row["stack"]) >= 1
+
+    page.evaluate("() => { setSubjectFilter('console', 'level', ''); activeInspectorSubjectId = 'onsite-config'; }")
+
+
+def test_the_request_log_bands_outcomes_instead_of_listing_status_codes(page):
+    """A filter with one entry per distinct status code is a filter nobody can use. And a
+    resource-timing row only exists for a load that finished, so a missing responseStatus means
+    the browser did not say — it was being banded as 'in flight'."""
+    inject(page)
+    page.wait_for_function("() => debuggerRequestLog.some(r => r.status !== null)", timeout=25000)
+    page.evaluate("setActiveWorkspace('debugger')")
+    page.wait_for_function("() => document.querySelectorAll('[data-inspector-subject]').length > 0",
+                           timeout=15000)
+    page.evaluate("() => { activeInspectorSubjectId = 'requests'; renderInspectorView({force: true}); }")
+    page.wait_for_timeout(400)
+
+    bands = page.evaluate("() => [...new Set(buildDebuggerRequestLog().map(describeRequestOutcome))]")
+    assert "ok" in bands, f"nothing succeeded, which cannot be right: {bands}"
+
+    recovered_bands = page.evaluate("""() => [...new Set(
+        collectSdkResourceTimingsMissingFromTheLog().map(describeRequestOutcome))]""")
+    assert "in flight" not in recovered_bands, \
+        f"a finished script load was banded as still going: {recovered_bands}"
+
+    assert page.evaluate("""() => [
+        describeRequestOutcome({status: 500}), describeRequestOutcome({status: 404}),
+        describeRequestOutcome({status: 'FAILED'}), describeRequestOutcome({status: null})
+    ]""") == ["server error", "client error", "failed", "in flight"]
+
+    page.evaluate("() => setSubjectFilter('requests', 'method', 'POST')")
+    page.wait_for_timeout(300)
+    methods = page.evaluate("() => [...new Set((activeInspectorSubject().read() || []).map(r => r.method))]")
+    assert methods == ["POST"], f"the method filter let others through: {methods}"
+
+    page.evaluate("() => { setSubjectFilter('requests', 'method', ''); activeInspectorSubjectId = 'onsite-config'; }")
