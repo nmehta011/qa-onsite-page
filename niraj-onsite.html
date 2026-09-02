@@ -221,6 +221,32 @@
         .diag-panel button.debugger-watch-drop:hover { color: var(--accent-red); transform: none; }
 
         /* Facets appear only for the subjects that are logs rather than documents. */
+        /* The tree. Indentation comes from a custom property rather than nesting, so a deep
+           branch cannot run the rows off the right edge of the pane. */
+        .inspector-output-tree { white-space: normal; font-size: 0.74rem; line-height: 1.7; }
+        .tree-row { display: flex; align-items: baseline; gap: 4px; padding-left: calc(var(--tree-depth, 0) * 14px); flex-wrap: nowrap; }
+        .tree-row:hover { background: var(--surface-control); }
+        .tree-row:hover .tree-actions { opacity: 1; }
+        .diag-panel button.tree-twisty, button.tree-twisty { background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 0.7rem; width: 13px; padding: 0; box-shadow: none; height: auto; flex-shrink: 0; }
+        .diag-panel button.tree-twisty:hover { color: var(--accent-sky-strong); transform: none; }
+        .tree-twisty-blank { display: inline-block; width: 13px; flex-shrink: 0; }
+        .tree-key { color: var(--accent-sky); font-family: monospace; flex-shrink: 0; }
+        .tree-colon { color: var(--text-faint); flex-shrink: 0; }
+        .tree-leaf { font-family: monospace; word-break: break-all; min-width: 0; }
+        .tree-string { color: var(--accent-green); }
+        .tree-number { color: var(--accent-amber); }
+        .tree-boolean { color: var(--accent-purple); }
+        .tree-null { color: var(--text-faint); font-style: italic; }
+        .tree-other { color: var(--text-soft); }
+        .tree-summary { color: var(--text-faint); font-family: monospace; flex-shrink: 0; }
+        .tree-summary-collapsed { color: var(--accent-amber); }
+        /* Revealed on hover so the rows stay readable — every row carrying two visible buttons
+           turns the tree back into the wall of text it replaced. */
+        .tree-actions { display: inline-flex; gap: 5px; opacity: 0; transition: opacity 0.12s; margin-left: auto; flex-shrink: 0; }
+        .diag-panel button.tree-action, button.tree-action { background: transparent; border: 1px solid var(--line); color: var(--text-dim); font-size: 0.62rem; padding: 0 5px; border-radius: 4px; cursor: pointer; height: auto; box-shadow: none; }
+        .diag-panel button.tree-action:hover { border-color: var(--accent-sky-strong); color: var(--accent-sky-strong); transform: none; }
+        .tree-truncated { color: var(--accent-amber); font-size: 0.73rem; padding: 8px 0 0 14px; font-style: italic; }
+
         .inspector-facets { display: inline-flex; gap: 9px; align-items: center; flex-wrap: wrap; }
         .inspector-facet { display: inline-flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--text-dim); white-space: nowrap; }
         .inspector-facet select { background: var(--surface-control); color: var(--text-firm); border: 1px solid var(--line); border-radius: 5px; font-size: 0.72rem; padding: 3px 6px; font-family: inherit; cursor: pointer; }
@@ -2833,6 +2859,9 @@
                         <input type="text" id="inspector-search-input" class="suite-input" placeholder="Search this output…" aria-label="Search the inspector output" oninput="renderInspectorOutput({force:true})">
                         <span id="inspector-match-count" class="inspector-match-count"></span>
                         <label class="inspector-only-matching"><input type="checkbox" id="inspector-only-matching" onchange="renderInspectorOutput({force:true})"> Matching lines only</label>
+                        <button class="lifecycle-btn" id="debugger-tree-toggle" onclick="toggleDebuggerTreeView()" title="Switch between the tree and the raw JSON">🌳 Tree</button>
+                        <button class="lifecycle-btn" onclick="setEveryTreePath(true)" title="Collapse every branch">Collapse all</button>
+                        <button class="lifecycle-btn" onclick="setEveryTreePath(false)" title="Expand every branch">Expand all</button>
                     </div>
                     <pre id="inspector-output" class="inspector-output" tabindex="0"></pre>
                     <div id="debugger-console-wrap" class="debugger-console-wrap" style="display:none;">
@@ -9418,6 +9447,150 @@
             });
         }
 
+        // --- TREE VIEW ---
+        // Every subject rendered as one flat <pre>. Search was line-substring with a filter
+        // toggle, which works, but there was no way to collapse a branch, see where you were, or
+        // copy one subtree. On the 42 KB form definitions that is the difference between finding
+        // a field and scrolling for it.
+        //
+        // The flat view is kept as a toggle rather than replaced: it is better for reading a
+        // whole document top to bottom, and it is what the existing search highlights.
+        let debuggerTreeViewEnabled = true;
+        const debuggerCollapsedTreePaths = {};    // "subjectId::path" -> true
+        // Big arrays are the reason a tree beats a wall of text, and also the reason a naive
+        // tree is worse: 98 provisions or 400 request records rendered as 400 open branches is
+        // the same wall with more indentation. Anything past this collapses itself.
+        const DEBUGGER_TREE_AUTO_COLLAPSE_SIZE = 12;
+        const DEBUGGER_TREE_MAX_NODES = 4000;
+
+        function treePathKey(path) { return `${activeInspectorSubjectId}::${path}`; }
+
+        function treePathIsCollapsed(path, childCount, depth) {
+            const key = treePathKey(path);
+            if (key in debuggerCollapsedTreePaths) return debuggerCollapsedTreePaths[key];
+            // Not stored on first sight, so a default that changes as data grows still applies
+            // rather than being frozen by the first render.
+            return depth > 0 && childCount > DEBUGGER_TREE_AUTO_COLLAPSE_SIZE;
+        }
+
+        function toggleTreePath(path) {
+            // The stored map is deliberately sparse -- a branch collapsed by the size default
+            // has no entry in it -- so negating the raw stored value negated `undefined`, which
+            // is `true`, and the first click on an auto-collapsed branch re-collapsed it. The
+            // effective state is what has to be flipped, not the stored one.
+            const value = readInspectorSubjectValue(activeInspectorSubject());
+            const node = path ? resolveWatchPath(value, path).value : value;
+            const childCount = node && typeof node === 'object' ? Object.keys(node).length : 0;
+            const depth = path ? path.split('.').length : 0;
+            debuggerCollapsedTreePaths[treePathKey(path)] = !treePathIsCollapsed(path, childCount, depth);
+            renderInspectorOutput({ force: true });
+        }
+
+        function setEveryTreePath(collapsed) {
+            const value = readInspectorSubjectValue(activeInspectorSubject());
+            const walk = (node, path) => {
+                if (!node || typeof node !== 'object') return;
+                if (path) debuggerCollapsedTreePaths[treePathKey(path)] = collapsed;
+                Object.keys(node).forEach(key => walk(node[key], path ? `${path}.${key}` : key));
+            };
+            walk(value, '');
+            renderInspectorOutput({ force: true });
+        }
+
+        function copyTreeSubtree(path) {
+            const value = readInspectorSubjectValue(activeInspectorSubject());
+            const resolved = path ? resolveWatchPath(value, path) : { found: true, value };
+            if (!resolved.found) { toast('That branch is no longer there.', 'warn'); return; }
+            let text;
+            try { text = JSON.stringify(resolved.value, null, 2); }
+            catch (err) { toast(`That branch cannot be copied: ${err.message}`, 'warn'); return; }
+            if (!navigator.clipboard) { writeLog(text, 'info'); toast('Clipboard unavailable — written to the log.', 'warn'); return; }
+            navigator.clipboard.writeText(text)
+                .then(() => toast(`Copied ${path || 'the whole subject'}.`, 'success'))
+                .catch(err => toast(`Clipboard write rejected: ${err.message}`, 'warn'));
+        }
+
+        function watchTreePath(path) {
+            addDebuggerWatch(activeInspectorSubjectId, path);
+            renderDebuggerWatchStrip();
+        }
+
+        function summariseTreeLeaf(value) {
+            if (value === null) return { text: 'null', kind: 'null' };
+            if (value === undefined) return { text: 'undefined', kind: 'null' };
+            if (typeof value === 'string') return { text: JSON.stringify(value), kind: 'string' };
+            if (typeof value === 'number' || typeof value === 'bigint') return { text: String(value), kind: 'number' };
+            if (typeof value === 'boolean') return { text: String(value), kind: 'boolean' };
+            return { text: String(value), kind: 'other' };
+        }
+
+        // Rendered as markup rather than as DOM nodes, to stay consistent with the rest of this
+        // file and because a 4,000-node string assembles faster than 4,000 appendChild calls.
+        //
+        // A row and its children are SIBLINGS, never nested. The first version put the child
+        // rows inside the parent's flex row, which made every child a flex item of its parent --
+        // the whole tree rendered sideways, one character per line. Structure is: one flex row
+        // for the entry itself, then a block of child rows after it.
+        function buildTreeRows(value, path, key, depth, budget, needle, isArrayIndex, ancestors) {
+            if (budget.spent >= DEBUGGER_TREE_MAX_NODES) return '';
+            budget.spent++;
+
+            const isBranch = value !== null && typeof value === 'object';
+            // The flat view degrades to "could not serialise" on a cycle because JSON.stringify
+            // throws. A tree walk does not throw -- it descends forever, and would only stop at
+            // the node budget, having rendered four thousand rows of the same loop. The chain of
+            // ancestors is what tells a genuine repeat apart from the same object appearing
+            // twice in different branches, which is not a cycle and must still render.
+            const chain = ancestors || [];
+            if (isBranch && chain.indexOf(value) !== -1) {
+                return `<div class="tree-row" style="--tree-depth:${depth};">` +
+                       '<span class="tree-twisty tree-twisty-blank"></span>' +
+                       `<span class="tree-key">${highlightTreeText(isArrayIndex ? key : `"${key}"`, needle)}</span><span class="tree-colon">:</span>` +
+                       '<span class="tree-leaf tree-null">[circular — this is an ancestor of itself]</span>' +
+                       '</div>';
+            }
+            const childKeys = isBranch ? Object.keys(value) : [];
+            const hasChildren = childKeys.length > 0;
+            const collapsed = hasChildren && treePathIsCollapsed(path, childKeys.length, depth);
+
+            let valueMarkup;
+            if (!isBranch) {
+                const leaf = summariseTreeLeaf(value);
+                valueMarkup = `<span class="tree-leaf tree-${leaf.kind}">${highlightTreeText(leaf.text, needle)}</span>`;
+            } else if (!hasChildren) {
+                valueMarkup = `<span class="tree-leaf tree-other">${Array.isArray(value) ? '[]' : '{}'}</span>`;
+            } else {
+                valueMarkup = `<span class="tree-summary${collapsed ? ' tree-summary-collapsed' : ''}">${Array.isArray(value) ? `[${childKeys.length}]` : `{${childKeys.length}}`}</span>`;
+            }
+
+            const row = `<div class="tree-row" style="--tree-depth:${depth};">` +
+                (hasChildren
+                    ? `<button class="tree-twisty" data-tree-toggle="${escapeMarkupForSafeRender(path)}" aria-expanded="${!collapsed}" aria-label="Expand or collapse ${escapeMarkupForSafeRender(path || 'the whole subject')}">${collapsed ? '▸' : '▾'}</button>`
+                    : '<span class="tree-twisty tree-twisty-blank"></span>') +
+                `<span class="tree-key">${highlightTreeText(isArrayIndex ? key : `"${key}"`, needle)}</span><span class="tree-colon">:</span>` +
+                valueMarkup +
+                (path ? `<span class="tree-actions">
+                            <button class="tree-action" data-tree-copy="${escapeMarkupForSafeRender(path)}" title="Copy this branch as JSON">copy</button>
+                            <button class="tree-action" data-tree-watch="${escapeMarkupForSafeRender(path)}" title="Watch this path">watch</button>
+                         </span>` : '') +
+                `</div>`;
+
+            if (!hasChildren || collapsed) return row;
+
+            const isArray = Array.isArray(value);
+            const nextChain = chain.concat([value]);
+            return row + childKeys.map(childKey =>
+                buildTreeRows(value[childKey], path ? `${path}.${childKey}` : childKey,
+                              childKey, depth + 1, budget, needle, isArray, nextChain)).join('');
+        }
+
+        function highlightTreeText(text, needle) {
+            const escaped = escapeMarkupForSafeRender(String(text));
+            if (!needle) return escaped;
+            const safe = escapeMarkupForSafeRender(needle).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return escaped.replace(new RegExp(safe, 'gi'), match => `<mark>${match}</mark>`);
+        }
+
         function renderInspectorOutput(options) {
             const output = document.getElementById('inspector-output');
             // A manual Refresh is the reader asking for new content and outranks their selection;
@@ -9463,6 +9636,22 @@
 
             // Escaped first, then the highlight markup is added — never the other way round, or a
             // configuration value containing markup would be injected into this page.
+            // The tree is the default because most subjects are documents you navigate; the flat
+            // view stays for reading one end to end, and for the "matching lines only" filter,
+            // which has no meaning once the output has structure.
+            if (debuggerTreeViewEnabled && !onlyMatching && typeof value === 'object') {
+                const budget = { spent: 0 };
+                output.classList.add('inspector-output-tree');
+                output.innerHTML =
+                    buildTreeRows(value, '', subject.label, 0, budget, needle, false, []) +
+                    (budget.spent >= DEBUGGER_TREE_MAX_NODES
+                        ? `<div class="tree-truncated">Stopped after ${DEBUGGER_TREE_MAX_NODES} nodes — collapse a branch, search, or switch to the flat view to see the rest.</div>`
+                        : '');
+                wireTreeInteractions(output);
+                return;
+            }
+
+            output.classList.remove('inspector-output-tree');
             const escaped = lines.map(line => escapeMarkupForSafeRender(line));
             if (needle) {
                 const safeNeedle = escapeMarkupForSafeRender(needle).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -9471,6 +9660,25 @@
             } else {
                 output.innerHTML = escaped.join('\n');
             }
+        }
+
+        function wireTreeInteractions(output) {
+            output.querySelectorAll('[data-tree-toggle]').forEach(button => {
+                button.onclick = () => toggleTreePath(button.getAttribute('data-tree-toggle'));
+            });
+            output.querySelectorAll('[data-tree-copy]').forEach(button => {
+                button.onclick = () => copyTreeSubtree(button.getAttribute('data-tree-copy'));
+            });
+            output.querySelectorAll('[data-tree-watch]').forEach(button => {
+                button.onclick = () => watchTreePath(button.getAttribute('data-tree-watch'));
+            });
+        }
+
+        function toggleDebuggerTreeView() {
+            debuggerTreeViewEnabled = !debuggerTreeViewEnabled;
+            const button = document.getElementById('debugger-tree-toggle');
+            if (button) button.innerText = debuggerTreeViewEnabled ? '🌳 Tree' : '📄 Flat';
+            renderInspectorOutput({ force: true });
         }
 
         function renderInspectorView(options) {

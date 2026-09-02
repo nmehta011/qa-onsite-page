@@ -1845,9 +1845,16 @@ def test_the_inspector_shows_the_sdk_own_objects_not_this_apps_reading_of_them(p
     """Every other panel interprets the configuration. This is the source those readings come
     from, for the case where the reading is the thing you doubt."""
     open_inspector(page)
+    # the tree is the default now; both views have to show the same object
+    assert "provisions" in page.inner_text("#inspector-output")
+    assert page.eval_on_selector_all(".tree-row", "e => e.length") > 0
+
+    page.evaluate("() => toggleDebuggerTreeView()")
+    page.wait_for_timeout(300)
     text = page.eval_on_selector("#inspector-output", "e => e.innerText")
     assert text.strip().startswith("{"), text[:120]
     assert "provisions" in text
+    page.evaluate("() => toggleDebuggerTreeView()")
 
     # Each subject has to resolve to something real, or it is a dead entry in the list. The
     # exception is a subject that is empty because nothing has been ASKED of it yet — the SDK
@@ -2330,8 +2337,13 @@ def test_component_roles_is_reachable_as_an_inspector_subject(page):
     page.wait_for_timeout(700)
 
     assert page.evaluate("() => activeInspectorSubjectId") == "component-roles"
+    # in the tree the rows arrive collapsed (each component has more keys than the auto-collapse
+    # threshold), so the flat view is where the field names are asserted
+    page.evaluate("() => toggleDebuggerTreeView()")
+    page.wait_for_timeout(300)
     output = page.inner_text("#inspector-output")
     assert "expectedRole" in output and "unique_name" in output, output[:400]
+    page.evaluate("() => toggleDebuggerTreeView()")
     # it is not an editable subject: nothing here is a live object to write back to
     assert page.eval_on_selector("#inspector-editor-wrap", "e => getComputedStyle(e).display") == "none"
 
@@ -2400,8 +2412,12 @@ def test_the_debugger_refresh_waits_while_you_have_text_selected(page):
 
     selected = page.evaluate("""() => {
         const pre = document.getElementById('inspector-output');
+        // The tree is built from many short spans — twisties are a single character — so the
+        // first text node is not necessarily one you can select inside.
         const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
-        const node = walker.nextNode();
+        let node = walker.nextNode();
+        while (node && node.length < 20) node = walker.nextNode();
+        if (!node) return 0;
         const range = document.createRange();
         range.setStart(node, 5); range.setEnd(node, Math.min(70, node.length));
         const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
@@ -2445,9 +2461,18 @@ def test_copy_reports_a_subject_it_cannot_serialise_instead_of_throwing(page):
     page.wait_for_timeout(300)
     assert len(page.errors) == before, f"Copy threw: {page.errors[before:]}"
 
-    # the pane itself already survived this, and must still
+    # the pane itself already survived this, and must still — in both views. The flat view
+    # degrades because JSON.stringify throws; the tree does not throw, it descends forever, so
+    # it needs its own cycle guard rather than inheriting that one.
     page.evaluate("() => renderInspectorOutput({force: true})")
+    assert "circular" in page.inner_text("#inspector-output"), "the tree looped on a cycle"
+    assert page.eval_on_selector_all(".tree-row", "e => e.length") < 20, \
+        "the tree rendered a cycle until it ran out of budget"
+
+    page.evaluate("() => toggleDebuggerTreeView()")
+    page.wait_for_timeout(300)
     assert "could not serialise" in page.inner_text("#inspector-output")
+    page.evaluate("() => toggleDebuggerTreeView()")
 
     page.evaluate("""() => {
         INSPECTOR_SUBJECTS.pop();
@@ -3010,3 +3035,121 @@ def test_the_console_only_offers_calls_that_exist_and_recalls_what_you_ran(page)
     page.evaluate("() => { activeInspectorSubjectId = 'onsite-config'; renderInspectorView({force: true}); }")
     page.wait_for_timeout(300)
     assert page.eval_on_selector("#debugger-console-wrap", "e => getComputedStyle(e).display") == "none"
+
+
+# --------------------------------------------------------------------------------------------
+# Debugger roadmap, item 7: the tree view.
+#
+# Every subject rendered as one flat <pre>. On the 42 KB form definitions that is the difference
+# between finding a field and scrolling for it.
+# --------------------------------------------------------------------------------------------
+
+
+def _open_debugger(pg, subject="onsite-config"):
+    pg.evaluate("setActiveWorkspace('debugger')")
+    pg.wait_for_function("() => document.querySelectorAll('[data-inspector-subject]').length > 0",
+                         timeout=15000)
+    pg.evaluate("(s) => { activeInspectorSubjectId = s; renderInspectorView({force: true}); }", subject)
+    pg.wait_for_timeout(400)
+
+
+def test_the_tree_stacks_its_rows_instead_of_running_sideways(page):
+    """The first version put child rows inside the parent's flex row, which made every child a
+    flex item of its parent — the whole tree rendered sideways, one character per line. A row and
+    its children are siblings."""
+    inject(page)
+    _open_debugger(page)
+
+    geometry = page.evaluate("""() => [...document.querySelectorAll('.tree-row')].slice(0, 5)
+        .map(r => { const b = r.getBoundingClientRect(); return {top: Math.round(b.top), width: Math.round(b.width)}; })""")
+    assert len(geometry) >= 4, "the tree did not render"
+    tops = [g["top"] for g in geometry]
+    assert tops == sorted(tops) and len(set(tops)) == len(tops), \
+        f"rows are not stacked vertically: {tops}"
+    assert len(set(g["width"] for g in geometry)) == 1, "rows are not full width"
+
+    assert page.evaluate("""() => {
+        const o = document.getElementById('inspector-output');
+        return o.scrollWidth <= o.clientWidth + 2;
+    }"""), "the tree overflows its pane horizontally"
+
+
+def test_a_big_branch_collapses_itself_and_reopens_when_clicked(page):
+    """98 provisions rendered as 98 open rows is the same wall of text with more indentation.
+    And the collapsed map is sparse, so the first version negated `undefined` — clicking an
+    auto-collapsed branch re-collapsed it."""
+    inject(page)
+    _open_debugger(page)
+
+    assert page.evaluate("() => treePathIsCollapsed('provisions', 98, 1)") is True, \
+        "a 98-child branch opened by default"
+    assert page.evaluate("() => treePathIsCollapsed('websiteId', 0, 1)") is False
+
+    collapsed = page.eval_on_selector_all(".tree-row", "e => e.length")
+    page.evaluate("""() => document.querySelector('[data-tree-toggle="provisions"]').click()""")
+    page.wait_for_timeout(400)
+    expanded = page.eval_on_selector_all(".tree-row", "e => e.length")
+    assert expanded > collapsed, f"clicking the twisty did not expand it: {collapsed} -> {expanded}"
+
+    page.evaluate("""() => document.querySelector('[data-tree-toggle="provisions"]').click()""")
+    page.wait_for_timeout(400)
+    assert page.eval_on_selector_all(".tree-row", "e => e.length") == collapsed
+
+    page.evaluate("() => setEveryTreePath(false)")
+    page.wait_for_timeout(500)
+    everything = page.eval_on_selector_all(".tree-row", "e => e.length")
+    page.evaluate("() => setEveryTreePath(true)")
+    page.wait_for_timeout(500)
+    nothing = page.eval_on_selector_all(".tree-row", "e => e.length")
+    assert everything > nothing, f"expand/collapse all did nothing: {everything} vs {nothing}"
+
+
+def test_a_tree_row_can_be_copied_or_watched_from_where_it_sits(page):
+    inject(page)
+    _open_debugger(page)
+    page.evaluate("() => { debuggerWatches = []; writeStoredDebuggerWatches(); }")
+
+    page.evaluate("""() => document.querySelector('[data-tree-watch="websiteId"]').click()""")
+    page.wait_for_timeout(400)
+    assert page.evaluate("() => debuggerWatches.map(w => w.path)") == ["websiteId"]
+
+    # the branch copy resolves the same path the row is labelled with
+    assert page.evaluate("""() => {
+        const value = readInspectorSubjectValue(activeInspectorSubject());
+        return resolveWatchPath(value, 'provisions').found;
+    }""")
+    page.evaluate("() => { debuggerWatches = []; writeStoredDebuggerWatches(); }")
+
+
+def test_the_flat_view_is_still_there_for_reading_end_to_end(page):
+    """The tree is better for navigating; the raw JSON is better for reading a document top to
+    bottom, and it is what the existing search highlights. Kept as a toggle, not replaced."""
+    inject(page)
+    _open_debugger(page)
+    assert page.eval_on_selector("#inspector-output", "e => e.classList.contains('inspector-output-tree')")
+
+    page.evaluate("() => toggleDebuggerTreeView()")
+    page.wait_for_timeout(400)
+    assert not page.eval_on_selector("#inspector-output", "e => e.classList.contains('inspector-output-tree')")
+    assert page.inner_text("#inspector-output").strip().startswith("{")
+    assert page.eval_on_selector_all(".tree-row", "e => e.length") == 0
+
+    page.evaluate("() => toggleDebuggerTreeView()")
+    page.wait_for_timeout(400)
+    assert page.eval_on_selector_all(".tree-row", "e => e.length") > 0
+
+    # "matching lines only" is a flat-view idea and has no meaning once the output has structure,
+    # so it falls back rather than silently doing nothing
+    page.evaluate("""() => {
+        document.getElementById('inspector-search-input').value = 'website';
+        document.getElementById('inspector-only-matching').checked = true;
+        renderInspectorOutput({force: true});
+    }""")
+    page.wait_for_timeout(300)
+    assert page.eval_on_selector_all(".tree-row", "e => e.length") == 0, \
+        "matching-lines-only should drop back to the flat view"
+    page.evaluate("""() => {
+        document.getElementById('inspector-search-input').value = '';
+        document.getElementById('inspector-only-matching').checked = false;
+        renderInspectorOutput({force: true});
+    }""")
