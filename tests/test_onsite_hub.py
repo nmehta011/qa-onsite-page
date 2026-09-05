@@ -806,7 +806,7 @@ def test_no_workspace_panel_is_orphaned_by_a_heading_rename(page):
         });
         return o;
     }""")
-    assert sum(counts.values()) == 25, f"expected 25 assigned panels, got {counts}"
+    assert sum(counts.values()) == 26, f"expected 26 assigned panels, got {counts}"
     assert all(counts.values()), f"a workspace ended up with no panels at all: {counts}"
 
 
@@ -3680,6 +3680,137 @@ def test_the_editor_scopes_to_a_branch_and_still_names_full_paths(page):
     assert page.eval_on_selector_all(".inspector-diff-settled", "e => e.length") == len(paths), \
         "the settled-at-startup warning was lost when the editor was scoped"
 
+    # Waited for rather than slept on: the debugger re-reads on a 3s loop, and under a loaded
+    # machine a fixed pause lands mid-render often enough to be flaky.
     page.evaluate("() => setDebuggerEditorPath('')")
-    page.wait_for_timeout(400)
-    assert page.evaluate("() => document.getElementById('inspector-editor').value.split('\\n').length") == whole
+    page.wait_for_function(
+        "(n) => document.getElementById('inspector-editor').value.split('\\n').length === n",
+        arg=whole, timeout=8000)
+
+
+# --------------------------------------------------------------------------------------------
+# The Expectation Suite.
+#
+# Everything else here is a diff — Config Drift Baseline diffs configuration, What Changed Since
+# Last Run diffs verdicts between two moments. Both answer "has this moved?", and neither can
+# tell you a form has been wrong since the day it was published: a baseline taken on a broken
+# property records the breakage as normal. An expectation states intent, so it can fail on its
+# first run.
+# --------------------------------------------------------------------------------------------
+
+
+def test_targeting_and_being_shown_are_recorded_as_different_answers(page):
+    """A code-triggered form can pass targeting and legitimately not be on screen. Collapsing the
+    two would report that as a failure on every run."""
+    inject(page)
+    outcomes = page.evaluate("() => readCurrentFormOutcomes()")
+    assert outcomes and len(outcomes) >= 4
+
+    for outcome in outcomes:
+        assert set(outcome) >= {"formId", "passesTargeting", "shownBySdk", "blockedBy"}
+        if not outcome["passesTargeting"]:
+            assert outcome["blockedBy"], f"{outcome['formId']} is blocked by nothing in particular"
+
+    # this property publishes a code-triggered form, which is exactly the case that needs the two
+    passing_unshown = [o for o in outcomes if o["passesTargeting"] and not o["shownBySdk"]]
+    assert passing_unshown, "no form passes targeting without being on screen — the split is untested"
+
+
+def test_an_expectation_replays_its_own_state_and_holds_when_the_page_has_moved_on(page):
+    """The whole feature. Saved in one state, run in another, and it has to reproduce the state
+    it was saved in rather than grading the page it happens to find."""
+    inject(page)
+    page.evaluate("() => { localStorage.removeItem('qa_expectations_v1'); }")
+
+    page.evaluate("() => saveExpectationFromCurrentState('clean state')")
+    clean = page.evaluate("""() => readCurrentFormOutcomes()
+        .filter(o => o.passesTargeting).map(o => o.formId).sort()""")
+
+    # a submitted date quarantines at least one form, so the page genuinely moves on
+    page.evaluate("() => localStorage.setItem('SUBMITTED_DATE', String(Date.now()))")
+    page.evaluate("() => KAMPYLE_ONSITE_SDK.updatePageView()")
+    page.wait_for_timeout(2500)
+    poisoned = page.evaluate("""() => readCurrentFormOutcomes()
+        .filter(o => o.passesTargeting).map(o => o.formId).sort()""")
+    assert poisoned != clean, "the page did not actually change, so the replay proves nothing"
+
+    results = page.evaluate("""async () => {
+        await runAllExpectations();
+        return lastExpectationRunResults.map(r => ({name: r.name, failed: r.failed, rows: r.rows.length}));
+    }""")
+    assert results and results[0]["failed"] == 0, \
+        f"the expectation graded the page it found instead of replaying its own state: {results}"
+    assert results[0]["rows"] == len(clean) or results[0]["rows"] >= 4
+
+    # and the page is put back: a suite that leaves the last state behind quietly changes what
+    # every panel below it is reporting on
+    assert page.evaluate("() => localStorage.getItem('SUBMITTED_DATE')") is not None, \
+        "the run did not restore the state it found"
+    assert page.evaluate("""() => readCurrentFormOutcomes()
+        .filter(o => o.passesTargeting).map(o => o.formId).sort()""") == poisoned
+
+    page.evaluate("() => { localStorage.removeItem('qa_expectations_v1'); localStorage.removeItem('SUBMITTED_DATE'); }")
+
+
+def test_a_failing_expectation_names_the_rule_that_blocked_the_form(page):
+    """"It failed" is not worth saving a check for. The point is which rule decided it."""
+    inject(page)
+    page.evaluate("() => { localStorage.removeItem('qa_expectations_v1'); }")
+    page.evaluate("() => saveExpectationFromCurrentState('baseline')")
+
+    # assert the opposite of what the property does for one blocked form
+    flipped = page.evaluate("""() => {
+        const list = readStoredExpectations();
+        const outcomes = readCurrentFormOutcomes();
+        const blocked = outcomes.find(o => !o.passesTargeting);
+        if (!blocked) return null;
+        const row = list[0].expected.find(e => e.formId === blocked.formId);
+        row.shouldPassTargeting = true;
+        writeStoredExpectations(list);
+        return {formId: blocked.formId, blockedBy: blocked.blockedBy};
+    }""")
+    assert flipped, "this property blocks nothing, so there is no failure to describe"
+
+    failures = page.evaluate("""async () => {
+        await runAllExpectations();
+        return lastExpectationRunResults[0].rows.filter(r => r.verdict !== 'pass');
+    }""")
+    assert len(failures) == 1, f"expected exactly one failure, got {failures}"
+    assert failures[0]["formId"] == flipped["formId"]
+    assert failures[0]["expected"] is True and failures[0]["actual"] is False
+    for rule in flipped["blockedBy"]:
+        assert rule in failures[0]["detail"], \
+            f"the blocking rule was not named: {failures[0]['detail']}"
+
+    assert "failing" in page.eval_on_selector("#expectation-suite-summary", "e => e.innerText")
+    page.evaluate("() => { localStorage.removeItem('qa_expectations_v1'); }")
+
+
+def test_a_form_the_property_no_longer_publishes_is_reported_not_passed(page):
+    """An expectation that silently stops covering what it was written for is worse than one that
+    fails, in both directions: a form that has gone, and a form the property has gained."""
+    inject(page)
+    page.evaluate("() => { localStorage.removeItem('qa_expectations_v1'); }")
+    page.evaluate("() => saveExpectationFromCurrentState('coverage')")
+
+    page.evaluate("""() => {
+        const list = readStoredExpectations();
+        list[0].expected.push({formId: 'form-that-never-existed', formType: 'embedded',
+                               shouldPassTargeting: true});
+        // and drop one it does cover, so the property looks like it gained a form
+        list[0].expected.shift();
+        writeStoredExpectations(list);
+    }""")
+
+    result = page.evaluate("""async () => {
+        await runAllExpectations();
+        const r = lastExpectationRunResults[0];
+        return {missing: r.rows.filter(x => x.verdict === 'missing'),
+                uncovered: r.uncovered, failed: r.failed};
+    }""")
+    assert len(result["missing"]) == 1, f"a vanished form was not reported: {result}"
+    assert "no longer published" in result["missing"][0]["detail"]
+    assert result["failed"] >= 1, "a vanished form counted as a pass"
+    assert len(result["uncovered"]) == 1, f"the gained form was not surfaced: {result['uncovered']}"
+
+    page.evaluate("() => { localStorage.removeItem('qa_expectations_v1'); }")

@@ -12,7 +12,7 @@ because content renders inside a cross-origin iframe), it says so plainly instea
 | --- | --- |
 | **0** external dependencies | no CDN, no fonts, no framework |
 | **25** diagnostic panels | grouped into 6 task-based workspaces |
-| **137** regression tests | driven against a live property, no mocks |
+| **141** regression tests | driven against a live property, no mocks |
 | **~600 KB** | one HTML file, runs from `file://` if you have to |
 
 ---
@@ -100,6 +100,12 @@ parameter conditions, including nested AND/OR groups).
 
 Also here: full **Onsite Lifecycle State** editing (every storage key the SDK reads, with
 back-date shortcuts) and **Journey Automation**.
+
+**Expectation Suite** — every other check in this tool asks whether something *changed*. This one
+asks whether it is *right*. Save a page state (lifecycle dates, custom parameters, scenario page,
+consent) under a name along with the forms you expect it to produce; running it replays that state,
+re-targets, and reports any form whose outcome disagrees — naming the rule that decided it. It can
+fail on its first run, on a property that has been wrong since the day it was published.
 
 ### 🎨 Appearance — *does it look and behave right?*
 

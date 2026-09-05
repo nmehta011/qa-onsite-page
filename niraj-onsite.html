@@ -280,6 +280,33 @@
         .inspector-editor-collapsed .inspector-editor-actions,
         .inspector-editor-collapsed .inspector-diff { display: none; }
 
+        /* Expectation suite. A failing card is bordered rather than tinted: several can be on
+           screen at once, and a wash of red across half of them reads as one large problem
+           instead of three separate ones. */
+        .expectation-card { border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: 8px; padding: 12px 14px; margin-bottom: 11px; background: var(--surface-sunken); }
+        .expectation-card-failing { border-left-color: var(--accent-red); }
+        .expectation-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; font-size: 0.84rem; margin-bottom: 8px; }
+        .expectation-head strong { color: var(--text-max); }
+        .expectation-state { font-size: 0.72rem; color: var(--text-dim); font-family: monospace; }
+        .expectation-head .lifecycle-btn { margin-left: 0; }
+        .expectation-head .lifecycle-btn:first-of-type { margin-left: auto; }
+        .expectation-note { font-size: 0.74rem; color: var(--accent-amber); line-height: 1.5; margin: 6px 0; }
+        .expectation-rows { display: flex; flex-direction: column; gap: 3px; }
+        .expectation-row { display: flex; align-items: center; gap: 10px; font-size: 0.76rem; padding: 4px 6px; border-radius: 5px; flex-wrap: wrap; }
+        .expectation-row-pass { background: rgba(16,185,129,0.08); }
+        .expectation-row-fail { background: rgba(239,68,68,0.10); }
+        .expectation-form { font-family: monospace; color: var(--text-firm); flex-shrink: 0; }
+        .expectation-form-type { color: var(--text-faint); font-size: 0.9em; margin-left: 5px; }
+        .diag-panel button.expectation-toggle, button.expectation-toggle {
+            background: var(--surface-control); border: 1px solid var(--line-strong); color: var(--text-soft);
+            font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+            padding: 2px 8px; border-radius: 5px; cursor: pointer; height: auto; box-shadow: none; flex-shrink: 0;
+        }
+        .diag-panel button.expectation-toggle[aria-checked="true"] { border-color: var(--accent-green); color: var(--accent-green); }
+        .diag-panel button.expectation-toggle[aria-checked="false"] { border-color: var(--accent-amber); color: var(--accent-amber); }
+        .diag-panel button.expectation-toggle:hover { transform: none; }
+        .expectation-detail { color: var(--text-muted); flex: 1; min-width: 160px; }
+
         .inspector-facets { display: inline-flex; gap: 9px; align-items: center; flex-wrap: wrap; }
         .inspector-facet { display: inline-flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--text-dim); white-space: nowrap; }
         .inspector-facet select { background: var(--surface-control); color: var(--text-firm); border: 1px solid var(--line); border-radius: 5px; font-size: 0.72rem; padding: 3px 6px; font-family: inherit; cursor: pointer; }
@@ -3502,6 +3529,28 @@
             </div>
         </div>
 
+        <div class="diag-panel" data-panel-key="expectations" style="margin-top:25px;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid var(--line); padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:230px;">🎯 Expectation Suite</h4>
+                <span id="expectation-suite-summary" class="status-pill pill-warn">None saved</span>
+                <button class="lifecycle-btn panel-collapse-btn" onclick="togglePanelCollapsed('expectations')">▾ Collapse</button>
+            </div>
+            <div class="collapsed-summary" data-panel-summary style="display:none;"></div>
+            <p data-panel-body style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                Every other check here asks whether something <strong>changed</strong>. This one asks whether it is
+                <strong>right</strong> — so it can fail the first time you run it, on a property that has been broken
+                since the day it was published. Get the page into a state worth pinning down, save it with a name, and
+                the state and the outcome are replayed together on demand.
+            </p>
+            <div class="event-toolbar-row" data-panel-body style="margin-top:12px;">
+                <input type="text" id="expectation-name-input" class="suite-input" style="flex:1; min-width:220px;"
+                       placeholder="Name this state, e.g. returning visitor who declined last week" aria-label="Name for this expectation">
+                <button class="lifecycle-btn" onclick="saveExpectationFromTheInput()">📌 Save current state</button>
+                <button class="lifecycle-btn" onclick="runAllExpectations()">▶ Run all</button>
+            </div>
+            <div data-panel-body id="expectation-suite-container" style="margin-top:14px;"></div>
+        </div>
+
         <div class="diag-panel" data-panel-key="targeting" style="margin-top:25px;">
             <div class="event-toolbar-row" style="border-bottom:1px solid var(--line); padding-bottom:12px;">
                 <h4 style="margin:0; border:none; padding:0; flex:1; min-width:250px;">🎯 Will each form show? [<span id="targeting-counter-badge" style="color:var(--accent-purple);">0</span>]</h4>
@@ -4848,6 +4897,9 @@
         setInterval(renderUnifiedSessionTimeline, 2000);
         setInterval(renderPerformancePanel, 2000);
         setInterval(renderFindingsHistoryPanel, 2000);
+        // Slow on purpose: the panel only changes when someone saves or runs something, and both
+        // of those already re-render it. This is a safety net for the first paint, not a loop.
+        setInterval(renderExpectationSuitePanel, 4000);
         setInterval(renderPiiScanPanel, 2000);
         setInterval(renderProvisionsPanel, 2500);
         // Only while it is on screen: reading the live configuration costs a deprecation warning.
@@ -8665,6 +8717,7 @@
             'WCAG Contrast Audit': 'appearance',
             'Full Accessibility Audit': 'appearance',
             'Will each form show?': 'targeting',
+            'Expectation Suite': 'targeting',
             'Config Drift Baseline': 'config',
             'Provisions & overrides': 'config',
             'SDK Debugger': 'debugger',
@@ -12826,6 +12879,384 @@
                 const verdict = PANEL_FOLD_STATE[panelKey](state);
                 slot.innerHTML = verdict ? verdict.summary : 'Nothing measured yet — expand to set it running.';
             });
+        }
+
+        // --- 5d2. EXPECTATION SUITE ---
+        // Everything else in this app is a DIFF. Config Drift Baseline diffs configuration
+        // between two snapshots; What Changed Since Last Run diffs verdicts between two moments.
+        // Both answer "has this moved?", and neither can tell you that a form has been wrong
+        // since the day it was published -- a baseline taken on a broken property records the
+        // breakage as normal.
+        //
+        // An expectation is intent instead. You state what a given state SHOULD produce, and it
+        // can fail on its very first run, before anything has drifted.
+        const EXPECTATION_STORAGE_KEY = 'qa_expectations_v1';
+        const EXPECTATION_REPLAY_TIMEOUT_MS = 6000;
+        let lastExpectationRunResults = null;
+        let expectationRunInProgress = false;
+
+        function readStoredExpectations() {
+            try {
+                const parsed = JSON.parse(localStorage.getItem(EXPECTATION_STORAGE_KEY));
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (err) { return []; }
+        }
+
+        function writeStoredExpectations(list) {
+            if (list.length) localStorage.setItem(EXPECTATION_STORAGE_KEY, JSON.stringify(list));
+            else localStorage.removeItem(EXPECTATION_STORAGE_KEY);
+        }
+
+        // Reuses the pieces the repro permalink already captures, rather than growing a second
+        // definition of "the state that decides whether a form shows" that could disagree with
+        // it. If a link can reproduce it, an expectation can replay it.
+        function captureExpectationState() {
+            const lifecycle = {};
+            ONSITE_LIFECYCLE_STORAGE_KEYS.forEach(def => {
+                const value = localStorage.getItem(def.key);
+                if (value !== null) lifecycle[def.key] = value;
+            });
+            return {
+                page: allPages.find(id => {
+                    const el = document.getElementById(id);
+                    return el && el.classList.contains('active');
+                }) || 'main-page',
+                lifecycle,
+                params: collectSimulatedParameterState(),
+                consent: getConsentState(),
+                fixtures: getHostileLayoutState(),
+                // Recorded but never re-applied: device emulation is browser-level (Client Hints,
+                // not just the UA string) and cannot be changed from inside the page. A replay
+                // under a different device says so rather than quietly comparing against a state
+                // it did not reproduce.
+                device: activeDeviceEmulationKey || null
+            };
+        }
+
+        // What the property is doing right now, per form. Two separate answers, because they are
+        // different questions: `passesTargeting` is this app reading the rules, `shownBySdk` is
+        // the SDK's own account of what it rendered. A code-triggered form can pass targeting and
+        // legitimately not be on screen, and collapsing the two would report that as a failure.
+        function readCurrentFormOutcomes() {
+            const registry = readPublishedFormRegistryFromSdk();
+            if (!registry) return null;
+
+            let shownIds = [];
+            try {
+                const shown = KAMPYLE_DATA.getAllShownForms();
+                shownIds = (Array.isArray(shown) ? shown : Object.keys(shown || {})).map(String);
+            } catch (err) { shownIds = []; }
+
+            return registry.map(form => {
+                const rules = decodeTargetingRulesForForm(form);
+                const blocking = rules.filter(rule => rule.verdict === 'block');
+                return {
+                    formId: String(form.formId),
+                    formType: form.formType || null,
+                    displayType: form.displayType || null,
+                    passesTargeting: blocking.length === 0,
+                    blockedBy: blocking.map(rule => rule.name),
+                    shownBySdk: shownIds.includes(String(form.formId))
+                             || !!(form.state && form.state.shown)
+                };
+            });
+        }
+
+        function saveExpectationFromCurrentState(name) {
+            const outcomes = readCurrentFormOutcomes();
+            if (!outcomes) { toast('Inject a property first — there is nothing to expect yet.', 'warn'); return null; }
+
+            const expectation = {
+                version: 1,
+                id: `exp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                name: String(name || '').trim() || `Expectation ${readStoredExpectations().length + 1}`,
+                savedAt: Date.now(),
+                state: captureExpectationState(),
+                // Seeded from what the property does now, then editable per form. Seeding beats
+                // an empty form: the common case is locking in behaviour you have just checked
+                // by hand, and the uncommon one -- asserting a fix that has not landed -- is one
+                // click away from there.
+                expected: outcomes.map(outcome => ({
+                    formId: outcome.formId,
+                    formType: outcome.formType,
+                    shouldPassTargeting: outcome.passesTargeting
+                }))
+            };
+
+            const list = readStoredExpectations();
+            list.push(expectation);
+            writeStoredExpectations(list);
+            writeLog(`🎯 Saved expectation "${expectation.name}" over ${expectation.expected.length} forms.`, 'success');
+            return expectation;
+        }
+
+        function deleteExpectation(id) {
+            writeStoredExpectations(readStoredExpectations().filter(entry => entry.id !== id));
+            if (lastExpectationRunResults) lastExpectationRunResults = lastExpectationRunResults.filter(r => r.id !== id);
+            renderExpectationSuitePanel();
+        }
+
+        function setExpectedOutcome(expectationId, formId, shouldPass) {
+            const list = readStoredExpectations();
+            const expectation = list.find(entry => entry.id === expectationId);
+            if (!expectation) return;
+            const row = expectation.expected.find(entry => entry.formId === String(formId));
+            if (!row) return;
+            row.shouldPassTargeting = shouldPass;
+            writeStoredExpectations(list);
+            renderExpectationSuitePanel();
+        }
+
+        // Applied in the page, without a reload. The repro link restores the same state by
+        // writing sessionStorage and reloading, which is right for a link and useless here --
+        // a reload would lose the run and every other expectation queued behind it.
+        function applyExpectationState(state) {
+            const notes = [];
+
+            if (state.page && state.page !== 'main-page' && allPages.includes(state.page)) navigateTo(state.page);
+            else if (state.page === 'main-page') navigateTo('main-page');
+
+            // Cleared first, then set. Leaving a key from the previous run in place is how a
+            // suite starts passing because of the test that ran before it.
+            ONSITE_LIFECYCLE_STORAGE_KEYS.forEach(def => localStorage.removeItem(def.key));
+            Object.keys(state.lifecycle || {}).forEach(key => localStorage.setItem(key, state.lifecycle[key]));
+
+            virtualQueriesObject = {};
+            virtualGlobalVariables = {};
+            virtualSessionCookies = [];
+            const params = state.params || {};
+            if (params.url) virtualQueriesObject = JSON.parse(JSON.stringify(params.url));
+            if (params.var) {
+                virtualGlobalVariables = JSON.parse(JSON.stringify(params.var));
+                Object.keys(virtualGlobalVariables).forEach(key =>
+                    assignNestedWindowProperty(key, virtualGlobalVariables[key].val));
+            }
+            if (params.cookie) {
+                virtualSessionCookies = JSON.parse(JSON.stringify(params.cookie));
+                virtualSessionCookies.forEach(cookie => {
+                    document.cookie = `${cookie.key}=${encodeURIComponent(cookie.val)}; path=/; max-age=3600;`;
+                });
+            }
+            renderActiveParametersDashboardList();
+            // URL-sourced parameters only exist for the SDK once they are in the address bar.
+            updateActiveBrowserAddressBarQueryString(false);
+
+            if (state.consent && state.consent !== getConsentState()) setConsentState(state.consent);
+
+            if ((state.device || null) !== (activeDeviceEmulationKey || null)) {
+                notes.push(`Saved under device "${state.device || 'desktop'}" and replayed under "${activeDeviceEmulationKey || 'desktop'}". Device emulation is browser-level and cannot be changed from inside the page, so a device-dependent rule was not reproduced.`);
+            }
+
+            refreshOnsiteLifecycleStateValues();
+            return notes;
+        }
+
+        // Re-targets and waits for the SDK to actually finish, rather than sleeping and hoping.
+        function reTargetAndSettle() {
+            return new Promise(resolve => {
+                try {
+                    if (window.KAMPYLE_ONSITE_SDK && typeof window.KAMPYLE_ONSITE_SDK.updatePageView === 'function') {
+                        window.KAMPYLE_ONSITE_SDK.updatePageView();
+                    }
+                } catch (err) { recordCaughtSdkException(err, 'KAMPYLE_ONSITE_SDK.updatePageView()'); }
+
+                // Settled means "two consecutive reads agree", which is what the SDK finishing
+                // looks like from out here. Bounded, so a property that never settles reports a
+                // timeout instead of hanging the run.
+                const startedAt = Date.now();
+                let previous = null;
+                const poll = () => {
+                    const current = JSON.stringify(readCurrentFormOutcomes());
+                    if (previous !== null && current === previous) { resolve(true); return; }
+                    previous = current;
+                    if (Date.now() - startedAt > EXPECTATION_REPLAY_TIMEOUT_MS) { resolve(false); return; }
+                    setTimeout(poll, 350);
+                };
+                setTimeout(poll, 350);
+            });
+        }
+
+        async function runExpectation(expectation) {
+            const notes = applyExpectationState(expectation.state);
+            const settled = await reTargetAndSettle();
+            if (!settled) notes.push('The property did not settle within ' + (EXPECTATION_REPLAY_TIMEOUT_MS / 1000) + 's — the result below is what it looked like when the wait ran out.');
+
+            const outcomes = readCurrentFormOutcomes() || [];
+            const byFormId = {};
+            outcomes.forEach(outcome => { byFormId[outcome.formId] = outcome; });
+
+            const rows = expectation.expected.map(entry => {
+                const actual = byFormId[entry.formId];
+                if (!actual) {
+                    return { formId: entry.formId, formType: entry.formType, verdict: 'missing',
+                             expected: entry.shouldPassTargeting, actual: null,
+                             detail: 'This form is no longer published on the property.' };
+                }
+                const matched = actual.passesTargeting === entry.shouldPassTargeting;
+                return {
+                    formId: entry.formId, formType: actual.formType,
+                    verdict: matched ? 'pass' : 'fail',
+                    expected: entry.shouldPassTargeting,
+                    actual: actual.passesTargeting,
+                    shownBySdk: actual.shownBySdk,
+                    detail: matched
+                        ? (actual.passesTargeting ? 'Passes targeting, as expected.' : 'Blocked, as expected.')
+                        : (actual.passesTargeting
+                            ? 'Expected this form to be blocked, and nothing is blocking it.'
+                            : `Expected this form to pass, but it is blocked by: ${actual.blockedBy.join(', ') || 'an unnamed rule'}.`)
+                };
+            });
+
+            // A form the property gained since the expectation was saved is not a failure -- the
+            // expectation never made a claim about it -- but it is worth surfacing, because an
+            // expectation that silently stops covering half the property is worse than one that
+            // fails.
+            const uncovered = outcomes
+                .filter(outcome => !expectation.expected.some(entry => entry.formId === outcome.formId))
+                .map(outcome => outcome.formId);
+
+            return {
+                id: expectation.id, name: expectation.name, ranAt: Date.now(),
+                rows, notes, uncovered,
+                failed: rows.filter(row => row.verdict !== 'pass').length
+            };
+        }
+
+        async function runAllExpectations() {
+            if (expectationRunInProgress) { toast('A run is already going.', 'info'); return; }
+            const list = readStoredExpectations();
+            if (!list.length) { toast('No expectations saved yet.', 'warn'); return; }
+            if (!readPublishedFormRegistryFromSdk()) { toast('Inject a property first.', 'warn'); return; }
+
+            // The state as found, put back when the run finishes. A suite that leaves the page
+            // in the last expectation's state would quietly change what every panel below it is
+            // reporting on.
+            const stateBeforeRun = captureExpectationState();
+            expectationRunInProgress = true;
+            renderExpectationSuitePanel();
+
+            const results = [];
+            try {
+                for (const expectation of list) {
+                    results.push(await runExpectation(expectation));
+                }
+            } finally {
+                applyExpectationState(stateBeforeRun);
+                await reTargetAndSettle();
+                expectationRunInProgress = false;
+            }
+
+            lastExpectationRunResults = results;
+            const failed = results.reduce((total, result) => total + result.failed, 0);
+            writeLog(`🎯 Expectation run: ${results.length} check(s), ${failed} failing form(s). Page state restored.`, failed ? 'error' : 'success');
+            toast(failed ? `${failed} form(s) did not match what you expected.` : `All ${results.length} expectation(s) hold.`,
+                  failed ? 'warn' : 'success');
+            renderExpectationSuitePanel();
+        }
+
+        async function runOneExpectation(id) {
+            if (expectationRunInProgress) { toast('A run is already going.', 'info'); return; }
+            const expectation = readStoredExpectations().find(entry => entry.id === id);
+            if (!expectation) return;
+            const stateBeforeRun = captureExpectationState();
+            expectationRunInProgress = true;
+            renderExpectationSuitePanel();
+            let result;
+            try { result = await runExpectation(expectation); }
+            finally {
+                applyExpectationState(stateBeforeRun);
+                await reTargetAndSettle();
+                expectationRunInProgress = false;
+            }
+            lastExpectationRunResults = (lastExpectationRunResults || []).filter(r => r.id !== id).concat([result]);
+            renderExpectationSuitePanel();
+        }
+
+        function saveExpectationFromTheInput() {
+            const field = document.getElementById('expectation-name-input');
+            const saved = saveExpectationFromCurrentState(field ? field.value : '');
+            if (!saved) return;
+            if (field) field.value = '';
+            toast(`Saved "${saved.name}". Change something, then Run to see whether it still holds.`, 'success');
+            renderExpectationSuitePanel();
+        }
+
+        function describeExpectationState(state) {
+            const parts = [];
+            parts.push(state.page === 'main-page' ? 'dashboard' : state.page);
+            const lifecycleCount = Object.keys(state.lifecycle || {}).length;
+            if (lifecycleCount) parts.push(`${lifecycleCount} lifecycle key${lifecycleCount === 1 ? '' : 's'}`);
+            const params = state.params || {};
+            const paramCount = Object.keys(params.url || {}).length + Object.keys(params.var || {}).length + (params.cookie || []).length;
+            if (paramCount) parts.push(`${paramCount} parameter${paramCount === 1 ? '' : 's'}`);
+            if (state.consent && state.consent !== 'denied') parts.push(`consent ${state.consent}`);
+            if (state.device) parts.push(`device ${state.device}`);
+            return parts.join(' · ');
+        }
+
+        function renderExpectationSuitePanel() {
+            const container = document.getElementById('expectation-suite-container');
+            const pill = document.getElementById('expectation-suite-summary');
+            if (!container) return;
+
+            const list = readStoredExpectations();
+            const resultsById = {};
+            (lastExpectationRunResults || []).forEach(result => { resultsById[result.id] = result; });
+
+            if (pill) {
+                const ran = lastExpectationRunResults || [];
+                const failed = ran.reduce((total, result) => total + result.failed, 0);
+                pill.className = 'status-pill ' + (!list.length ? 'pill-warn' : !ran.length ? 'pill-sdk' : failed ? 'pill-danger' : 'pill-success');
+                pill.innerText = !list.length ? 'None saved'
+                    : !ran.length ? `${list.length} saved · not run`
+                    : failed ? `${failed} failing` : `${list.length} holding`;
+            }
+
+            if (!list.length) {
+                container.innerHTML = `<div class="no-rules-notice">Get the page into a state worth pinning down — a lifecycle date, a parameter, a scenario page — then name it and save. Every other check here asks whether something <em>changed</em>; this one asks whether it is <em>right</em>, so it can fail the first time you run it.</div>`;
+                return;
+            }
+
+            container.innerHTML = list.map(expectation => {
+                const result = resultsById[expectation.id];
+                const rowsById = {};
+                if (result) result.rows.forEach(row => { rowsById[row.formId] = row; });
+
+                const verdictPill = !result ? '<span class="status-pill pill-sdk">not run</span>'
+                    : result.failed ? `<span class="status-pill pill-danger">${result.failed} failing</span>`
+                    : '<span class="status-pill pill-success">holds</span>';
+
+                return `<div class="expectation-card${result && result.failed ? ' expectation-card-failing' : ''}">
+                    <div class="expectation-head">
+                        <strong>${escapeMarkupForSafeRender(expectation.name)}</strong>
+                        ${verdictPill}
+                        <span class="expectation-state">${escapeMarkupForSafeRender(describeExpectationState(expectation.state))}</span>
+                        <button class="lifecycle-btn" onclick="runOneExpectation('${expectation.id}')" ${expectationRunInProgress ? 'disabled' : ''}>Run</button>
+                        <button class="lifecycle-btn" onclick="deleteExpectation('${expectation.id}')">Delete</button>
+                    </div>
+                    ${(result && result.notes.length)
+                        ? result.notes.map(note => `<div class="expectation-note">⚠ ${escapeMarkupForSafeRender(note)}</div>`).join('')
+                        : ''}
+                    <div class="expectation-rows">
+                        ${expectation.expected.map(entry => {
+                            const row = rowsById[entry.formId];
+                            const tone = !row ? 'idle' : row.verdict === 'pass' ? 'pass' : 'fail';
+                            return `<div class="expectation-row expectation-row-${tone}">
+                                <span class="expectation-form">${escapeMarkupForSafeRender(entry.formId)}
+                                    <span class="expectation-form-type">${escapeMarkupForSafeRender(entry.formType || '')}</span></span>
+                                <button class="expectation-toggle" role="switch" aria-checked="${entry.shouldPassTargeting}"
+                                        onclick="setExpectedOutcome('${expectation.id}', '${escapeMarkupForSafeRender(entry.formId)}', ${!entry.shouldPassTargeting})">
+                                    should ${entry.shouldPassTargeting ? 'show' : 'be blocked'}
+                                </button>
+                                <span class="expectation-detail">${row ? escapeMarkupForSafeRender(row.detail) : 'not run yet'}</span>
+                            </div>`;
+                        }).join('')}
+                    </div>
+                    ${(result && result.uncovered.length)
+                        ? `<div class="expectation-note">This expectation says nothing about ${result.uncovered.length} form(s) the property has gained since it was saved: ${escapeMarkupForSafeRender(result.uncovered.join(', '))}. Re-save it to cover them.</div>`
+                        : ''}
+                </div>`;
+            }).join('');
         }
 
         // --- 5d. CONFIG DRIFT BASELINE ---
