@@ -4047,3 +4047,62 @@ def test_the_meta_fallback_names_the_directives_it_cannot_carry(page):
         "default-src 'none'; frame-ancestors 'none'; report-uri /csp; img-src 'self'")""")
     assert set(named) == {"frame-ancestors", "report-uri"}, named
     assert page.evaluate("""() => describeMetaFallbackLimits("default-src 'none'; img-src 'self'")""") == []
+
+
+def test_the_sandbox_works_whichever_order_you_use_it_in(page):
+    """Starting the sandbox always builds a fresh frame, so the policy is in place before the
+    embed loads inside it — whether or not the dashboard has already injected. And the page's own
+    SDK is untouched by it, which matters because the other panels keep reporting on that one."""
+    inject(page)                                   # dashboard injected FIRST
+    page.evaluate("setActiveWorkspace('config')")
+    page.evaluate("() => renderCspSandboxPanel()")
+    page.wait_for_timeout(400)
+
+    formsOnPage = page.evaluate("() => (readPublishedFormRegistryFromSdk() || []).length")
+    assert formsOnPage >= 4
+
+    permissive = _run_csp_sandbox(page, 0)
+    assert permissive["state"]["formsKnown"] >= 4, "the sandbox did not work after a page injection"
+    page.evaluate("() => stopCspSandbox()")
+    page.wait_for_timeout(400)
+
+    blocking = _run_csp_sandbox(page, 1)
+    assert blocking["state"]["formsKnown"] in (0, None), "a blocking policy did not block"
+
+    # the page's own SDK is a separate instance and is unaffected by either run
+    assert page.evaluate("() => !!window.KAMPYLE_ONSITE_SDK")
+    assert page.evaluate("() => (readPublishedFormRegistryFromSdk() || []).length") == formsOnPage, \
+        "the sandbox disturbed the page's own SDK"
+    page.evaluate("() => stopCspSandbox()")
+
+
+def test_the_sandbox_says_which_snippet_it_will_inject(page):
+    """The field is an override: blank means the dashboard's snippet, filled means yours. Either
+    way it says which, because "why did it inject that" is not a question worth leaving open."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('config')")
+    page.evaluate("() => renderCspSandboxPanel()")
+    page.wait_for_timeout(400)
+
+    assert "dashboard" in page.inner_text("#csp-embed-source"), page.inner_text("#csp-embed-source")
+
+    # the nonce helper falls back to the dashboard's snippet, so it works without copying first
+    page.evaluate("() => stampNonceOntoCspEmbed()")
+    page.wait_for_timeout(300)
+    assert 'nonce="QA_NONCE"' in page.eval_on_selector("#csp-embed-input", "e => e.value")
+    source = page.inner_text("#csp-embed-source")
+    assert "typed here" in source and "QA_NONCE" in source, source
+
+    # with nothing anywhere, it refuses on screen rather than starting a frame that waits for ever
+    page.evaluate("""() => {
+        document.getElementById('csp-embed-input').value = '';
+        document.getElementById('input-main-page').value = '';
+        sessionStorage.removeItem('saved_script');
+        applyCspPreset(0);
+    }""")
+    page.evaluate("async () => await startCspSandbox()")
+    page.wait_for_timeout(700)
+    assert page.eval_on_selector_all("#csp-sandbox-frame", "e => e.length") == 0, \
+        "a frame was started with nothing to inject"
+    assert "No snippet" in page.inner_text("#csp-embed-source") or \
+           "no embed snippet" in page.inner_text("#csp-sandbox-container").lower()

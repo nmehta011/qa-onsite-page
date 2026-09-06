@@ -287,6 +287,11 @@
            actually render under the policy is half the answer. */
         .csp-sandbox-host:not(:empty) { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
         .csp-sandbox-frame { width: 100%; height: 260px; border: none; background: #fff; display: block; }
+        .csp-field-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-faint); font-weight: 700; margin: 14px 0 5px; }
+        .csp-embed-source { font-size: 0.74rem; color: var(--text-dim); margin-top: 6px; }
+        .csp-embed-source b { color: var(--accent-sky); }
+        .csp-embed-source-missing { color: var(--accent-amber); }
+        .csp-field-label span { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text-dim); }
         .csp-delivery { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 8px; line-height: 1.5; }
         .csp-delivery b { color: var(--text-firm); }
         .csp-warning { font-size: 0.76rem; color: var(--accent-amber); background: rgba(245,158,11,0.10); border: 1px solid rgba(245,158,11,0.30); border-radius: 6px; padding: 7px 10px; margin-bottom: 9px; line-height: 1.55; }
@@ -295,6 +300,7 @@
         .csp-metric { font-size: 0.72rem; font-weight: 700; padding: 3px 9px; border-radius: 5px; background: var(--surface-control); color: var(--text-dim); }
         .csp-metric-good { background: rgba(16,185,129,0.15); color: var(--accent-green); }
         .csp-metric-bad { background: rgba(239,68,68,0.13); color: var(--accent-red); }
+        .csp-scope-note { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text-dim); }
         .csp-section-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-faint); font-weight: 700; margin: 12px 0 6px; }
         .csp-violations { display: flex; flex-direction: column; gap: 2px; max-height: 190px; overflow-y: auto; }
         .csp-violation { display: flex; gap: 9px; font-family: monospace; font-size: 0.72rem; padding: 3px 6px; border-radius: 4px; background: rgba(239,68,68,0.10); align-items: baseline; }
@@ -3588,13 +3594,28 @@
                 and your embed is injected inside it — not to this page, which a strict policy would break instantly.
                 The frame is same-origin, so every <code>securitypolicyviolation</code> it raises is readable here, along with
                 whether the SDK loaded and whether forms actually rendered under the policy.
-                Write <code>QA_NONCE</code> anywhere a nonce belongs and it is replaced with one the harness also stamps on
-                its own bootstrap, so a nonce-gated policy can boot at all.
+                Write <code>QA_NONCE</code> anywhere a nonce belongs — in the policy or in the embed tag — and it is replaced
+                with one the harness also stamps on its own bootstrap, so a nonce-gated policy can boot at all.
+                <strong>You do not need to inject on this page first, and it does not matter if you already have.</strong>
+                Starting the sandbox always builds a fresh frame, so the policy is in place before the embed loads inside it
+                either way. The frame runs its own SDK: the dashboard's other panels keep reporting on the page's own
+                injection, <strong>not</strong> on what happens under the policy — the numbers below are the only ones that
+                describe the sandbox.
             </p>
             <div class="event-toolbar-row" data-panel-body style="margin-top:12px;" id="csp-preset-row"></div>
             <textarea id="csp-policy-input" data-panel-body class="inspector-editor" spellcheck="false" style="margin-top:10px; min-height:96px;"
                       placeholder="default-src 'none'; script-src 'nonce-QA_NONCE' 'strict-dynamic'; connect-src 'self' …"
                       aria-label="Content Security Policy to test"></textarea>
+            <div class="csp-field-label" data-panel-body>Embed snippet to inject <span>— leave blank to use the one on the dashboard; fill it in to override, e.g. to add a nonce</span></div>
+            <textarea id="csp-embed-input" data-panel-body class="inspector-editor" spellcheck="false" style="min-height:62px;"
+                      placeholder="&lt;script src=&quot;https://…/onsite/embed.js&quot; async&gt;&lt;/script&gt;"
+                      aria-label="Embed snippet to inject into the CSP sandbox"
+                      oninput="renderCspSandboxPanel()"></textarea>
+            <div class="csp-embed-source" id="csp-embed-source" data-panel-body></div>
+            <div class="event-toolbar-row" data-panel-body style="margin-top:8px;">
+                <button class="lifecycle-btn" onclick="fillCspEmbedFromInjector()">Copy the dashboard's snippet in</button>
+                <button class="lifecycle-btn" onclick="stampNonceOntoCspEmbed()" title="Adds nonce=&quot;QA_NONCE&quot; to the script tag — needed when the policy has a nonce but no strict-dynamic">+ nonce on the embed tag</button>
+            </div>
             <div class="event-toolbar-row" data-panel-body style="margin-top:10px;">
                 <label class="provisions-only-on"><input type="radio" name="csp-mode" checked onchange="setCspSandboxMode('enforce')"> Enforce</label>
                 <label class="provisions-only-on"><input type="radio" name="csp-mode" onchange="setCspSandboxMode('report-only')"> Report only</label>
@@ -13420,6 +13441,7 @@
         let cspSandboxFrameState = null;
         let cspSandboxRouteAvailable = null;   // null = not probed yet
         let cspSandboxRunning = false;
+        let cspSandboxStartError = null;
 
         // The route serves the frame with a REAL Content-Security-Policy response header. The
         // <meta> fallback works, but the browser ignores frame-ancestors, report-uri and sandbox
@@ -13535,6 +13557,58 @@
   post({ type: 'qa-csp-ready' });
 })();`;
 
+        // The snippet the sandbox injects. Its own field rather than a silent read of the main
+        // injector, for three reasons: you can see what is about to be tested, you can add a
+        // nonce for the test without editing the snippet you actually ship, and the panel stops
+        // depending on the state of a control that lives in another workspace.
+        function readCspEmbedSnippet() {
+            const field = document.getElementById('csp-embed-input');
+            return String(field && field.value || '').trim();
+        }
+
+        // The field is an OVERRIDE, not the only source. Leave it blank and the dashboard's
+        // snippet is used, which is the common case and means the panel works the moment you
+        // arrive on it. Fill it in and yours wins — which is how you test a nonce'd tag without
+        // editing the snippet you actually ship. Either way the panel says which one it took,
+        // because "why did it inject that" is not a question worth leaving open.
+        function effectiveCspEmbedSnippet() {
+            const typed = readCspEmbedSnippet();
+            if (typed) return { code: typed, source: 'the snippet typed here' };
+            const dashboard = embedSnippetFromTheInjector();
+            if (dashboard) return { code: dashboard, source: "the dashboard's snippet" };
+            return { code: '', source: null };
+        }
+
+        function embedSnippetFromTheInjector() {
+            return String((document.getElementById('input-main-page') || {}).value
+                       || sessionStorage.getItem('saved_script') || '').trim();
+        }
+
+        function fillCspEmbedFromInjector() {
+            const field = document.getElementById('csp-embed-input');
+            const snippet = embedSnippetFromTheInjector();
+            if (!field) return;
+            if (!snippet) { toast('There is no embed snippet on the dashboard to copy.', 'warn'); return; }
+            field.value = snippet;
+            renderCspSandboxPanel();
+        }
+
+        // Stamping the nonce by hand is fiddly and it is exactly what a nonce-gated policy is
+        // testing, so it is a button. QA_NONCE rather than the generated value, so the snippet
+        // stays readable and the substitution happens in one place.
+        function stampNonceOntoCspEmbed() {
+            const field = document.getElementById('csp-embed-input');
+            if (!field) return;
+            // Falls back to the dashboard's snippet, so the button works without having to press
+            // "use the dashboard's snippet" first.
+            const snippet = effectiveCspEmbedSnippet().code;
+            if (!snippet) { toast('Paste an embed snippet first, here or on the dashboard.', 'warn'); return; }
+            if (/\snonce=/i.test(snippet)) { toast('That snippet already carries a nonce.', 'info'); return; }
+            field.value = snippet.replace(/<script/i, '<script nonce="QA_NONCE"');
+            renderCspSandboxPanel();
+            toast('Added nonce="QA_NONCE" to the embed tag — it is replaced with the policy\'s nonce when the sandbox starts.', 'success');
+        }
+
         function handleCspSandboxMessage(event) {
             const frame = document.getElementById('csp-sandbox-frame');
             // Structural trust, not an origin allow-list: the message must come from the window
@@ -13543,12 +13617,11 @@
             if (!frame || event.source !== frame.contentWindow) return;
             const data = event.data || {};
             if (data.type === 'qa-csp-ready') {
-                const code = (document.getElementById('input-main-page') || {}).value
-                          || sessionStorage.getItem('saved_script') || '';
-                if (!code.trim()) {
-                    writeLog('🛡️ CSP sandbox is up, but there is no embed snippet to inject into it yet.', 'warn');
-                    return;
-                }
+                // Same substitution the policy gets, so a nonce written once as QA_NONCE lines up
+                // on both sides. Writing the real nonce into the snippet by hand would mean
+                // retyping it every time the sandbox restarts.
+                const code = effectiveCspEmbedSnippet().code.split('QA_NONCE').join(CSP_SANDBOX_NONCE);
+                if (!code) return;   // startCspSandbox refuses to get this far without a snippet
                 frame.contentWindow.postMessage({ type: 'qa-csp-inject', code }, '*');
                 writeLog('🛡️ Embed injected into the CSP sandbox.', 'info');
             } else if (data.type === 'qa-csp-violation') {
@@ -13568,6 +13641,18 @@
             const field = document.getElementById('csp-policy-input');
             cspSandboxPolicyText = String(field && field.value || '').trim();
             if (!cspSandboxPolicyText) { toast('Paste a policy first, or pick one of the presets.', 'warn'); return; }
+
+            // Refused here rather than started and left waiting. The first version brought the
+            // frame up with nothing to inject, so it sat at "running…" for ever and said so only
+            // in the activity log — a silent failure of exactly the kind this panel exists to
+            // expose in other people's policies.
+            if (!effectiveCspEmbedSnippet().code) {
+                cspSandboxStartError = 'There is no embed snippet to inject — not in the field below, and none pasted on the dashboard. Paste one in either place.';
+                renderCspSandboxPanel();
+                toast('The sandbox needs an embed snippet to inject.', 'warn');
+                return;
+            }
+            cspSandboxStartError = null;
 
             cspSandboxViolations = [];
             cspSandboxFrameState = null;
@@ -13626,6 +13711,18 @@
                     `<button class="lifecycle-btn" onclick="applyCspPreset(${index})" title="${escapeMarkupForSafeRender(preset.note)}">${escapeMarkupForSafeRender(preset.label)}</button>`).join('');
             }
 
+            // Deliberately NOT prefilled. An override that fills itself in is indistinguishable
+            // from one you typed, and refilling it under someone's typing is the same bug the
+            // inspector's editor already had. Blank means "use the dashboard's", and the line
+            // below says so.
+            const sourceLine = document.getElementById('csp-embed-source');
+            if (sourceLine) {
+                const chosen = effectiveCspEmbedSnippet();
+                sourceLine.innerHTML = chosen.source
+                    ? `Will inject <b>${escapeMarkupForSafeRender(chosen.source)}</b>${chosen.code.includes('QA_NONCE') ? ' · <b>QA_NONCE</b> will be substituted' : ''}`
+                    : '<span class="csp-embed-source-missing">No snippet anywhere yet — paste one here or on the dashboard.</span>';
+            }
+
             const blocking = cspSandboxViolations.filter(v => v.disposition !== 'report');
             if (pill) {
                 pill.className = 'status-pill ' + (!cspSandboxRunning ? 'pill-sdk'
@@ -13638,7 +13735,9 @@
             }
 
             if (!cspSandboxRunning) {
-                container.innerHTML = `<div class="no-rules-notice">Paste a policy, or pick one above, then <b>Start</b>. The policy is applied to a sandbox frame and your embed is injected inside it — not to this page, which a strict policy would break instantly: <code>default-src 'none'</code> raises twelve violations against this app's own inline styles before it finishes loading.</div>`;
+                container.innerHTML =
+                    (cspSandboxStartError ? `<div class="csp-warning">⚠ ${escapeMarkupForSafeRender(cspSandboxStartError)}</div>` : '') +
+                    `<div class="no-rules-notice">Paste a policy, or pick one above, then <b>Start</b>. The policy is applied to a sandbox frame and your embed is injected inside it — not to this page, which a strict policy would break instantly: <code>default-src 'none'</code> raises twelve violations against this app's own inline styles before it finishes loading.</div>`;
                 return;
             }
 
@@ -13664,7 +13763,7 @@
                     : '<div class="csp-outcome"><span class="csp-metric">waiting for the frame…</span></div>') +
                 (state && state.sdkPresent && !state.formsKnown && !blocking.length
                     ? `<div class="csp-warning">The SDK loaded and no form appeared, with nothing blocked. That is usually targeting rather than the policy — check "Will each form show?".</div>` : '') +
-                `<div class="csp-section-title">Violations</div>` +
+                `<div class="csp-section-title">Violations <span class="csp-scope-note">— raised inside the sandbox frame only</span></div>` +
                 (cspSandboxViolations.length
                     ? `<div class="csp-violations">${cspSandboxViolations.slice(-30).map(violation => `
                         <div class="csp-violation${violation.disposition === 'report' ? ' csp-violation-report' : ''}">
@@ -15365,6 +15464,11 @@
             renderDiagnosticsPanel();
             debuggerWatches = readStoredDebuggerWatches();
             renderInspectorView();
+            // Painted once at load rather than waiting for their own intervals. The CSP panel in
+            // particular prefills its embed field from the dashboard on render, and a four-second
+            // wait for that made the field look empty to anyone who arrived quickly.
+            renderExpectationSuitePanel();
+            renderCspSandboxPanel();
 
             // Before anything else reads session/local storage: a repro link's script and
             // lifecycle state have to be in place before the saved-script auto-inject and the
