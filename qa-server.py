@@ -18,9 +18,11 @@ On Vercel this file is irrelevant: the static app is served directly and the lau
 falls back to showing the command, because no server-side process could open a window on the
 tester's own machine anyway.
 """
+import html
 import http.server
 import json
 import os
+import re
 import socketserver
 import subprocess
 import sys
@@ -36,6 +38,75 @@ MAX_REQUEST_BYTES = 4096
 # The launcher stays alive for as long as the emulated browser window is open, so it is spawned
 # detached and only watched briefly for an immediate failure (missing Playwright, bad profile).
 LAUNCH_STARTUP_GRACE_SECONDS = 5.0
+
+
+# The page the CSP sandbox loads. Deliberately tiny: it is the thing UNDER the policy, so every
+# byte of it has to survive whatever the tester pasted. It carries the dropzones the SDK renders
+# into, a bootstrap that reports violations, and nothing else.
+#
+# The bootstrap is inline because an external file would need script-src to allow 'self', which a
+# strict policy will not. Inline needs a nonce, which is why the route stamps one when the policy
+# names one; under a policy that allows neither, the harness says so rather than appearing to run.
+CSP_FRAME_TEMPLATE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>CSP sandbox</title></head>
+<body>
+<div id="embedded_form1"></div><div id="embedded_form2"></div>
+<div id="kampyle_dropzone"></div>
+<script__NONCE_ATTR__>
+(function () {
+  var violations = [];
+  document.addEventListener('securitypolicyviolation', function (event) {
+    violations.push({
+      directive: event.violatedDirective,
+      blockedURI: String(event.blockedURI || '').slice(0, 300),
+      disposition: event.disposition,
+      at: Date.now()
+    });
+    post({ type: 'qa-csp-violation', violations: violations });
+  });
+
+  function post(message) { try { parent.postMessage(message, '*'); } catch (e) {} }
+
+  function report() {
+    var forms = null;
+    try { forms = (window.KAMPYLE_DATA.getAllForms() || []).length; } catch (e) { forms = null; }
+    post({
+      type: 'qa-csp-state',
+      sdkPresent: !!window.KAMPYLE_ONSITE_SDK,
+      formsKnown: forms,
+      framesRendered: document.querySelectorAll('iframe').length,
+      violations: violations
+    });
+  }
+
+  // Injected the same way the hub itself injects: parse the snippet, copy EVERY attribute onto a
+  // real script element (which is what carries a pasted nonce through), then append. Reproducing
+  // the hub's own path is the whole point -- a harness that injected differently would be testing
+  // something the tester will never ship.
+  window.addEventListener('message', function (event) {
+    if (!event.data || event.data.type !== 'qa-csp-inject') return;
+    try {
+      var parsed = new DOMParser().parseFromString(event.data.code, 'text/html');
+      var tag = parsed.querySelector('script');
+      if (!tag) { post({ type: 'qa-csp-error', message: 'That snippet contains no <script> tag.' }); return; }
+      var script = document.createElement('script');
+      Array.prototype.forEach.call(tag.attributes, function (attribute) {
+        script.setAttribute(attribute.name, attribute.value);
+      });
+      script.textContent = tag.textContent;
+      script.onerror = function () { post({ type: 'qa-csp-error', message: 'The embed script could not be downloaded.' }); };
+      document.body.appendChild(script);
+    } catch (err) {
+      post({ type: 'qa-csp-error', message: String(err && err.message || err) });
+    }
+  });
+
+  setInterval(report, 1000);
+  post({ type: 'qa-csp-ready' });
+})();
+</script>
+</body></html>
+"""
 
 
 class ValidationHubHandler(http.server.SimpleHTTPRequestHandler):
@@ -84,6 +155,9 @@ class ValidationHubHandler(http.server.SimpleHTTPRequestHandler):
         if not self._has_local_host_header():
             self._send_json(403, {"ok": False, "error": "requests must address this helper as localhost"})
             return
+        if urllib.parse.urlparse(self.path).path == "/csp-frame":
+            self._send_csp_frame(urllib.parse.urlparse(self.path).query)
+            return
         if urllib.parse.urlparse(self.path).path == "/api/health":
             self._send_json(200, {
                 "ok": True,
@@ -93,6 +167,38 @@ class ValidationHubHandler(http.server.SimpleHTTPRequestHandler):
             })
             return
         super().do_GET()
+
+    # A minimal page served with a REAL Content-Security-Policy response header, so a policy can
+    # be tested the way a production server actually delivers one. A <meta> tag is the fallback
+    # when this helper is not running (the deployed copy), but the browser ignores
+    # frame-ancestors, report-uri and sandbox when they arrive that way, so the header route is
+    # the higher-fidelity one and is preferred whenever it is available.
+    def _send_csp_frame(self, raw_query):
+        params = urllib.parse.parse_qs(raw_query)
+        policy = (params.get("policy") or [""])[0]
+        report_only = (params.get("mode") or [""])[0] == "report-only"
+
+        # CR and LF out of a reflected value, without exception. Anything else here is a response
+        # splitting hole: a newline in the policy would let a caller append headers of its own,
+        # or a second response entirely.
+        policy = policy.replace("\r", " ").replace("\n", " ").strip()
+
+        # The nonce the harness stamps on its own bootstrap, so the page can boot under a
+        # nonce-based policy at all. Read from the policy rather than generated, because it has
+        # to be the nonce the policy names.
+        nonce_match = re.search(r"'nonce-([A-Za-z0-9+/_=-]+)'", policy)
+        nonce_attribute = ' nonce="%s"' % html.escape(nonce_match.group(1), quote=True) if nonce_match else ""
+
+        body = CSP_FRAME_TEMPLATE.replace("__NONCE_ATTR__", nonce_attribute).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        if policy:
+            header = "Content-Security-Policy-Report-Only" if report_only else "Content-Security-Policy"
+            self.send_header(header, policy)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self):
         if not self._has_local_host_header():

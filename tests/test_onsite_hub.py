@@ -806,7 +806,7 @@ def test_no_workspace_panel_is_orphaned_by_a_heading_rename(page):
         });
         return o;
     }""")
-    assert sum(counts.values()) == 26, f"expected 26 assigned panels, got {counts}"
+    assert sum(counts.values()) == 27, f"expected 27 assigned panels, got {counts}"
     assert all(counts.values()), f"a workspace ended up with no panels at all: {counts}"
 
 
@@ -3913,3 +3913,137 @@ def test_a_run_says_what_it_is_doing_while_it_does_it(page):
     assert page.eval_on_selector("#expectation-run-status", "e => getComputedStyle(e).display") == "none"
     assert "running" not in page.eval_on_selector("#expectation-suite-summary", "e => e.innerText")
     page.evaluate("() => { localStorage.removeItem('qa_expectations_v1'); }")
+
+
+# --------------------------------------------------------------------------------------------
+# CSP Sandbox.
+#
+# A policy cannot be applied to this page: measured, `default-src 'none'` with a nonce-based
+# script-src raises twelve style-src-attr violations against this file's own inline styles before
+# it finishes loading. So it is applied to a same-origin sandbox frame, which is what makes the
+# frame's DOM and its securitypolicyviolation events readable from here.
+# --------------------------------------------------------------------------------------------
+
+
+def _run_csp_sandbox(page, preset_index, settle_ms=9000):
+    page.evaluate("(i) => applyCspPreset(i)", preset_index)
+    page.evaluate("async () => await startCspSandbox()")
+    page.wait_for_timeout(settle_ms)
+    return page.evaluate("""() => ({
+        state: cspSandboxFrameState,
+        violations: cspSandboxViolations,
+        coverage: buildCspConnectCoverage(),
+        viaHeader: cspSandboxRouteAvailable
+    })""")
+
+
+def test_forms_render_under_a_correct_nonce_policy(page):
+    """The question this was built to answer: with a nonce and strict-dynamic, does the SDK
+    actually work? It does — and the nonce written into the policy is stamped on the harness's own
+    bootstrap, or nothing in the frame would run at all, including the violation listener."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('config')")
+    page.wait_for_timeout(600)
+
+    result = _run_csp_sandbox(page, 0)
+    assert result["viaHeader"] is True, "the local helper should deliver a real response header"
+    assert result["state"] and result["state"]["sdkPresent"], "the SDK did not load under the policy"
+    assert result["state"]["formsKnown"] >= 4, \
+        f"forms did not load under a policy that permits them: {result['state']}"
+    assert result["state"]["framesRendered"] > 0, "no form rendered in the sandbox"
+    blocking = [v for v in result["violations"] if v["disposition"] != "report"]
+    assert not blocking, f"a correct policy blocked something: {blocking}"
+    assert result["coverage"]["missing"] == [], f"coverage gaps on a correct policy: {result['coverage']['missing']}"
+    page.evaluate("() => stopCspSandbox()")
+
+
+def test_a_policy_that_blocks_the_sdk_says_exactly_what_it_blocked(page):
+    """The failure mode worth catching: the SDK loads, no error is thrown, and no form ever
+    appears. The only evidence is a securitypolicyviolation nothing else surfaces."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('config')")
+    page.wait_for_timeout(600)
+
+    result = _run_csp_sandbox(page, 1)
+    assert result["state"]["sdkPresent"], "the script itself should still load — that is the point"
+    assert result["state"]["formsKnown"] in (0, None), \
+        f"forms loaded despite connect-src 'none': {result['state']}"
+
+    directives = {v["violatedDirective"] if "violatedDirective" in v else v["directive"]
+                  for v in result["violations"]}
+    assert "connect-src" in directives, f"the block was not attributed: {directives}"
+    blocked = " ".join(v["blockedURI"] for v in result["violations"])
+    assert "onsiteData" in blocked or "medallia" in blocked, \
+        f"the violation does not name what was blocked: {blocked[:200]}"
+
+    # and coverage names the hosts before a violation would
+    assert result["coverage"]["missing"], "coverage found no gap on a policy that blocks everything"
+    page.evaluate("() => stopCspSandbox()")
+
+
+def test_a_nonce_pasted_into_the_embed_survives_injection(page):
+    """The hub copies every attribute from the pasted snippet onto the real script element, which
+    is what carries a nonce through. Without that, a nonce-gated policy could never be tested with
+    a snippet the tester actually ships."""
+    inject(page)
+    survived = page.evaluate("""() => {
+        const code = '<script type="text/javascript" nonce="abc123XYZ" src="https://example.test/e.js"><\\/script>';
+        const parsed = new DOMParser().parseFromString(code, 'text/html');
+        const tag = parsed.querySelector('script');
+        const script = document.createElement('script');
+        Array.from(tag.attributes).forEach(a => script.setAttribute(a.name, a.value));
+        return {onTag: tag.getAttribute('nonce'), onReal: script.getAttribute('nonce'), idl: script.nonce};
+    }""")
+    assert survived["onTag"] == "abc123XYZ"
+    assert survived["onReal"] == "abc123XYZ" and survived["idl"] == "abc123XYZ", \
+        f"the nonce did not survive the injection path: {survived}"
+
+
+def test_the_policy_never_reaches_the_page_that_hosts_it(page):
+    """The whole reason for the frame. A strict policy applied here kills the tool."""
+    inject(page)
+    page.evaluate("setActiveWorkspace('config')")
+    page.wait_for_timeout(600)
+    _run_csp_sandbox(page, 1, settle_ms=5000)
+
+    # the host page still works: its own fetch goes through and its panels still render
+    assert page.evaluate("""async () => {
+        try { const r = await fetch('/api/health', {cache: 'no-store'}); return r.ok; }
+        catch (e) { return false; }
+    }"""), "the sandbox policy leaked onto the host page"
+    assert page.eval_on_selector_all(".rail-item", "e => e.length") > 0
+    assert page.errors == []
+    page.evaluate("() => stopCspSandbox()")
+
+
+def test_the_helper_serves_a_real_header_and_refuses_to_be_split(page):
+    """A reflected value in a response header is a response-splitting hole unless CR and LF are
+    removed without exception."""
+    headers = page.evaluate("""async () => {
+        const clean = await fetch("/csp-frame?policy=" + encodeURIComponent("default-src 'none'"));
+        const ro = await fetch("/csp-frame?mode=report-only&policy=" + encodeURIComponent("default-src 'none'"));
+        // The CR and LF have to reach the server as real control characters, so they are built
+        // rather than written into this string literal.
+        const nasty = "default-src 'none'" + String.fromCharCode(13, 10) + "X-Injected: yes";
+        const split = await fetch("/csp-frame?policy=" + encodeURIComponent(nasty));
+        return {
+            enforced: clean.headers.get('content-security-policy'),
+            reportOnly: ro.headers.get('content-security-policy-report-only'),
+            splitAttemptHeader: split.headers.get('x-injected'),
+            splitAttemptPolicy: split.headers.get('content-security-policy')
+        };
+    }""")
+    assert headers["enforced"] == "default-src 'none'"
+    assert headers["reportOnly"] == "default-src 'none'", "report-only mode did not use the report-only header"
+    assert headers["splitAttemptHeader"] is None, "a newline in the policy became a header of its own"
+    assert "X-Injected" in headers["splitAttemptPolicy"], "the sanitised value should stay inside the policy"
+
+
+def test_the_meta_fallback_names_the_directives_it_cannot_carry(page):
+    """frame-ancestors, report-uri and sandbox are ignored when a policy arrives in a meta element
+    — the browser says so itself. Saying "some directives may not work" would be useless."""
+    inject(page)
+    named = page.evaluate("""() => describeMetaFallbackLimits(
+        "default-src 'none'; frame-ancestors 'none'; report-uri /csp; img-src 'self'")""")
+    assert set(named) == {"frame-ancestors", "report-uri"}, named
+    assert page.evaluate("""() => describeMetaFallbackLimits("default-src 'none'; img-src 'self'")""") == []

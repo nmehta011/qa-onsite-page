@@ -283,6 +283,30 @@
         /* Expectation suite. A failing card is bordered rather than tinted: several can be on
            screen at once, and a wash of red across half of them reads as one large problem
            instead of three separate ones. */
+        /* CSP sandbox. The frame is kept small and visible rather than hidden: seeing the forms
+           actually render under the policy is half the answer. */
+        .csp-sandbox-host:not(:empty) { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+        .csp-sandbox-frame { width: 100%; height: 260px; border: none; background: #fff; display: block; }
+        .csp-delivery { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 8px; line-height: 1.5; }
+        .csp-delivery b { color: var(--text-firm); }
+        .csp-warning { font-size: 0.76rem; color: var(--accent-amber); background: rgba(245,158,11,0.10); border: 1px solid rgba(245,158,11,0.30); border-radius: 6px; padding: 7px 10px; margin-bottom: 9px; line-height: 1.55; }
+        .csp-warning code { background: var(--surface-control); padding: 1px 4px; border-radius: 3px; }
+        .csp-outcome { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+        .csp-metric { font-size: 0.72rem; font-weight: 700; padding: 3px 9px; border-radius: 5px; background: var(--surface-control); color: var(--text-dim); }
+        .csp-metric-good { background: rgba(16,185,129,0.15); color: var(--accent-green); }
+        .csp-metric-bad { background: rgba(239,68,68,0.13); color: var(--accent-red); }
+        .csp-section-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-faint); font-weight: 700; margin: 12px 0 6px; }
+        .csp-violations { display: flex; flex-direction: column; gap: 2px; max-height: 190px; overflow-y: auto; }
+        .csp-violation { display: flex; gap: 9px; font-family: monospace; font-size: 0.72rem; padding: 3px 6px; border-radius: 4px; background: rgba(239,68,68,0.10); align-items: baseline; }
+        .csp-violation-report { background: rgba(245,158,11,0.10); }
+        .csp-directive { color: var(--accent-red); flex-shrink: 0; }
+        .csp-violation-report .csp-directive { color: var(--accent-amber); }
+        .csp-blocked { color: var(--text-muted); word-break: break-all; }
+        .csp-disposition { color: var(--accent-amber); font-size: 0.9em; margin-left: auto; flex-shrink: 0; }
+        .csp-coverage { display: flex; flex-wrap: wrap; gap: 5px; }
+        .csp-host { display: inline-flex; gap: 5px; align-items: center; font-family: monospace; font-size: 0.71rem; padding: 2px 8px; border-radius: 5px; background: rgba(16,185,129,0.10); color: var(--accent-green); }
+        .csp-host-missing { background: rgba(239,68,68,0.12); color: var(--accent-red); }
+
         .expectation-run-status { display: flex; align-items: center; gap: 9px; margin-top: 12px; padding: 9px 12px; border: 1px solid var(--accent-sky-strong); border-radius: 8px; background: rgba(14,165,233,0.10); font-size: 0.8rem; color: var(--text-firm); }
         .expectation-spinner { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--accent-sky-strong); border-top-color: transparent; animation: expectation-spin 0.7s linear infinite; flex-shrink: 0; }
         @keyframes expectation-spin { to { transform: rotate(360deg); } }
@@ -3552,6 +3576,35 @@
             </div>
         </div>
 
+        <div class="diag-panel" data-panel-key="csp" style="margin-top:25px;">
+            <div class="event-toolbar-row" style="border-bottom:1px solid var(--line); padding-bottom:12px;">
+                <h4 style="margin:0; border:none; padding:0; flex:1; min-width:230px;">🛡️ CSP Sandbox</h4>
+                <span id="csp-sandbox-summary" class="status-pill pill-sdk">Not running</span>
+                <button class="lifecycle-btn panel-collapse-btn" onclick="togglePanelCollapsed('csp')">▾ Collapse</button>
+            </div>
+            <div class="collapsed-summary" data-panel-summary style="display:none;"></div>
+            <p data-panel-body style="margin:12px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+                Test a real Content-Security-Policy against the SDK. The policy is applied to a <strong>sandbox frame</strong>
+                and your embed is injected inside it — not to this page, which a strict policy would break instantly.
+                The frame is same-origin, so every <code>securitypolicyviolation</code> it raises is readable here, along with
+                whether the SDK loaded and whether forms actually rendered under the policy.
+                Write <code>QA_NONCE</code> anywhere a nonce belongs and it is replaced with one the harness also stamps on
+                its own bootstrap, so a nonce-gated policy can boot at all.
+            </p>
+            <div class="event-toolbar-row" data-panel-body style="margin-top:12px;" id="csp-preset-row"></div>
+            <textarea id="csp-policy-input" data-panel-body class="inspector-editor" spellcheck="false" style="margin-top:10px; min-height:96px;"
+                      placeholder="default-src 'none'; script-src 'nonce-QA_NONCE' 'strict-dynamic'; connect-src 'self' …"
+                      aria-label="Content Security Policy to test"></textarea>
+            <div class="event-toolbar-row" data-panel-body style="margin-top:10px;">
+                <label class="provisions-only-on"><input type="radio" name="csp-mode" checked onchange="setCspSandboxMode('enforce')"> Enforce</label>
+                <label class="provisions-only-on"><input type="radio" name="csp-mode" onchange="setCspSandboxMode('report-only')"> Report only</label>
+                <button class="lifecycle-btn" onclick="startCspSandbox()">▶ Start sandbox</button>
+                <button class="lifecycle-btn" onclick="stopCspSandbox()">Stop</button>
+            </div>
+            <div data-panel-body id="csp-sandbox-container" style="margin-top:14px;"></div>
+            <div data-panel-body id="csp-sandbox-host" class="csp-sandbox-host"></div>
+        </div>
+
         <div class="diag-panel" data-panel-key="expectations" style="margin-top:25px;">
             <div class="event-toolbar-row" style="border-bottom:1px solid var(--line); padding-bottom:12px;">
                 <h4 style="margin:0; border:none; padding:0; flex:1; min-width:230px;">🎯 Expectation Suite</h4>
@@ -4928,6 +4981,7 @@
         // Slow on purpose: the panel only changes when someone saves or runs something, and both
         // of those already re-render it. This is a safety net for the first paint, not a loop.
         setInterval(() => { if (!expectationRunInProgress) renderExpectationSuitePanel(); }, 4000);
+        setInterval(() => { if (!cspSandboxRunning) renderCspSandboxPanel(); }, 4000);
         setInterval(renderPiiScanPanel, 2000);
         setInterval(renderProvisionsPanel, 2500);
         // Only while it is on screen: reading the live configuration costs a deprecation warning.
@@ -8746,6 +8800,7 @@
             'Full Accessibility Audit': 'appearance',
             'Will each form show?': 'targeting',
             'Expectation Suite': 'targeting',
+            'CSP Sandbox': 'config',
             'Config Drift Baseline': 'config',
             'Provisions & overrides': 'config',
             'SDK Debugger': 'debugger',
@@ -13321,6 +13376,314 @@
                         : ''}
                 </div>`;
             }).join('');
+        }
+
+        // --- 5d3. CSP SANDBOX ---
+        // Testing a Content-Security-Policy against this app directly is not possible, and
+        // pretending otherwise would break the tool the moment anyone tried: measured, a policy
+        // of `default-src 'none'` with a nonce-based script-src raises twelve style-src-attr
+        // violations against this file's own inline styles before it has finished loading. This
+        // page is one HTML file of inline script and style with no nonce; a strict policy kills
+        // it.
+        //
+        // So the policy is applied to a SANDBOX FRAME instead, and the embed is injected in
+        // there. The frame is same-origin, which is what makes this worth building: unlike the
+        // Medallia form iframe, its DOM and its securitypolicyviolation events are readable from
+        // here. See onsite-hub-hard-limits for the cross-origin wall this deliberately sits on
+        // the near side of.
+        const CSP_POLICY_PRESETS = [
+            {
+                label: 'Medallia onsite (nonce + strict-dynamic)',
+                note: 'The shape a strict site ships: nonce-gated scripts, strict-dynamic, and every Medallia host a form needs listed on connect-src.',
+                policy: "default-src 'none'; script-src 'nonce-QA_NONCE' 'strict-dynamic'; script-src-elem 'nonce-QA_NONCE' 'strict-dynamic'; style-src 'nonce-QA_NONCE' 'self' 'unsafe-inline'; style-src-elem 'nonce-QA_NONCE' 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; connect-src 'self' resources.digital-cloud-qa-web.medallia.com analytics-fe.digital-cloud-qa-web.medallia.com feedback.digital-cloud-qa-web.medallia.com ubt.digital-cloud-qa-web.medallia.com udc-neb.kampyle.com nebula-cdn.kampyle.com screencapture.kampyle.com *.kampyle.com; frame-src 'self' *.medallia.com *.kampyle.com; img-src 'self' data: blob: *.medallia.com; font-src 'self' data:;"
+            },
+            {
+                label: 'Deliberately too strict (nothing allowed out)',
+                note: 'Everything blocked past the script itself. Useful for seeing what the failure looks like when a policy is wrong — the SDK loads and no form ever appears.',
+                policy: "default-src 'none'; script-src 'nonce-QA_NONCE' 'strict-dynamic'; connect-src 'none';"
+            },
+            {
+                label: 'Hosts only, no nonce',
+                note: "The older style: allow-listed hosts and 'unsafe-inline'. Shows whether the SDK needs anything the list is missing.",
+                policy: "default-src 'self'; script-src 'self' 'unsafe-inline' *.medallia.com *.kampyle.com; style-src 'self' 'unsafe-inline'; connect-src 'self' *.medallia.com *.kampyle.com; frame-src 'self' *.medallia.com *.kampyle.com; img-src 'self' data: blob: *.medallia.com;"
+            }
+        ];
+
+        // Whatever nonce the policy names is the one the harness has to stamp on its own
+        // bootstrap, or nothing in the frame runs at all -- including the violation listener,
+        // which would make a broken policy look like a silent success.
+        const CSP_SANDBOX_NONCE = 'QAcsp' + Math.random().toString(36).slice(2, 12);
+
+        let cspSandboxPolicyText = '';
+        let cspSandboxMode = 'enforce';
+        let cspSandboxViolations = [];
+        let cspSandboxFrameState = null;
+        let cspSandboxRouteAvailable = null;   // null = not probed yet
+        let cspSandboxRunning = false;
+
+        // The route serves the frame with a REAL Content-Security-Policy response header. The
+        // <meta> fallback works, but the browser ignores frame-ancestors, report-uri and sandbox
+        // when a policy arrives that way -- its own words in the console -- so the header route
+        // is preferred wherever this app is served by its own helper.
+        async function probeCspFrameRoute() {
+            try {
+                const response = await fetch('/api/health', { cache: 'no-store' });
+                if (!response.ok) return false;
+                const health = await response.json();
+                return !!(health && health.helper === 'qa-server');
+            } catch (err) { return false; }
+        }
+
+        function policyWithSandboxNonce() {
+            return String(cspSandboxPolicyText || '').split('QA_NONCE').join(CSP_SANDBOX_NONCE);
+        }
+
+        // Directives a <meta> element cannot carry. Named individually because "some directives
+        // are ignored" is not something a tester can act on.
+        const CSP_DIRECTIVES_META_IGNORES = ['frame-ancestors', 'report-uri', 'report-to', 'sandbox'];
+
+        function describeMetaFallbackLimits(policy) {
+            const lowered = String(policy || '').toLowerCase();
+            return CSP_DIRECTIVES_META_IGNORES.filter(directive => lowered.includes(directive + ' '));
+        }
+
+        function parseConnectSrcHosts(policy) {
+            const match = String(policy || '').match(/connect-src([^;]*)/i);
+            if (!match) return null;
+            return match[1].trim().split(/\s+/).filter(Boolean);
+        }
+
+        // Which hosts the SDK actually reached for, against what the policy permits. The request
+        // log already records every one of them, so this is a read of something already known
+        // rather than a new measurement -- and it answers the question a violation cannot: which
+        // host you forgot BEFORE you hit it.
+        function buildCspConnectCoverage() {
+            const allowed = parseConnectSrcHosts(cspSandboxPolicyText);
+            if (!allowed) return null;
+
+            const contacted = new Set();
+            buildDebuggerRequestLog().forEach(record => {
+                try { contacted.add(new URL(record.url).hostname); } catch (err) { /* not a URL */ }
+            });
+
+            const permits = hostname => allowed.some(entry => {
+                const bare = entry.replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase();
+                if (bare === "'self'" || bare === "'none'" || bare.startsWith("'")) return false;
+                if (bare === '*') return true;
+                if (bare.startsWith('*.')) {
+                    const suffix = bare.slice(1);
+                    return hostname.toLowerCase().endsWith(suffix);
+                }
+                return hostname.toLowerCase() === bare;
+            });
+
+            const ownHost = window.location.hostname.toLowerCase();
+            const rows = Array.from(contacted).sort().map(hostname => ({
+                hostname,
+                // 'self' covers this app's own origin, so it is not a gap.
+                allowed: hostname.toLowerCase() === ownHost || permits(hostname)
+            }));
+            return { allowed, rows, missing: rows.filter(row => !row.allowed).map(row => row.hostname) };
+        }
+
+        // The frame document used when this app is served by something other than its own helper
+        // (the deployed copy). Same bootstrap, policy delivered by <meta> instead of a header.
+        function buildCspFallbackFrameDocument(policy) {
+            const nonceAttribute = / 'nonce-([A-Za-z0-9+/_=-]+)'/.test(` ${policy}`)
+                ? ` nonce="${(policy.match(/'nonce-([A-Za-z0-9+/_=-]+)'/) || [])[1]}"` : '';
+            const header = cspSandboxMode === 'report-only'
+                ? 'Content-Security-Policy-Report-Only' : 'Content-Security-Policy';
+            return `<!doctype html><html><head><meta charset="utf-8">` +
+                `<meta http-equiv="${header}" content="${escapeMarkupForSafeRender(policy)}">` +
+                `</head><body><div id="embedded_form1"></div><div id="embedded_form2"></div>` +
+                `<div id="kampyle_dropzone"></div>` +
+                `<script${nonceAttribute}>` + CSP_FRAME_BOOTSTRAP + `<\/script></body></html>`;
+        }
+
+        // Kept identical in intent to the server-rendered one: parse, copy every attribute onto a
+        // real script element (which is what carries a pasted nonce through), append. A harness
+        // that injected differently from the hub would be testing something nobody ships.
+        const CSP_FRAME_BOOTSTRAP = `(function () {
+  var violations = [];
+  function post(m) { try { parent.postMessage(m, '*'); } catch (e) {} }
+  document.addEventListener('securitypolicyviolation', function (event) {
+    violations.push({ directive: event.violatedDirective,
+                      blockedURI: String(event.blockedURI || '').slice(0, 300),
+                      disposition: event.disposition, at: Date.now() });
+    post({ type: 'qa-csp-violation', violations: violations });
+  });
+  function report() {
+    var forms = null;
+    try { forms = (window.KAMPYLE_DATA.getAllForms() || []).length; } catch (e) { forms = null; }
+    post({ type: 'qa-csp-state', sdkPresent: !!window.KAMPYLE_ONSITE_SDK, formsKnown: forms,
+           framesRendered: document.querySelectorAll('iframe').length, violations: violations });
+  }
+  window.addEventListener('message', function (event) {
+    if (!event.data || event.data.type !== 'qa-csp-inject') return;
+    try {
+      var parsed = new DOMParser().parseFromString(event.data.code, 'text/html');
+      var tag = parsed.querySelector('script');
+      if (!tag) { post({ type: 'qa-csp-error', message: 'That snippet contains no script tag.' }); return; }
+      var script = document.createElement('script');
+      Array.prototype.forEach.call(tag.attributes, function (a) { script.setAttribute(a.name, a.value); });
+      script.textContent = tag.textContent;
+      script.onerror = function () { post({ type: 'qa-csp-error', message: 'The embed script could not be downloaded.' }); };
+      document.body.appendChild(script);
+    } catch (err) { post({ type: 'qa-csp-error', message: String(err && err.message || err) }); }
+  });
+  setInterval(report, 1000);
+  post({ type: 'qa-csp-ready' });
+})();`;
+
+        function handleCspSandboxMessage(event) {
+            const frame = document.getElementById('csp-sandbox-frame');
+            // Structural trust, not an origin allow-list: the message must come from the window
+            // this page actually embedded. The same rule the invitation postMessage handling uses,
+            // and for the same reason -- tenants run on custom domains.
+            if (!frame || event.source !== frame.contentWindow) return;
+            const data = event.data || {};
+            if (data.type === 'qa-csp-ready') {
+                const code = (document.getElementById('input-main-page') || {}).value
+                          || sessionStorage.getItem('saved_script') || '';
+                if (!code.trim()) {
+                    writeLog('🛡️ CSP sandbox is up, but there is no embed snippet to inject into it yet.', 'warn');
+                    return;
+                }
+                frame.contentWindow.postMessage({ type: 'qa-csp-inject', code }, '*');
+                writeLog('🛡️ Embed injected into the CSP sandbox.', 'info');
+            } else if (data.type === 'qa-csp-violation') {
+                cspSandboxViolations = data.violations || [];
+                renderCspSandboxPanel();
+            } else if (data.type === 'qa-csp-state') {
+                cspSandboxFrameState = data;
+                cspSandboxViolations = data.violations || cspSandboxViolations;
+                renderCspSandboxPanel();
+            } else if (data.type === 'qa-csp-error') {
+                writeLog(`🛡️ CSP sandbox: ${data.message}`, 'warn');
+            }
+        }
+        window.addEventListener('message', handleCspSandboxMessage);
+
+        async function startCspSandbox() {
+            const field = document.getElementById('csp-policy-input');
+            cspSandboxPolicyText = String(field && field.value || '').trim();
+            if (!cspSandboxPolicyText) { toast('Paste a policy first, or pick one of the presets.', 'warn'); return; }
+
+            cspSandboxViolations = [];
+            cspSandboxFrameState = null;
+            if (cspSandboxRouteAvailable === null) cspSandboxRouteAvailable = await probeCspFrameRoute();
+
+            const host = document.getElementById('csp-sandbox-host');
+            if (!host) return;
+            host.innerHTML = '';
+            const frame = document.createElement('iframe');
+            frame.id = 'csp-sandbox-frame';
+            frame.className = 'csp-sandbox-frame';
+            frame.title = 'CSP sandbox';
+
+            const policy = policyWithSandboxNonce();
+            if (cspSandboxRouteAvailable) {
+                frame.src = `/csp-frame?mode=${encodeURIComponent(cspSandboxMode)}&policy=${encodeURIComponent(policy)}`;
+            } else {
+                frame.srcdoc = buildCspFallbackFrameDocument(policy);
+            }
+            host.appendChild(frame);
+            cspSandboxRunning = true;
+            writeLog(`🛡️ CSP sandbox started (${cspSandboxMode}, delivered by ${cspSandboxRouteAvailable ? 'a real response header' : 'a meta element'}).`, 'info');
+            renderCspSandboxPanel();
+        }
+
+        function stopCspSandbox() {
+            const host = document.getElementById('csp-sandbox-host');
+            if (host) host.innerHTML = '';
+            cspSandboxRunning = false;
+            cspSandboxFrameState = null;
+            renderCspSandboxPanel();
+        }
+
+        function applyCspPreset(index) {
+            const preset = CSP_POLICY_PRESETS[index];
+            if (!preset) return;
+            const field = document.getElementById('csp-policy-input');
+            if (field) field.value = preset.policy;
+            cspSandboxPolicyText = preset.policy;
+            renderCspSandboxPanel();
+        }
+
+        function setCspSandboxMode(mode) {
+            cspSandboxMode = mode;
+            renderCspSandboxPanel();
+        }
+
+        function renderCspSandboxPanel() {
+            const container = document.getElementById('csp-sandbox-container');
+            const pill = document.getElementById('csp-sandbox-summary');
+            const presets = document.getElementById('csp-preset-row');
+            if (!container) return;
+
+            if (presets && !presets.innerHTML) {
+                presets.innerHTML = CSP_POLICY_PRESETS.map((preset, index) =>
+                    `<button class="lifecycle-btn" onclick="applyCspPreset(${index})" title="${escapeMarkupForSafeRender(preset.note)}">${escapeMarkupForSafeRender(preset.label)}</button>`).join('');
+            }
+
+            const blocking = cspSandboxViolations.filter(v => v.disposition !== 'report');
+            if (pill) {
+                pill.className = 'status-pill ' + (!cspSandboxRunning ? 'pill-sdk'
+                    : blocking.length ? 'pill-danger'
+                    : cspSandboxFrameState && cspSandboxFrameState.formsKnown ? 'pill-success' : 'pill-warn');
+                pill.innerText = !cspSandboxRunning ? 'Not running'
+                    : blocking.length ? `${blocking.length} blocked`
+                    : cspSandboxFrameState && cspSandboxFrameState.formsKnown ? `${cspSandboxFrameState.formsKnown} forms under policy`
+                    : 'running…';
+            }
+
+            if (!cspSandboxRunning) {
+                container.innerHTML = `<div class="no-rules-notice">Paste a policy, or pick one above, then <b>Start</b>. The policy is applied to a sandbox frame and your embed is injected inside it — not to this page, which a strict policy would break instantly: <code>default-src 'none'</code> raises twelve violations against this app's own inline styles before it finishes loading.</div>`;
+                return;
+            }
+
+            const metaGaps = cspSandboxRouteAvailable ? [] : describeMetaFallbackLimits(cspSandboxPolicyText);
+            const coverage = buildCspConnectCoverage();
+            const state = cspSandboxFrameState;
+
+            container.innerHTML =
+                `<div class="csp-delivery">
+                    Delivered by <b>${cspSandboxRouteAvailable ? 'a real Content-Security-Policy response header' : 'a &lt;meta&gt; element'}</b>
+                    in <b>${cspSandboxMode === 'report-only' ? 'report-only' : 'enforcing'}</b> mode.
+                    ${cspSandboxRouteAvailable ? '' : ' The deployed copy has no server to set headers, so this is the fallback.'}
+                 </div>` +
+                (metaGaps.length
+                    ? `<div class="csp-warning">⚠ The browser ignores ${metaGaps.map(d => `<code>${escapeMarkupForSafeRender(d)}</code>`).join(', ')} when a policy arrives in a &lt;meta&gt; element — its own words. Run this against the local helper (<code>python3 qa-server.py</code>) to test ${metaGaps.length === 1 ? 'that directive' : 'those directives'} for real.</div>`
+                    : '') +
+                (state
+                    ? `<div class="csp-outcome">
+                         <span class="csp-metric${state.sdkPresent ? ' csp-metric-good' : ' csp-metric-bad'}">SDK ${state.sdkPresent ? 'loaded' : 'did not load'}</span>
+                         <span class="csp-metric${state.formsKnown ? ' csp-metric-good' : ' csp-metric-bad'}">${state.formsKnown === null ? 'no' : state.formsKnown} form${state.formsKnown === 1 ? '' : 's'} known</span>
+                         <span class="csp-metric${state.framesRendered ? ' csp-metric-good' : ''}">${state.framesRendered} rendered</span>
+                       </div>`
+                    : '<div class="csp-outcome"><span class="csp-metric">waiting for the frame…</span></div>') +
+                (state && state.sdkPresent && !state.formsKnown && !blocking.length
+                    ? `<div class="csp-warning">The SDK loaded and no form appeared, with nothing blocked. That is usually targeting rather than the policy — check "Will each form show?".</div>` : '') +
+                `<div class="csp-section-title">Violations</div>` +
+                (cspSandboxViolations.length
+                    ? `<div class="csp-violations">${cspSandboxViolations.slice(-30).map(violation => `
+                        <div class="csp-violation${violation.disposition === 'report' ? ' csp-violation-report' : ''}">
+                            <span class="csp-directive">${escapeMarkupForSafeRender(violation.directive)}</span>
+                            <span class="csp-blocked">${escapeMarkupForSafeRender(violation.blockedURI || '(inline)')}</span>
+                            ${violation.disposition === 'report' ? '<span class="csp-disposition">would block</span>' : ''}
+                        </div>`).join('')}</div>`
+                    : '<div class="design-note">Nothing has been blocked yet.</div>') +
+                (coverage
+                    ? `<div class="csp-section-title">connect-src coverage</div>` +
+                      (coverage.missing.length
+                        ? `<div class="csp-warning">${coverage.missing.length} host${coverage.missing.length === 1 ? '' : 's'} the SDK has already contacted ${coverage.missing.length === 1 ? 'is' : 'are'} not permitted by this policy. A violation only tells you after the fact; this tells you before.</div>`
+                        : '') +
+                      `<div class="csp-coverage">${coverage.rows.map(row => `
+                          <div class="csp-host${row.allowed ? '' : ' csp-host-missing'}">
+                            <span>${row.allowed ? '✓' : '✕'}</span>
+                            <span>${escapeMarkupForSafeRender(row.hostname)}</span>
+                          </div>`).join('')}</div>`
+                    : '<div class="csp-section-title">connect-src coverage</div><div class="design-note">This policy names no connect-src, so nothing can be compared against the hosts the SDK uses.</div>');
         }
 
         // --- 5d. CONFIG DRIFT BASELINE ---

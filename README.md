@@ -12,7 +12,7 @@ because content renders inside a cross-origin iframe), it says so plainly instea
 | --- | --- |
 | **0** external dependencies | no CDN, no fonts, no framework |
 | **25** diagnostic panels | grouped into 6 task-based workspaces |
-| **143** regression tests | driven against a live property, no mocks |
+| **149** regression tests | driven against a live property, no mocks |
 | **~600 KB** | one HTML file, runs from `file://` if you have to |
 
 ---
@@ -149,6 +149,21 @@ object in the page, and reversible; nothing is ever sent to Medallia.
 **Component roles** lists every field on every form with the role its type renders as, the key it
 submits under, its validation and what a screen reader is given to announce — flagging required
 fields with no error message, missing autocomplete attributes and answer ids that collide.
+
+### 🛡️ CSP Sandbox — *will our Content-Security-Policy break the SDK?*
+
+Paste a real policy and test it against the SDK for real. The policy is applied to a **sandbox
+frame** and your embed is injected inside it — not to this page, which a strict policy would break
+instantly (`default-src 'none'` raises a dozen violations against this file's own inline styles).
+The frame is same-origin, so every `securitypolicyviolation` it raises is readable, along with
+whether the SDK loaded and whether forms actually rendered.
+
+Served by `qa-server.py` the policy arrives as a **real `Content-Security-Policy` response header**,
+exactly as production would send it; the deployed copy falls back to a `<meta>` element and names
+the directives the browser ignores there (`frame-ancestors`, `report-uri`, `sandbox`). Write
+`QA_NONCE` where a nonce belongs and it is stamped on the harness bootstrap too, so nonce-gated
+policies can boot. Report-only mode reports without blocking. A **connect-src coverage** list names
+hosts the SDK has already contacted that the policy does not permit — before you hit the violation.
 
 ### 🧪 Scenario pages
 
