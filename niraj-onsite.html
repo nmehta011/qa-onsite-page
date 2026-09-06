@@ -283,6 +283,11 @@
         /* Expectation suite. A failing card is bordered rather than tinted: several can be on
            screen at once, and a wash of red across half of them reads as one large problem
            instead of three separate ones. */
+        .expectation-run-status { display: flex; align-items: center; gap: 9px; margin-top: 12px; padding: 9px 12px; border: 1px solid var(--accent-sky-strong); border-radius: 8px; background: rgba(14,165,233,0.10); font-size: 0.8rem; color: var(--text-firm); }
+        .expectation-spinner { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--accent-sky-strong); border-top-color: transparent; animation: expectation-spin 0.7s linear infinite; flex-shrink: 0; }
+        @keyframes expectation-spin { to { transform: rotate(360deg); } }
+        @media (prefers-reduced-motion: reduce) { .expectation-spinner { animation: none; } }
+
         .expectation-card { border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: 8px; padding: 12px 14px; margin-bottom: 11px; background: var(--surface-sunken); }
         .expectation-card-failing { border-left-color: var(--accent-red); }
         .expectation-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; font-size: 0.84rem; margin-bottom: 8px; }
@@ -2796,18 +2801,36 @@
         // event fired before the wrappers land would otherwise be missed entirely.
         const sdkCustomEventBusTapPollToken = setInterval(installNativeSdkCustomEventBusTap, 25);
 
+        // The purge exists to reset SDK RESPONDENT state — lifecycle dates, session counters, the
+        // quarantines. Anything in here that is this app's own saved work or a stated preference
+        // is not that, and losing it to a routine purge would quietly break the exact workflow it
+        // exists for. Environment A/B made the point first: a purge is the required step BETWEEN
+        // capturing two environments, so a purge that wiped them would delete its own data on
+        // every intended use. The same is true of expectations — purging to a clean respondent
+        // and then replaying a saved check is the obvious way to use them together.
+        //
+        // Listed rather than matched on a prefix, because plenty of this app's own qa_* keys ARE
+        // respondent state and must go: the simulated parameters, the consent choice, the saved
+        // script, the fixture state, pinned provision overrides. A prefix rule would preserve
+        // those too and make the purge a no-op.
+        const STORAGE_KEYS_SURVIVING_A_PURGE = [
+            'qa_config_baseline_v1',     // a captured configuration to diff against later
+            'qa_named_environments_v1',  // saved environments for A/B comparison
+            'qa_expectations_v1',        // saved expectation checks
+            'qa_findings_snapshot',      // the findings baseline, same category as the config one
+            'qa_debugger_watches_v1',    // the paths you asked the Debugger to keep an eye on
+            'qa_colour_theme'            // a stated preference; a purge should not relight the room
+        ];
+
         function executeGlobalNuclearApplicationReset() {
-            // The purge exists to reset SDK respondent state. Saved config baselines and named
-            // environments are QA tooling rather than SDK state — losing either to a routine
-            // purge would quietly break the exact workflow they exist for (Environment A/B in
-            // particular: purge is the required step *between* capturing two environments, so if
-            // this purge wiped it, the feature would delete its own data on every intended use).
-            const preservedConfigBaseline = localStorage.getItem('qa_config_baseline_v1');
-            const preservedNamedEnvironments = localStorage.getItem('qa_named_environments_v1');
+            const preserved = {};
+            STORAGE_KEYS_SURVIVING_A_PURGE.forEach(key => {
+                const value = localStorage.getItem(key);
+                if (value !== null) preserved[key] = value;
+            });
 
             localStorage.clear(); sessionStorage.clear();
-            if (preservedConfigBaseline) localStorage.setItem('qa_config_baseline_v1', preservedConfigBaseline);
-            if (preservedNamedEnvironments) localStorage.setItem('qa_named_environments_v1', preservedNamedEnvironments);
+            Object.keys(preserved).forEach(key => localStorage.setItem(key, preserved[key]));
 
             document.cookie.split(";").forEach(function(c) { 
                 document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
@@ -3541,6 +3564,10 @@
                 <strong>right</strong> — so it can fail the first time you run it, on a property that has been broken
                 since the day it was published. Get the page into a state worth pinning down, save it with a name, and
                 the state and the outcome are replayed together on demand.
+                <strong>Running takes over the page while it works</strong>: it navigates to the saved scenario page,
+                rewrites the lifecycle keys and parameters, re-targets, then puts everything back the way it found it.
+                Saved checks survive a Hard Purge &amp; Reset, so you can purge to a clean respondent and replay them.</p>
+            <p data-panel-body style="margin:8px 0 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
             </p>
             <div class="event-toolbar-row" data-panel-body style="margin-top:12px;">
                 <input type="text" id="expectation-name-input" class="suite-input" style="flex:1; min-width:220px;"
@@ -3548,6 +3575,7 @@
                 <button class="lifecycle-btn" onclick="saveExpectationFromTheInput()">📌 Save current state</button>
                 <button class="lifecycle-btn" onclick="runAllExpectations()">▶ Run all</button>
             </div>
+            <div id="expectation-run-status" class="expectation-run-status" style="display:none;"></div>
             <div data-panel-body id="expectation-suite-container" style="margin-top:14px;"></div>
         </div>
 
@@ -4899,7 +4927,7 @@
         setInterval(renderFindingsHistoryPanel, 2000);
         // Slow on purpose: the panel only changes when someone saves or runs something, and both
         // of those already re-render it. This is a safety net for the first paint, not a loop.
-        setInterval(renderExpectationSuitePanel, 4000);
+        setInterval(() => { if (!expectationRunInProgress) renderExpectationSuitePanel(); }, 4000);
         setInterval(renderPiiScanPanel, 2000);
         setInterval(renderProvisionsPanel, 2500);
         // Only while it is on screen: reading the live configuration costs a deprecation warning.
@@ -12894,6 +12922,16 @@
         const EXPECTATION_REPLAY_TIMEOUT_MS = 6000;
         let lastExpectationRunResults = null;
         let expectationRunInProgress = false;
+        // A run navigates between scenario pages, rewrites lifecycle storage and re-targets the
+        // SDK several times. Doing all of that behind two disabled buttons was indistinguishable
+        // from the app having hung, so every step announces itself here and in the activity log.
+        let expectationRunStatus = null;
+
+        function reportExpectationStep(step, index, total, name) {
+            expectationRunStatus = { step, index, total, name, at: Date.now() };
+            writeLog(`🎯 Expectation run ${index}/${total} — ${name}: ${step}`, 'info');
+            renderExpectationSuitePanel();
+        }
 
         function readStoredExpectations() {
             try {
@@ -13076,9 +13114,12 @@
             });
         }
 
-        async function runExpectation(expectation) {
+        async function runExpectation(expectation, index, total) {
+            reportExpectationStep('restoring the saved page state', index, total, expectation.name);
             const notes = applyExpectationState(expectation.state);
+            reportExpectationStep('re-targeting and waiting for the SDK to settle', index, total, expectation.name);
             const settled = await reTargetAndSettle();
+            reportExpectationStep('comparing outcomes', index, total, expectation.name);
             if (!settled) notes.push('The property did not settle within ' + (EXPECTATION_REPLAY_TIMEOUT_MS / 1000) + 's — the result below is what it looked like when the wait ran out.');
 
             const outcomes = readCurrentFormOutcomes() || [];
@@ -13137,13 +13178,15 @@
 
             const results = [];
             try {
-                for (const expectation of list) {
-                    results.push(await runExpectation(expectation));
+                for (let index = 0; index < list.length; index++) {
+                    results.push(await runExpectation(list[index], index + 1, list.length));
                 }
             } finally {
+                reportExpectationStep('putting the page back the way it was', list.length, list.length, 'finishing');
                 applyExpectationState(stateBeforeRun);
                 await reTargetAndSettle();
                 expectationRunInProgress = false;
+                expectationRunStatus = null;
             }
 
             lastExpectationRunResults = results;
@@ -13162,11 +13205,13 @@
             expectationRunInProgress = true;
             renderExpectationSuitePanel();
             let result;
-            try { result = await runExpectation(expectation); }
+            try { result = await runExpectation(expectation, 1, 1); }
             finally {
+                reportExpectationStep('putting the page back the way it was', 1, 1, expectation.name);
                 applyExpectationState(stateBeforeRun);
                 await reTargetAndSettle();
                 expectationRunInProgress = false;
+                expectationRunStatus = null;
             }
             lastExpectationRunResults = (lastExpectationRunResults || []).filter(r => r.id !== id).concat([result]);
             renderExpectationSuitePanel();
@@ -13206,10 +13251,29 @@
             if (pill) {
                 const ran = lastExpectationRunResults || [];
                 const failed = ran.reduce((total, result) => total + result.failed, 0);
-                pill.className = 'status-pill ' + (!list.length ? 'pill-warn' : !ran.length ? 'pill-sdk' : failed ? 'pill-danger' : 'pill-success');
-                pill.innerText = !list.length ? 'None saved'
-                    : !ran.length ? `${list.length} saved · not run`
-                    : failed ? `${failed} failing` : `${list.length} holding`;
+                if (expectationRunInProgress) {
+                    pill.className = 'status-pill pill-sdk';
+                    pill.innerText = expectationRunStatus
+                        ? `running ${expectationRunStatus.index}/${expectationRunStatus.total}…`
+                        : 'running…';
+                } else {
+                    pill.className = 'status-pill ' + (!list.length ? 'pill-warn' : !ran.length ? 'pill-sdk' : failed ? 'pill-danger' : 'pill-success');
+                    pill.innerText = !list.length ? 'None saved'
+                        : !ran.length ? `${list.length} saved · not run`
+                        : failed ? `${failed} failing` : `${list.length} holding`;
+                }
+            }
+
+            const liveStatus = document.getElementById('expectation-run-status');
+            if (liveStatus) {
+                liveStatus.style.display = expectationRunInProgress ? 'flex' : 'none';
+                if (expectationRunStatus) {
+                    liveStatus.innerHTML =
+                        `<span class="expectation-spinner" aria-hidden="true"></span>` +
+                        `<span><b>${escapeMarkupForSafeRender(expectationRunStatus.name)}</b> ` +
+                        `(${expectationRunStatus.index} of ${expectationRunStatus.total}) — ` +
+                        `${escapeMarkupForSafeRender(expectationRunStatus.step)}…</span>`;
+                }
             }
 
             if (!list.length) {

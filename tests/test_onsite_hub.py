@@ -3814,3 +3814,102 @@ def test_a_form_the_property_no_longer_publishes_is_reported_not_passed(page):
     assert len(result["uncovered"]) == 1, f"the gained form was not surfaced: {result['uncovered']}"
 
     page.evaluate("() => { localStorage.removeItem('qa_expectations_v1'); }")
+
+
+def test_a_hard_purge_keeps_saved_work_and_clears_respondent_state(page):
+    """The purge exists to reset SDK respondent state. This app's own saved work is not that, and
+    losing it to a routine purge breaks the workflow it exists for — purging to a clean respondent
+    and then replaying a saved expectation is the obvious way to use the two together. The
+    preserve list had fallen behind: expectations, watches, the findings baseline and the theme
+    were all being wiped."""
+    inject(page)
+    page.evaluate("() => saveExpectationFromCurrentState('survives the purge')")
+    page.evaluate("""() => {
+        localStorage.setItem('qa_colour_theme', 'light');
+        addDebuggerWatch('onsite-config', 'websiteId');
+        saveFindingsSnapshot();
+        const c = readLiveOnsiteConfiguration();
+        setProvisionOverride(Object.keys(c.provisions).find(k => c.provisions[k] !== true), true);
+    }""")
+    page.wait_for_timeout(400)
+
+    before = page.evaluate("""() => ({
+        expectations: !!localStorage.getItem('qa_expectations_v1'),
+        watches: !!localStorage.getItem('qa_debugger_watches_v1'),
+        findings: !!localStorage.getItem('qa_findings_snapshot'),
+        overrides: !!localStorage.getItem('qa_provision_overrides_v1'),
+        lifecycle: !!localStorage.getItem('kampyleUserSession')
+    })""")
+    assert all(before.values()), f"the fixture did not set everything up: {before}"
+
+    page.evaluate("() => executeGlobalNuclearApplicationReset()")
+    page.wait_for_load_state("domcontentloaded")
+    page.wait_for_function("() => document.querySelectorAll('#workspace-bar .workspace-tab').length > 0",
+                           timeout=15000)
+
+    after = page.evaluate("""() => ({
+        expectationCount: JSON.parse(localStorage.getItem('qa_expectations_v1') || '[]').length,
+        theme: localStorage.getItem('qa_colour_theme'),
+        watches: !!localStorage.getItem('qa_debugger_watches_v1'),
+        findings: !!localStorage.getItem('qa_findings_snapshot'),
+        overrides: !!localStorage.getItem('qa_provision_overrides_v1'),
+        lifecycle: !!localStorage.getItem('kampyleUserSession'),
+        script: !!sessionStorage.getItem('saved_script')
+    })""")
+
+    # kept: this app's own saved work and stated preferences
+    assert after["expectationCount"] == 1, "a saved expectation was purged"
+    assert after["theme"] == "light", "the purge relit the room"
+    assert after["watches"] and after["findings"], f"saved tooling was purged: {after}"
+
+    # cleared: everything that is respondent or session state, which is the point of the purge
+    assert not after["lifecycle"] and not after["script"], f"the purge did not purge: {after}"
+    assert not after["overrides"], \
+        "pinned provision overrides survived — a purge means back to the property's own behaviour"
+
+    # and the list is honest about which is which
+    kept = page.evaluate("() => STORAGE_KEYS_SURVIVING_A_PURGE")
+    assert "qa_expectations_v1" in kept and "qa_provision_overrides_v1" not in kept
+
+
+def test_a_run_says_what_it_is_doing_while_it_does_it(page):
+    """A run navigates between scenario pages, rewrites lifecycle storage and re-targets the SDK
+    several times. Behind two disabled buttons that was indistinguishable from the app hanging."""
+    inject(page)
+    page.evaluate("() => { localStorage.removeItem('qa_expectations_v1'); }")
+    page.evaluate("""() => {
+        saveExpectationFromCurrentState('first');
+        saveExpectationFromCurrentState('second');
+        renderExpectationSuitePanel();
+    }""")
+    page.evaluate("""() => {
+        window.__steps = [];
+        const original = reportExpectationStep;
+        window.reportExpectationStep = (step, i, total, name) => {
+            window.__steps.push(`${i}/${total} ${name}: ${step}`);
+            original(step, i, total, name);
+        };
+    }""")
+
+    page.evaluate("() => { runAllExpectations(); }")
+    page.wait_for_function("() => expectationRunInProgress", timeout=10000)
+    page.wait_for_timeout(500)
+
+    assert "running" in page.eval_on_selector("#expectation-suite-summary", "e => e.innerText")
+    assert page.eval_on_selector("#expectation-run-status", "e => getComputedStyle(e).display") != "none"
+    live = page.inner_text("#expectation-run-status")
+    assert "of 2" in live and any(word in live for word in ("state", "targeting", "Comparing", "comparing")), live
+    assert page.eval_on_selector_all(".expectation-head button",
+                                     "els => els.filter(e => e.innerText === 'Run').every(e => e.disabled)")
+
+    page.wait_for_function("() => !expectationRunInProgress", timeout=90000)
+    page.wait_for_timeout(600)
+
+    steps = page.evaluate("() => window.__steps")
+    assert any("1/2 first" in s for s in steps) and any("2/2 second" in s for s in steps), steps
+    assert any("putting the page back" in s for s in steps), \
+        f"the run never announced restoring the page: {steps}"
+
+    assert page.eval_on_selector("#expectation-run-status", "e => getComputedStyle(e).display") == "none"
+    assert "running" not in page.eval_on_selector("#expectation-suite-summary", "e => e.innerText")
+    page.evaluate("() => { localStorage.removeItem('qa_expectations_v1'); }")

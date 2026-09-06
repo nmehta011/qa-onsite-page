@@ -12,7 +12,7 @@ because content renders inside a cross-origin iframe), it says so plainly instea
 | --- | --- |
 | **0** external dependencies | no CDN, no fonts, no framework |
 | **25** diagnostic panels | grouped into 6 task-based workspaces |
-| **141** regression tests | driven against a live property, no mocks |
+| **143** regression tests | driven against a live property, no mocks |
 | **~600 KB** | one HTML file, runs from `file://` if you have to |
 
 ---
